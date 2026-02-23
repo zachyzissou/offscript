@@ -16,3 +16,5 @@ If unarchived later, restore from git history and first add:
 - README + architecture notes
 - SECURITY.md and branch protection controls
 - baseline CI workflow and templates
+
+- Archive review is recommended pending maintainer decision.
