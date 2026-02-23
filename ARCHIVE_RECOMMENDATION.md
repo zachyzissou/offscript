@@ -2,6 +2,7 @@
 
 ## Decision proposal
 This repository is recommended for archive review due to inactivity and empty tree.
+A formal archive review is recommended, pending maintainer decision.
 
 ## Suggested actions before archive
 - Preserve release tags, related issues, and any external references.
@@ -16,3 +17,4 @@ If unarchived later, restore from git history and first add:
 - README + architecture notes
 - SECURITY.md and branch protection controls
 - baseline CI workflow and templates
+
