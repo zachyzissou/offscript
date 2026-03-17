@@ -159,87 +159,130 @@ private struct HeroRecommendationCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            NavigationLink {
-                EpisodeDetailView(episode: episode)
-            } label: {
-                HStack(alignment: .top, spacing: 12) {
-                    OffScriptArtworkView(url: episode.artworkURL ?? episode.podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.medium)
-                        .frame(width: 76, height: 76)
+        VStack(alignment: .leading, spacing: 0) {
+            // Artwork hero zone — larger, more dominant
+            ZStack(alignment: .bottomLeading) {
+                OffScriptArtworkView(
+                    url: episode.artworkURL ?? episode.podcast.artworkURL,
+                    cornerRadius: 0
+                )
+                .frame(height: 200)
+                .clipped()
+                .overlay(
+                    LinearGradient(
+                        colors: [.clear, .clear, Color.offscriptCardStrong.opacity(0.7), Color.offscriptCardStrong],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        OffScriptExplanationTag(text: reason)
+                // Overlay the explanation tag on the artwork
+                VStack(alignment: .leading, spacing: 8) {
+                    OffScriptExplanationTag(text: reason)
 
-                        Text(episode.podcast.title)
-                            .font(.offscriptMeta.weight(.semibold))
-                            .foregroundStyle(Color.offscriptTextMuted)
-                            .lineLimit(1)
-
-                        Text(episode.title)
-                            .font(.system(.title3, design: .serif, weight: .bold))
-                            .foregroundStyle(Color.offscriptTextPrimary)
-                            .multilineTextAlignment(.leading)
-                            .lineLimit(2)
-                    }
+                    Text(episode.podcast.title)
+                        .font(.offscriptMeta.weight(.semibold))
+                        .tracking(0.8)
+                        .foregroundStyle(Color.offscriptTextSecondary)
+                        .lineLimit(1)
                 }
+                .padding(20)
             }
-            .buttonStyle(.plain)
+            .clipShape(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: OffScriptTheme.Radius.large,
+                    topTrailingRadius: OffScriptTheme.Radius.large,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: 0,
+                    style: .continuous
+                )
+            )
 
-            HStack(spacing: 10) {
-                Button("Play") {
-                    PlaybackController.shared.play(episode, in: modelContext)
+            // Content zone
+            VStack(alignment: .leading, spacing: 14) {
+                NavigationLink {
+                    EpisodeDetailView(episode: episode)
+                } label: {
+                    Text(episode.title)
+                        .font(.system(.title2, design: .serif, weight: .bold))
+                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .buttonStyle(PrimaryPillButtonStyle())
+                .buttonStyle(.plain)
 
-                Button(episode.isQueued ? "Queued" : "Queue") {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        try? QueueService.add(episode, in: modelContext)
+                HStack(spacing: 12) {
+                    Label(metadata, systemImage: "clock")
+                    if episode.playedPosition > 0, !episode.isPlayed {
+                        Label(timeRemaining, systemImage: "arrow.trianglehead.clockwise")
                     }
                 }
-                .buttonStyle(SecondaryPillButtonStyle())
-                .disabled(episode.isQueued)
-                .sensoryFeedback(.impact(flexibility: .soft), trigger: episode.isQueued)
+                .font(.offscriptMeta)
+                .foregroundStyle(Color.offscriptTextMuted)
 
-                Spacer()
+                if progressValue > 0 {
+                    VStack(alignment: .leading, spacing: 8) {
+                        OffScriptProgressBar(value: progressValue, height: 6)
+                        Text("Resume from where you left off")
+                            .font(.offscriptMeta)
+                            .foregroundStyle(Color.offscriptTextMuted)
+                    }
+                }
 
-                Menu {
-                    Button("Like") { register(.like) }
-                    Button("Less like this") { register(.lessLikeThis) }
-                    Button("Not now") { register(.notInterested) }
-                } label: {
+                HStack(spacing: 10) {
+                    Button("Play") {
+                        PlaybackController.shared.play(episode, in: modelContext)
+                    }
+                    .buttonStyle(PrimaryPillButtonStyle())
+
+                    Button(episode.isQueued ? "Queued" : "Queue") {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            try? QueueService.add(episode, in: modelContext)
+                        }
+                    }
+                    .buttonStyle(SecondaryPillButtonStyle())
+                    .disabled(episode.isQueued)
+                    .sensoryFeedback(.impact(flexibility: .soft), trigger: episode.isQueued)
+
+                    Spacer()
+
+                    Menu {
+                        Button("Like") { register(.like) }
+                        Button("Less like this") { register(.lessLikeThis) }
+                        Button("Not now") { register(.notInterested) }
+                    } label: {
                         Image(systemName: "ellipsis")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Color.offscriptTextPrimary)
                             .frame(width: 38, height: 38)
                             .background(Color.white.opacity(0.05))
                             .clipShape(Circle())
-                }
-                .accessibilityLabel("More actions")
-                .accessibilityHint("Like this episode or tune future recommendations")
-            }
-
-            HStack(spacing: 12) {
-                Label(metadata, systemImage: "clock")
-                if episode.playedPosition > 0, !episode.isPlayed {
-                    Label(timeRemaining, systemImage: "arrow.trianglehead.clockwise")
+                    }
+                    .accessibilityLabel("More actions")
+                    .accessibilityHint("Like this episode or tune future recommendations")
                 }
             }
-            .font(.offscriptMeta)
-            .foregroundStyle(Color.offscriptTextMuted)
-
-            if progressValue > 0 {
-                VStack(alignment: .leading, spacing: 8) {
-                    OffScriptProgressBar(value: progressValue, height: 6)
-                    Text("Resume from where you left off")
-                        .font(.offscriptMeta)
-                        .foregroundStyle(Color.offscriptTextMuted)
-                }
-            }
-
+            .padding(20)
+            .padding(.bottom, 4)
         }
-        .padding(20)
-        .padding(.bottom, 4)
-        .offscriptSurface(radius: OffScriptTheme.Radius.large, prominent: true)
+        .background(
+            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.large, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.offscriptCardStrong, Color.offscriptCardRaised],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .offscriptGrain(opacity: 0.035)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.large, style: .continuous)
+                .stroke(Color.offscriptHairline, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.large, style: .continuous))
+        .shadow(color: Color.black.opacity(0.38), radius: 28, y: 14)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(reason)")
     }
