@@ -14,8 +14,8 @@ enum OffScriptTheme {
 
 extension Color {
     static let offscriptBackground = Color(red: 0.05, green: 0.05, blue: 0.06)
-    static let offscriptBackgroundTop = Color(red: 0.08, green: 0.08, blue: 0.09)
-    static let offscriptBackgroundBottom = Color(red: 0.04, green: 0.04, blue: 0.05)
+    static let offscriptBackgroundTop = Color(red: 0.10, green: 0.09, blue: 0.08)
+    static let offscriptBackgroundBottom = Color(red: 0.03, green: 0.03, blue: 0.05)
 
     static let offscriptCard = Color(red: 0.11, green: 0.11, blue: 0.13)
     static let offscriptCardRaised = Color(red: 0.14, green: 0.14, blue: 0.16)
@@ -29,6 +29,14 @@ extension Color {
     static let offscriptTextMuted = Color.white.opacity(0.52)
     static let offscriptHairline = Color.white.opacity(0.08)
     static let offscriptProgressTrack = Color.white.opacity(0.12)
+
+    // Warm cream secondary accent — for informational highlights that aren't CTAs
+    static let offscriptAccentSecondary = Color(red: 0.92, green: 0.84, blue: 0.68)
+    static let offscriptAccentSecondaryMuted = Color(red: 0.92, green: 0.84, blue: 0.68).opacity(0.14)
+
+    // Destructive — desaturated coral that belongs in the warm palette
+    static let offscriptDestructive = Color(red: 0.88, green: 0.36, blue: 0.32)
+    static let offscriptDestructiveSoft = Color(red: 0.88, green: 0.36, blue: 0.32).opacity(0.16)
 }
 
 extension Font {
@@ -213,6 +221,7 @@ struct OffScriptSurfaceModifier: ViewModifier {
                             endPoint: .bottomTrailing
                         )
                     )
+                    .offscriptGrain(opacity: prominent ? 0.035 : 0.025)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -340,6 +349,48 @@ struct ShimmerModifier: ViewModifier {
 extension View {
     func shimmer() -> some View {
         modifier(ShimmerModifier())
+    }
+}
+
+struct GrainOverlay: ViewModifier {
+    var opacity: Double = 0.03
+
+    func body(content: Content) -> some View {
+        content.overlay(
+            Canvas { context, size in
+                var rng = SplitMix64(seed: 42)
+                let count = min(Int(size.width * size.height * 0.005), 1200)
+                for _ in 0..<count {
+                    let x = CGFloat.random(in: 0..<size.width, using: &rng)
+                    let y = CGFloat.random(in: 0..<size.height, using: &rng)
+                    let gray = CGFloat.random(in: 0.3...1.0, using: &rng)
+                    context.fill(
+                        Path(CGRect(x: x, y: y, width: 1.5, height: 1.5)),
+                        with: .color(Color(white: gray, opacity: opacity))
+                    )
+                }
+            }
+            .allowsHitTesting(false)
+            .drawingGroup()
+        )
+    }
+}
+
+private struct SplitMix64: RandomNumberGenerator {
+    var state: UInt64
+    init(seed: UInt64) { state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9e3779b97f4a7c15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xbf58476d1ce4e5b9
+        z = (z ^ (z >> 27)) &* 0x94d049bb133111eb
+        return z ^ (z >> 31)
+    }
+}
+
+extension View {
+    func offscriptGrain(opacity: Double = 0.03) -> some View {
+        modifier(GrainOverlay(opacity: opacity))
     }
 }
 
