@@ -102,6 +102,9 @@ struct PlayerView: View {
                                         .frame(maxWidth: 440)
                                 }
 
+                                PlayerWhatsNextSection(currentEpisode: episode)
+                                    .frame(maxWidth: 440)
+
                                 HStack(spacing: 10) {
                                     Menu {
                                         ForEach([("1.0x", Float(1.0)), ("1.25x", Float(1.25)), ("1.5x", Float(1.5)), ("2.0x", Float(2.0))], id: \.0) { label, rate in
@@ -183,6 +186,8 @@ struct PlayerView: View {
 }
 
 private struct PlayerCircleButton: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let systemImage: String
     let accessibilityLabel: String
     let isPrimary: Bool
@@ -203,14 +208,14 @@ private struct PlayerCircleButton: View {
                     Circle()
                         .stroke(isPrimary ? Color.clear : Color.offscriptHairline, lineWidth: 1)
                 )
-                .scaleEffect(isPressed ? 0.9 : 1.0)
-                .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isPressed)
+                .scaleEffect(reduceMotion ? 1.0 : (isPressed ? 0.9 : 1.0))
+                .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.6), value: isPressed)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
-                .onChanged { _ in isPressed = true }
+                .onChanged { _ in if !reduceMotion { isPressed = true } }
                 .onEnded { _ in isPressed = false }
         )
     }
@@ -254,6 +259,95 @@ private struct PlayerUpNextStrip: View {
         .offscriptSurface()
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Up next: \(item.episode.title) from \(item.episode.podcast.title)")
+    }
+}
+
+private struct PlayerWhatsNextSection: View {
+    @Environment(\.modelContext) private var modelContext
+    let currentEpisode: Episode
+    @State private var suggestions: [ScoredEpisode] = []
+
+    private let recommendationService = RecommendationService()
+
+    var body: some View {
+        if !suggestions.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("What's Next")
+                        .font(.offscriptSectionTitle)
+                        .foregroundStyle(Color.offscriptTextPrimary)
+                    Spacer()
+                }
+
+                ForEach(suggestions, id: \.episode.id) { scored in
+                    PlayerSuggestionRow(scored: scored)
+                }
+            }
+            .padding(18)
+            .offscriptSurface()
+            .onAppear { loadSuggestions() }
+        }
+    }
+
+    @MainActor
+    private func loadSuggestions() {
+        guard suggestions.isEmpty else { return }
+        if let results = try? recommendationService.playerSuggestions(
+            currentEpisode: currentEpisode,
+            context: modelContext,
+            limit: 3
+        ) {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                suggestions = results
+            }
+        }
+    }
+}
+
+private struct PlayerSuggestionRow: View {
+    @Environment(\.modelContext) private var modelContext
+    let scored: ScoredEpisode
+
+    var body: some View {
+        HStack(spacing: 12) {
+            OffScriptArtworkView(
+                url: scored.episode.artworkURL ?? scored.episode.podcast.artworkURL,
+                cornerRadius: OffScriptTheme.Radius.small
+            )
+            .frame(width: 48, height: 48)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(scored.explanation)
+                    .font(.offscriptMicro.weight(.semibold))
+                    .foregroundStyle(Color.offscriptAccent)
+                    .lineLimit(1)
+
+                Text(scored.episode.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.offscriptTextPrimary)
+                    .lineLimit(1)
+
+                Text(scored.episode.podcast.title)
+                    .font(.offscriptMeta)
+                    .foregroundStyle(Color.offscriptTextMuted)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Button {
+                PlaybackController.shared.play(scored.episode, in: modelContext)
+            } label: {
+                Image(systemName: "play.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.black)
+                    .frame(width: 32, height: 32)
+                    .background(Color.offscriptAccent)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Play \(scored.episode.title)")
+        }
     }
 }
 

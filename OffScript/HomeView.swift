@@ -61,7 +61,7 @@ struct HomeView: View {
                     if let leadSection = sections.first, let leadEpisode = leadSection.episodes.first {
                         HeroRecommendationCard(
                             episode: leadEpisode,
-                            reason: recommendationReason(for: leadSection.title, episode: leadEpisode)
+                            reason: leadSection.explanation(for: leadEpisode)
                         )
                         .padding(.horizontal, OffScriptTheme.pagePadding)
 
@@ -71,7 +71,7 @@ struct HomeView: View {
                                 title: "Next Best Picks",
                                 subtitle: "More picks in the same lane.",
                                 episodes: remainingLeadEpisodes,
-                                reasonProvider: { recommendationReason(for: leadSection.title, episode: $0) }
+                                reasonProvider: { leadSection.explanation(for: $0) }
                             )
                         }
                     }
@@ -81,7 +81,7 @@ struct HomeView: View {
                             title: section.title,
                             subtitle: section.subtitle,
                             episodes: section.episodes,
-                            reasonProvider: { recommendationReason(for: section.title, episode: $0) }
+                            reasonProvider: { section.explanation(for: $0) }
                         )
                     }
                 }
@@ -126,30 +126,6 @@ struct HomeView: View {
         }
     }
 
-    private func recommendationReason(for sectionTitle: String, episode: Episode) -> String {
-        if episode.playedPosition > 0, !episode.isPlayed {
-            return "Continue listening"
-        }
-
-        switch sectionTitle {
-        case "Quick Wins":
-            if let duration = episode.duration {
-                return "Fits \(EpisodeDurationFormatter.short(duration))"
-            }
-            return "Short listen"
-        case "Fresh From Library":
-            return "Fresh from your library"
-        case "Because You Liked":
-            return "Because you liked similar topics"
-        case "Best Next":
-            if let duration = episode.duration, duration / 60 <= 35 {
-                return "High fit for \(EpisodeDurationFormatter.short(duration))"
-            }
-            return "Best next listen"
-        default:
-            return "Picked for you"
-        }
-    }
 }
 
 private struct HomeEditorialHeader: View {

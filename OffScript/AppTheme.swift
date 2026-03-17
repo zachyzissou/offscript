@@ -270,6 +270,8 @@ private struct ViewHeightPreferenceKey: PreferenceKey {
 }
 
 struct PrimaryPillButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.subheadline.weight(.semibold))
@@ -278,12 +280,14 @@ struct PrimaryPillButtonStyle: ButtonStyle {
             .padding(.vertical, 11)
             .background(Color.offscriptAccent.opacity(configuration.isPressed ? 0.78 : 1.0))
             .clipShape(Capsule())
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.96 : 1.0))
+            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 
 struct SecondaryPillButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.subheadline.weight(.semibold))
@@ -296,8 +300,8 @@ struct SecondaryPillButtonStyle: ButtonStyle {
                 Capsule()
                     .stroke(Color.offscriptHairline, lineWidth: 1)
             )
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.96 : 1.0))
+            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 

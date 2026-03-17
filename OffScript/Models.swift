@@ -217,5 +217,13 @@ struct HomeFeedSection: Identifiable {
     let id = UUID()
     let title: String
     let subtitle: String
-    let episodes: [Episode]
+    let scoredEpisodes: [ScoredEpisode]
+
+    var episodes: [Episode] {
+        scoredEpisodes.map(\.episode)
+    }
+
+    func explanation(for episode: Episode) -> String {
+        scoredEpisodes.first(where: { $0.episode.id == episode.id })?.explanation ?? "Picked for you"
+    }
 }

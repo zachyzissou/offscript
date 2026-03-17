@@ -4,6 +4,7 @@ import SwiftUI
 struct EpisodeDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @ObservedObject private var player = PlaybackController.shared
+    @State private var feedbackGiven: PreferenceSignal.Action? = nil
     let episode: Episode
 
     private var progressValue: Double {
@@ -111,12 +112,34 @@ struct EpisodeDetailView: View {
                         .foregroundStyle(Color.offscriptTextSecondary)
 
                     HStack(spacing: 10) {
-                        Button("Like") { register(.like) }
-                            .buttonStyle(SecondaryPillButtonStyle())
-                        Button("More like this") { register(.moreLikeThis) }
-                            .buttonStyle(SecondaryPillButtonStyle())
-                        Button("Less like this") { register(.lessLikeThis) }
-                            .buttonStyle(SecondaryPillButtonStyle())
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                register(.like)
+                                feedbackGiven = .like
+                            }
+                        } label: {
+                            Label("Like", systemImage: feedbackGiven == .like ? "hand.thumbsup.fill" : "hand.thumbsup")
+                        }
+                        .buttonStyle(PrimaryPillButtonStyle())
+                        .disabled(feedbackGiven != nil)
+
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                register(.lessLikeThis)
+                                feedbackGiven = .lessLikeThis
+                            }
+                        } label: {
+                            Label("Not for me", systemImage: feedbackGiven == .lessLikeThis ? "hand.thumbsdown.fill" : "hand.thumbsdown")
+                        }
+                        .buttonStyle(SecondaryPillButtonStyle())
+                        .disabled(feedbackGiven != nil)
+                    }
+
+                    if let feedback = feedbackGiven {
+                        Text(feedback == .like ? "Got it — more like this coming." : "Noted — we'll adjust your feed.")
+                            .font(.offscriptMeta)
+                            .foregroundStyle(Color.offscriptTextMuted)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
