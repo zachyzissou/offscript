@@ -5,14 +5,30 @@
 //  Created by Zach Gonser on 3/16/26.
 //
 
-import SwiftUI
 import SwiftData
+import SwiftUI
+import UIKit
 
 @main
 struct OffScriptApp: App {
+    init() {
+        let tabBarAppearance = UITabBarAppearance()
+        tabBarAppearance.configureWithOpaqueBackground()
+        tabBarAppearance.backgroundColor = UIColor(red: 0.06, green: 0.06, blue: 0.08, alpha: 1.0)
+        tabBarAppearance.shadowColor = UIColor.white.withAlphaComponent(0.08)
+
+        UITabBar.appearance().standardAppearance = tabBarAppearance
+        UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
+    }
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Podcast.self,
+            Episode.self,
+            EpisodeProfile.self,
+            PlaybackEvent.self,
+            PreferenceSignal.self,
+            QueueItem.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
