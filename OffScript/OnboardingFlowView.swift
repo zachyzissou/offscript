@@ -180,14 +180,7 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
     }
 }
 
-// MARK: - Placeholder stubs (will be replaced by dedicated files in Tasks 4-6)
-
-struct GenrePickerView: View {
-    @Binding var selectedGenres: Set<Genre>
-    let onContinue: () -> Void
-    let onBack: () -> Void
-    var body: some View { Text("Genre Picker — placeholder") }
-}
+// MARK: - Placeholder stubs (will be replaced by dedicated files in Tasks 5-6)
 
 struct PodcastPickerView: View {
     let selectedGenres: Set<Genre>
