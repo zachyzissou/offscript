@@ -115,6 +115,7 @@ struct OnboardingContinueButtonStyle: ButtonStyle {
         configuration.label
             .font(.headline.weight(.semibold))
             .foregroundStyle(Color.black)
+            .padding(.horizontal, 24)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .background(Color.offscriptAccent)

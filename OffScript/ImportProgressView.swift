@@ -69,7 +69,10 @@ struct ImportProgressView: View {
             statuses[podcast.feedURL] = .importing
 
             do {
-                let imported = try await syncService.importPodcast(from: podcast, into: modelContext)
+                // Wrap each import in a timeout so one slow feed can't block everything
+                let imported = try await withThrowingTimeout(seconds: 30) {
+                    try await syncService.importPodcast(from: podcast, into: modelContext)
+                }
 
                 // Seed taste: like the most recent episode
                 if let newestEpisode = imported.episodes
@@ -103,6 +106,21 @@ struct ImportProgressView: View {
         // Auto-advance after a beat — notify parent to set hasSeenOnboarding
         try? await Task.sleep(for: .seconds(1.5))
         onComplete()
+    }
+
+    private func withThrowingTimeout<T>(seconds: Double, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(for: .seconds(seconds))
+                throw CancellationError()
+            }
+            guard let result = try await group.next() else {
+                throw CancellationError()
+            }
+            group.cancelAll()
+            return result
+        }
     }
 }
 
