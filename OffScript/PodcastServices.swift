@@ -40,6 +40,77 @@ struct PodcastSearchService: PodcastSearchProviding {
     }
 }
 
+enum TopPodcastsService {
+    static func fetchTop(genre: Genre, limit: Int = 10) async -> [PodcastSearchResult] {
+        let urlString = "https://rss.applemarketingtools.com/api/v2/us/podcasts/top/\(limit)/genre=\(genre.appleGenreID)/json"
+        guard let url = URL(string: urlString) else { return [] }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let response = try JSONDecoder().decode(AppleRSSFeedResponse.self, from: data)
+
+            var results: [PodcastSearchResult] = []
+            for item in response.feed.results {
+                guard let id = item.id else { continue }
+                if let resolved = await lookupFeedURL(itunesID: id, fallback: item) {
+                    results.append(resolved)
+                }
+            }
+            return results
+        } catch {
+            return []
+        }
+    }
+
+    private static func lookupFeedURL(itunesID: String, fallback item: AppleRSSPodcast) async -> PodcastSearchResult? {
+        let lookupURL = URL(string: "https://itunes.apple.com/lookup?id=\(itunesID)&entity=podcast")!
+        do {
+            let (data, _) = try await URLSession.shared.data(from: lookupURL)
+            let lookup = try JSONDecoder().decode(ItunesLookupResponse.self, from: data)
+            guard let result = lookup.results.first, let feedURL = result.feedUrl.flatMap({ URL(string: $0) }) else {
+                return nil
+            }
+            return PodcastSearchResult(
+                title: result.collectionName ?? item.name,
+                author: result.artistName ?? item.artistName ?? "",
+                feedURL: feedURL,
+                artworkURL: result.artworkUrl600.flatMap { URL(string: $0) } ?? URL(string: item.artworkUrl100 ?? ""),
+                websiteURL: nil,
+                summary: nil
+            )
+        } catch {
+            return nil
+        }
+    }
+}
+
+private struct AppleRSSFeedResponse: Decodable {
+    let feed: AppleRSSFeed
+}
+
+private struct AppleRSSFeed: Decodable {
+    let results: [AppleRSSPodcast]
+}
+
+private struct AppleRSSPodcast: Decodable {
+    let id: String?
+    let name: String
+    let artistName: String?
+    let url: String
+    let artworkUrl100: String?
+}
+
+private struct ItunesLookupResponse: Decodable {
+    let results: [ItunesLookupResult]
+}
+
+private struct ItunesLookupResult: Decodable {
+    let collectionName: String?
+    let artistName: String?
+    let feedUrl: String?
+    let artworkUrl600: String?
+}
+
 final class FeedSyncService: FeedSyncProviding {
     private let topicExtractionService = TopicExtractionService()
 
@@ -223,96 +294,6 @@ enum QueueService {
     }
 }
 
-enum SampleDataSeeder {
-    @MainActor
-    static func seedIfNeeded(context: ModelContext) async throws {
-        let existingPodcasts = try context.fetch(FetchDescriptor<Podcast>())
-        guard existingPodcasts.isEmpty else { return }
-
-        let tech = Podcast(
-            title: "Signal Path",
-            author: "OffScript Studio",
-            summary: "Field notes on technology, media, and creative work.",
-            feedURL: URL(string: "https://example.com/signal-path.xml")!,
-            artworkURL: URL(string: "https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=800&q=80"),
-            categories: ["technology", "media", "creativity"],
-            isSubscribed: true
-        )
-        tech.subscribedAt = .now
-
-        let culture = Podcast(
-            title: "Late Checkout",
-            author: "OffScript Studio",
-            summary: "Design, travel, and the rituals behind interesting work.",
-            feedURL: URL(string: "https://example.com/late-checkout.xml")!,
-            artworkURL: URL(string: "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=800&q=80"),
-            categories: ["design", "culture", "travel"],
-            isSubscribed: true
-        )
-        culture.subscribedAt = .now
-
-        context.insert(tech)
-        context.insert(culture)
-
-        let episodes = [
-            Episode(
-                guid: "signal-1",
-                title: "Why great podcasts feel edited, not optimized",
-                summary: "A sharp breakdown of pacing, narrative tension, and what makes spoken audio addictive.",
-                pubDate: Calendar.current.date(byAdding: .day, value: -1, to: .now) ?? .now,
-                duration: 32 * 60,
-                audioURL: URL(string: "https://example.com/audio/signal-1.mp3")!,
-                artworkURL: tech.artworkURL,
-                podcast: tech
-            ),
-            Episode(
-                guid: "signal-2",
-                title: "The return of deliberate software",
-                summary: "What users mean when they say an app has taste.",
-                pubDate: Calendar.current.date(byAdding: .day, value: -4, to: .now) ?? .now,
-                duration: 48 * 60,
-                audioURL: URL(string: "https://example.com/audio/signal-2.mp3")!,
-                artworkURL: tech.artworkURL,
-                podcast: tech
-            ),
-            Episode(
-                guid: "checkout-1",
-                title: "A city guide for people who love quiet corners",
-                summary: "A travel episode built around bookstores, coffee, and long walks.",
-                pubDate: Calendar.current.date(byAdding: .day, value: -2, to: .now) ?? .now,
-                duration: 24 * 60,
-                audioURL: URL(string: "https://example.com/audio/checkout-1.mp3")!,
-                artworkURL: culture.artworkURL,
-                podcast: culture
-            ),
-            Episode(
-                guid: "checkout-2",
-                title: "How designers actually gather inspiration",
-                summary: "Less moodboards, more field notes and obsessive collecting.",
-                pubDate: Calendar.current.date(byAdding: .day, value: -7, to: .now) ?? .now,
-                duration: 41 * 60,
-                audioURL: URL(string: "https://example.com/audio/checkout-2.mp3")!,
-                artworkURL: culture.artworkURL,
-                podcast: culture
-            )
-        ]
-
-        for episode in episodes {
-            context.insert(episode)
-            let profile = EpisodeProfile(episodeID: episode.id)
-            profile.tags = TopicExtractionService.heuristicTags(from: "\(episode.title) \(episode.summary ?? "")")
-            profile.summary = episode.summary
-            profile.confidenceScore = 0.55
-            profile.freshnessBucket = "recent"
-            context.insert(profile)
-        }
-
-        let signal = PreferenceSignal(action: .like, episode: episodes[0])
-        context.insert(signal)
-        try QueueService.add(episodes[2], in: context)
-        try context.save()
-    }
-}
 
 private struct ItunesSearchResponse: Decodable {
     let results: [ItunesPodcast]

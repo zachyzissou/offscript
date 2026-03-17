@@ -86,6 +86,92 @@ struct OffScriptTests {
         #expect(ordered.map(\.position) == [0, 1, 2])
     }
 
+    @Test
+    func genreCarriesAppleGenreID() {
+        #expect(Genre.technology.appleGenreID == 1318)
+        #expect(Genre.comedy.appleGenreID == 1303)
+        #expect(Genre.trueCrime.appleGenreID == 1488)
+    }
+
+    @Test
+    func genreHasHumanReadableTitle() {
+        #expect(Genre.healthAndWellness.title == "Health & Wellness")
+        #expect(Genre.newsAndPolitics.title == "News & Politics")
+    }
+
+    @Test
+    func allGenresHaveCuratedPodcasts() {
+        for genre in Genre.allCases {
+            let podcasts = CuratedPodcastCatalog.podcasts(for: genre)
+            #expect(!podcasts.isEmpty, "Genre \(genre.title) has no curated podcasts")
+        }
+    }
+
+    @Test
+    func curatedPodcastsHaveValidURLs() {
+        let all = CuratedPodcastCatalog.all
+        for podcast in all {
+            #expect(podcast.feedURL.scheme == "https", "\(podcast.title) has non-https feed URL")
+        }
+    }
+
+    @Test
+    func noDuplicateFeedURLsInCatalog() {
+        let all = CuratedPodcastCatalog.all
+        let urls = all.map(\.feedURL)
+        let unique = Set(urls)
+        #expect(urls.count == unique.count, "Duplicate feed URLs found in catalog")
+    }
+
+    @Test
+    func userProfileServiceRoundTrips() throws {
+        UserProfileService.deleteCredential()
+
+        #expect(UserProfileService.currentUserID == nil)
+        #expect(UserProfileService.displayName == nil)
+
+        try UserProfileService.saveCredential(userID: "test-user-123", displayName: "Zach")
+
+        #expect(UserProfileService.currentUserID == "test-user-123")
+        #expect(UserProfileService.displayName == "Zach")
+
+        UserProfileService.deleteCredential()
+        #expect(UserProfileService.currentUserID == nil)
+    }
+
+    @Test
+    func genrePreferenceBoostIncreasesScore() {
+        let base = RecommendationScorer.score(
+            RecommendationScoreInputs(
+                recencyDays: 5,
+                durationMinutes: 30,
+                topicOverlap: 1,
+                isFromSubscribedPodcast: true,
+                isUnfinished: false
+            )
+        )
+        let boosted = RecommendationScorer.score(
+            RecommendationScoreInputs(
+                recencyDays: 5,
+                durationMinutes: 30,
+                topicOverlap: 1,
+                isFromSubscribedPodcast: true,
+                isUnfinished: false
+            )
+        ) + RecommendationScorer.genreBoost(podcastCategories: ["technology"], preferredGenres: ["technology"])
+
+        #expect(boosted > base)
+    }
+
+    @Test
+    func genreBoostIsZeroWithNoOverlap() {
+        let boost = RecommendationScorer.genreBoost(
+            podcastCategories: ["comedy", "entertainment"],
+            preferredGenres: ["technology", "science"]
+        )
+        #expect(boost == 0)
+    }
+
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema([
             Podcast.self,

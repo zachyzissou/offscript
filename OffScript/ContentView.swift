@@ -82,18 +82,12 @@ struct ContentView: View {
                     }
                 }
             } else {
-                OnboardingView { jumpToSearch in
-                    hasSeenOnboarding = true
-                    if jumpToSearch {
-                        selectedTab = 3
-                    }
-                }
+                OnboardingFlowView()
             }
         }
         .preferredColorScheme(.dark)
         .task {
             PlaybackController.shared.configure(context: modelContext)
-            try? await SampleDataSeeder.seedIfNeeded(context: modelContext)
             #if DEBUG
             configureDebugSelectedTabIfNeeded()
             configureDebugPlaybackIfNeeded()

@@ -19,6 +19,13 @@ enum RecommendationScorer {
         return recency + durationFit + topic + subscription + unfinished
     }
 
+    static func genreBoost(podcastCategories: [String], preferredGenres: [String]) -> Double {
+        let normalizedCategories = Set(podcastCategories.map { $0.lowercased() })
+        let normalizedPreferred = Set(preferredGenres.map { $0.lowercased() })
+        let overlap = normalizedCategories.intersection(normalizedPreferred)
+        return overlap.isEmpty ? 0 : 0.06
+    }
+
     static func durationScore(minutes: Double) -> Double {
         switch minutes {
         case ..<12:
@@ -128,6 +135,15 @@ final class RecommendationService {
         var value = RecommendationScorer.score(inputs)
         if UserDefaults.standard.bool(forKey: "offscript.preferShortEpisodes"), minutes <= 35 {
             value += 0.08
+        }
+
+        // Genre preference boost
+        if let preferredGenres = UserDefaults.standard.stringArray(forKey: "offscript.preferredGenres") {
+            let genreNames = preferredGenres.compactMap { Genre(rawValue: $0)?.title.lowercased() }
+            value += RecommendationScorer.genreBoost(
+                podcastCategories: episode.podcast.categories.map { $0.lowercased() },
+                preferredGenres: genreNames
+            )
         }
 
         // Build data-driven explanation from the strongest signal
