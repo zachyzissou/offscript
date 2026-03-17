@@ -78,22 +78,25 @@ struct OffScriptArtworkView: View {
     var cornerRadius: CGFloat = OffScriptTheme.Radius.medium
 
     var body: some View {
-        AsyncImage(url: url) { image in
-            image
-                .resizable()
-                .scaledToFill()
-                .overlay(
-                    LinearGradient(
-                        colors: [Color.clear, Color.black.opacity(0.08)],
-                        startPoint: .top,
-                        endPoint: .bottom
+        GeometryReader { proxy in
+            AsyncImage(url: url) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+                    .overlay(
+                        LinearGradient(
+                            colors: [Color.clear, Color.black.opacity(0.08)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
                     )
-                )
-        } placeholder: {
-            OffScriptArtworkPlaceholder(cornerRadius: cornerRadius)
+            } placeholder: {
+                OffScriptArtworkPlaceholder(cornerRadius: cornerRadius)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+            }
         }
-        .contentShape(Rectangle())
-        .clipped()
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
