@@ -86,6 +86,43 @@ struct OffScriptTests {
         #expect(ordered.map(\.position) == [0, 1, 2])
     }
 
+    @Test
+    func genreCarriesAppleGenreID() {
+        #expect(Genre.technology.appleGenreID == 1318)
+        #expect(Genre.comedy.appleGenreID == 1303)
+        #expect(Genre.trueCrime.appleGenreID == 1488)
+    }
+
+    @Test
+    func genreHasHumanReadableTitle() {
+        #expect(Genre.healthAndWellness.title == "Health & Wellness")
+        #expect(Genre.newsAndPolitics.title == "News & Politics")
+    }
+
+    @Test
+    func allGenresHaveCuratedPodcasts() {
+        for genre in Genre.allCases {
+            let podcasts = CuratedPodcastCatalog.podcasts(for: genre)
+            #expect(!podcasts.isEmpty, "Genre \(genre.title) has no curated podcasts")
+        }
+    }
+
+    @Test
+    func curatedPodcastsHaveValidURLs() {
+        let all = CuratedPodcastCatalog.all
+        for podcast in all {
+            #expect(podcast.feedURL.scheme == "https", "\(podcast.title) has non-https feed URL")
+        }
+    }
+
+    @Test
+    func noDuplicateFeedURLsInCatalog() {
+        let all = CuratedPodcastCatalog.all
+        let urls = all.map(\.feedURL)
+        let unique = Set(urls)
+        #expect(urls.count == unique.count, "Duplicate feed URLs found in catalog")
+    }
+
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema([
             Podcast.self,
