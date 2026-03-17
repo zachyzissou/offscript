@@ -123,6 +123,22 @@ struct OffScriptTests {
         #expect(urls.count == unique.count, "Duplicate feed URLs found in catalog")
     }
 
+    @Test
+    func userProfileServiceRoundTrips() throws {
+        UserProfileService.deleteCredential()
+
+        #expect(UserProfileService.currentUserID == nil)
+        #expect(UserProfileService.displayName == nil)
+
+        try UserProfileService.saveCredential(userID: "test-user-123", displayName: "Zach")
+
+        #expect(UserProfileService.currentUserID == "test-user-123")
+        #expect(UserProfileService.displayName == "Zach")
+
+        UserProfileService.deleteCredential()
+        #expect(UserProfileService.currentUserID == nil)
+    }
+
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema([
             Podcast.self,
