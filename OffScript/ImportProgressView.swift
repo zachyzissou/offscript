@@ -70,8 +70,10 @@ struct ImportProgressView: View {
 
             do {
                 // Wrap each import in a timeout so one slow feed can't block everything
-                let imported = try await withThrowingTimeout(seconds: 30) {
-                    try await syncService.importPodcast(from: podcast, into: modelContext)
+                // Limit to 15 most recent episodes per podcast during onboarding
+                // (full backfill happens on subsequent syncs)
+                let imported = try await withThrowingTimeout(seconds: 45) {
+                    try await syncService.importPodcast(from: podcast, into: modelContext, episodeLimit: 15)
                 }
 
                 // Seed taste: like the most recent episode

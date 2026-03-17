@@ -6,8 +6,8 @@ protocol PodcastSearchProviding {
 }
 
 protocol FeedSyncProviding {
-    func importPodcast(from result: PodcastSearchResult, into context: ModelContext) async throws -> Podcast
-    func sync(podcast: Podcast, in context: ModelContext) async throws
+    func importPodcast(from result: PodcastSearchResult, into context: ModelContext, episodeLimit: Int?) async throws -> Podcast
+    func sync(podcast: Podcast, in context: ModelContext, episodeLimit: Int?) async throws
 }
 
 struct PodcastSearchService: PodcastSearchProviding {
@@ -115,7 +115,7 @@ final class FeedSyncService: FeedSyncProviding {
     private let topicExtractionService = TopicExtractionService()
 
     @MainActor
-    func importPodcast(from result: PodcastSearchResult, into context: ModelContext) async throws -> Podcast {
+    func importPodcast(from result: PodcastSearchResult, into context: ModelContext, episodeLimit: Int? = nil) async throws -> Podcast {
         let existing = try context.fetch(FetchDescriptor<Podcast>())
             .first(where: { $0.feedURL == result.feedURL })
 
@@ -146,12 +146,12 @@ final class FeedSyncService: FeedSyncProviding {
         }
 
         try context.save()
-        try await sync(podcast: podcast, in: context)
+        try await sync(podcast: podcast, in: context, episodeLimit: episodeLimit)
         return podcast
     }
 
     @MainActor
-    func sync(podcast: Podcast, in context: ModelContext) async throws {
+    func sync(podcast: Podcast, in context: ModelContext, episodeLimit: Int? = nil) async throws {
         podcast.syncStatus = "syncing"
         var request = URLRequest(url: podcast.feedURL)
         request.timeoutInterval = 20
@@ -200,7 +200,11 @@ final class FeedSyncService: FeedSyncProviding {
             let existingEpisodes = try context.fetch(FetchDescriptor<Episode>())
                 .filter { $0.podcast.id == podcast.id }
 
-            for item in parsed.items {
+            // Sort by pub date (newest first) and limit if requested
+            let sortedItems = parsed.items.sorted { ($0.pubDate ?? .distantPast) > ($1.pubDate ?? .distantPast) }
+            let itemsToProcess = episodeLimit.map { Array(sortedItems.prefix($0)) } ?? sortedItems
+
+            for item in itemsToProcess {
                 let guid = item.guid ?? item.audioURL.absoluteString
                 if let existing = existingEpisodes.first(where: { $0.guid == guid || $0.audioURL == item.audioURL }) {
                     existing.title = item.title
