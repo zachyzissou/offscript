@@ -91,7 +91,7 @@ struct SearchView: View {
                         .padding(.horizontal, OffScriptTheme.pagePadding)
 
                         LazyVStack(spacing: 14) {
-                            ForEach(results) { result in
+                            ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
                                 SearchResultCard(
                                     result: result,
                                     isAdded: subscribedFeedURLs.contains(result.feedURL.absoluteString),
@@ -99,6 +99,7 @@ struct SearchView: View {
                                     onAdd: { Task { await add(result) } }
                                 )
                                 .padding(.horizontal, OffScriptTheme.pagePadding)
+                                .staggeredEntrance(index: index)
                             }
                         }
                     }

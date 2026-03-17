@@ -64,6 +64,7 @@ struct HomeView: View {
                             reason: leadSection.explanation(for: leadEpisode)
                         )
                         .padding(.horizontal, OffScriptTheme.pagePadding)
+                        .staggeredEntrance(index: 0)
 
                         let remainingLeadEpisodes = Array(leadSection.episodes.dropFirst())
                         if !remainingLeadEpisodes.isEmpty {
@@ -73,16 +74,18 @@ struct HomeView: View {
                                 episodes: remainingLeadEpisodes,
                                 reasonProvider: { leadSection.explanation(for: $0) }
                             )
+                            .staggeredEntrance(index: 1)
                         }
                     }
 
-                    ForEach(Array(sections.dropFirst())) { section in
+                    ForEach(Array(sections.dropFirst().enumerated()), id: \.element.id) { offset, section in
                         RecommendationRail(
                             title: section.title,
                             subtitle: section.subtitle,
                             episodes: section.episodes,
                             reasonProvider: { section.explanation(for: $0) }
                         )
+                        .staggeredEntrance(index: offset + 2)
                     }
                 }
             }

@@ -106,6 +106,7 @@ struct QueueView: View {
                                     }
                                 }
                                 .padding(.horizontal, OffScriptTheme.pagePadding)
+                                .staggeredEntrance(index: index)
                         }
                     }
                 }

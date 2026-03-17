@@ -415,6 +415,34 @@ extension View {
     }
 }
 
+// MARK: - Staggered Entrance Animation
+
+struct StaggeredEntrance: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let index: Int
+    let baseDelay: Double
+
+    @State private var isVisible = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(reduceMotion ? 1 : (isVisible ? 1 : 0))
+            .offset(y: reduceMotion ? 0 : (isVisible ? 0 : 12))
+            .animation(
+                reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.82)
+                    .delay(Double(index) * baseDelay),
+                value: isVisible
+            )
+            .onAppear { isVisible = true }
+    }
+}
+
+extension View {
+    func staggeredEntrance(index: Int, delay: Double = 0.06) -> some View {
+        modifier(StaggeredEntrance(index: index, baseDelay: delay))
+    }
+}
+
 struct SkeletonRailCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
