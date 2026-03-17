@@ -6,19 +6,40 @@ struct OnboardingView: View {
     var body: some View {
         NavigationStack {
             ZStack {
+                // Richer atmospheric background
                 LinearGradient(
-                    colors: [Color.offscriptBackground, Color.offscriptCard],
+                    colors: [
+                        Color(red: 0.08, green: 0.06, blue: 0.04),
+                        Color.offscriptBackground
+                    ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 .ignoresSafeArea()
 
+                // Subtle accent glow in the upper region
+                RadialGradient(
+                    colors: [Color.offscriptAccent.opacity(0.08), .clear],
+                    center: .topLeading,
+                    startRadius: 0,
+                    endRadius: 400
+                )
+                .ignoresSafeArea()
+
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 28) {
+                    VStack(alignment: .leading, spacing: 32) {
+                        // App identity
                         VStack(alignment: .leading, spacing: 18) {
                             Text("OffScript")
-                                .font(.system(size: 42, weight: .bold, design: .serif))
-                                .foregroundStyle(.white)
+                                .font(.system(size: 46, weight: .bold, design: .serif))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [Color.offscriptTextPrimary, Color.offscriptAccent],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .staggeredEntrance(index: 0, delay: 0.12)
 
                             VStack(alignment: .leading, spacing: 10) {
                                 Text("Build your Smart Feed in three good picks.")
@@ -27,9 +48,10 @@ struct OnboardingView: View {
 
                                 Text("Add a few shows or topics you trust. OffScript uses those early signals to build a feed that feels edited instead of endless.")
                                     .font(.offscriptBody)
-                                    .foregroundStyle(Color.white.opacity(0.72))
+                                    .foregroundStyle(Color.offscriptTextSecondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
+                            .staggeredEntrance(index: 1, delay: 0.12)
                         }
 
                         HStack(spacing: 10) {
@@ -37,20 +59,29 @@ struct OnboardingView: View {
                             OnboardingStepIndicator(step: 2, text: "Seed topics")
                             OnboardingStepIndicator(step: 3, text: "Get your feed")
                         }
+                        .staggeredEntrance(index: 2, delay: 0.12)
 
                         VStack(spacing: 16) {
                             OnboardingCard(
+                                icon: "hand.point.up.left.fill",
                                 title: "Start with what you already trust",
                                 detail: "Search for a few favorite shows, hosts, or topics. Three strong signals are enough to build your first feed."
                             )
+                            .staggeredEntrance(index: 3, delay: 0.12)
+
                             OnboardingCard(
+                                icon: "text.bubble.fill",
                                 title: "OffScript explains its picks",
                                 detail: "You’ll see why an episode showed up, whether it fits your day, and what it’s connected to."
                             )
+                            .staggeredEntrance(index: 4, delay: 0.12)
+
                             OnboardingCard(
+                                icon: "lock.shield.fill",
                                 title: "Private by default",
                                 detail: "Your listening profile stays local-first and on-device in this first version."
                             )
+                            .staggeredEntrance(index: 5, delay: 0.12)
                         }
 
                         VStack(spacing: 12) {
@@ -64,10 +95,11 @@ struct OnboardingView: View {
                             }
                             .buttonStyle(OnboardingActionButtonStyle(prominent: false))
                         }
+                        .staggeredEntrance(index: 6, delay: 0.12)
                     }
                     .frame(maxWidth: 640, alignment: .leading)
                     .padding(.horizontal, 24)
-                    .padding(.top, 40)
+                    .padding(.top, 48)
                     .padding(.bottom, 32)
                 }
             }
@@ -135,21 +167,37 @@ private struct OnboardingActionButtonStyle: ButtonStyle {
 }
 
 private struct OnboardingCard: View {
+    var icon: String? = nil
     let title: String
     let detail: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(.white)
-            Text(detail)
-                .font(.subheadline)
-                .foregroundStyle(Color.white.opacity(0.72))
+        HStack(alignment: .top, spacing: 14) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.offscriptAccent)
+                    .frame(width: 32, height: 32)
+                    .background(Color.offscriptAccentSoft)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.offscriptTextSecondary)
+            }
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.offscriptHairline, lineWidth: 1)
+        )
     }
 }
