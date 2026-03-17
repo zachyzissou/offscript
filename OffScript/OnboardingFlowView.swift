@@ -180,11 +180,3 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
     }
 }
 
-// MARK: - Placeholder stubs (will be replaced by dedicated files in Tasks 5-6)
-
-struct ImportProgressView: View {
-    let podcasts: [PodcastSearchResult]
-    let selectedGenres: Set<Genre>
-    let onComplete: () -> Void
-    var body: some View { Text("Import Progress — placeholder") }
-}
