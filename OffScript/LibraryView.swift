@@ -135,11 +135,22 @@ struct PodcastDetailView: View {
     let podcast: Podcast
     @Query(sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]) private var allEpisodes: [Episode]
     @State private var filter: EpisodeFilter = .all
+    @State private var episodeSearchQuery = ""
 
     private var episodes: [Episode] {
-        allEpisodes
+        let filtered = allEpisodes
             .filter { $0.podcast.id == podcast.id }
             .filter { filter.matches($0) }
+
+        if episodeSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return filtered
+        }
+
+        let query = episodeSearchQuery.lowercased()
+        return filtered.filter { episode in
+            episode.title.lowercased().contains(query) ||
+            (episode.summary?.lowercased().contains(query) ?? false)
+        }
     }
 
     init(podcast: Podcast) {
@@ -155,7 +166,7 @@ struct PodcastDetailView: View {
                     .padding(.horizontal, OffScriptTheme.pagePadding)
 
                 if episodes.isEmpty {
-                    ContentUnavailableView("Nothing here yet", systemImage: "waveform.badge.minus", description: Text("Change the filter or sync this feed again later."))
+                    ContentUnavailableView("Nothing here yet", systemImage: "waveform.badge.minus", description: Text(episodeSearchQuery.isEmpty ? "Change the filter or sync this feed again later." : "No episodes match \"\(episodeSearchQuery)\"."))
                         .padding(.horizontal, OffScriptTheme.pagePadding)
                 } else {
                     LazyVStack(spacing: 14) {
@@ -172,6 +183,7 @@ struct PodcastDetailView: View {
         .offscriptPageBackground()
         .navigationTitle(podcast.title)
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $episodeSearchQuery, prompt: "Search episodes")
     }
 }
 

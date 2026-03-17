@@ -21,15 +21,32 @@ struct HomeView: View {
                 }
 
                 if isLoading {
-                    VStack(spacing: 16) {
-                        ProgressView()
-                            .tint(Color.offscriptAccent)
-                        Text("Building your feed...")
-                            .font(.offscriptBody)
-                            .foregroundStyle(Color.offscriptTextSecondary)
+                    VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
+                        SkeletonHeroCard()
+                            .padding(.horizontal, OffScriptTheme.pagePadding)
+
+                        VStack(alignment: .leading, spacing: 16) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.white.opacity(0.06))
+                                    .frame(width: 130, height: 16)
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.white.opacity(0.06))
+                                    .frame(width: 200, height: 12)
+                            }
+                            .padding(.horizontal, OffScriptTheme.pagePadding)
+                            .shimmer()
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 18) {
+                                    ForEach(0..<3, id: \.self) { _ in
+                                        SkeletonRailCard()
+                                    }
+                                }
+                                .padding(.horizontal, OffScriptTheme.pagePadding)
+                            }
+                        }
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 60)
                 } else if sections.isEmpty {
                     VStack(spacing: 20) {
                         ContentUnavailableView("No recommendations yet", systemImage: "waveform.badge.magnifyingglass", description: Text("Add a few shows in Search and OffScript will build your smart feed."))
@@ -98,7 +115,7 @@ struct HomeView: View {
     private func loadSections() async {
         do {
             let loaded = try recommendationService.homeSections(context: modelContext)
-            withAnimation(.easeInOut(duration: 0.3)) {
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                 sections = loaded
                 errorMessage = nil
                 isLoading = false

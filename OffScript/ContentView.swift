@@ -71,7 +71,7 @@ struct ContentView: View {
                                 .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
                     }
-                    .animation(.easeInOut(duration: 0.3), value: player.currentEpisode != nil)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.86), value: player.currentEpisode != nil)
                     .sheet(isPresented: $player.isPlayerPresented) {
                         PlayerView()
                     }

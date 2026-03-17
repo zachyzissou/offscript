@@ -189,6 +189,8 @@ private struct PlayerCircleButton: View {
     var size: CGFloat = 60
     let action: () -> Void
 
+    @State private var isPressed = false
+
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
@@ -201,9 +203,16 @@ private struct PlayerCircleButton: View {
                     Circle()
                         .stroke(isPrimary ? Color.clear : Color.offscriptHairline, lineWidth: 1)
                 )
+                .scaleEffect(isPressed ? 0.9 : 1.0)
+                .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isPressed)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in isPressed = true }
+                .onEnded { _ in isPressed = false }
+        )
     }
 }
 

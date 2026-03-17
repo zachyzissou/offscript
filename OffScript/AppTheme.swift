@@ -278,6 +278,8 @@ struct PrimaryPillButtonStyle: ButtonStyle {
             .padding(.vertical, 11)
             .background(Color.offscriptAccent.opacity(configuration.isPressed ? 0.78 : 1.0))
             .clipShape(Capsule())
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 
@@ -294,8 +296,149 @@ struct SecondaryPillButtonStyle: ButtonStyle {
                 Capsule()
                     .stroke(Color.offscriptHairline, lineWidth: 1)
             )
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
+
+// MARK: - Shimmer / Skeleton Loading
+
+struct ShimmerModifier: ViewModifier {
+    @State private var phase: CGFloat = -1.0
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(
+                GeometryReader { proxy in
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: max(phase - 0.3, 0)),
+                            .init(color: Color.white.opacity(0.08), location: phase),
+                            .init(color: .clear, location: min(phase + 0.3, 1))
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                }
+                .clipped()
+            )
+            .onAppear {
+                withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) {
+                    phase = 2.0
+                }
+            }
+    }
+}
+
+extension View {
+    func shimmer() -> some View {
+        modifier(ShimmerModifier())
+    }
+}
+
+struct SkeletonRailCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+                .frame(width: 160, height: 160)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Capsule()
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 70, height: 16)
+
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 80, height: 10)
+
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 140, height: 14)
+
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 100, height: 10)
+            }
+
+            Capsule()
+                .fill(Color.white.opacity(0.06))
+                .frame(width: 56, height: 32)
+        }
+        .padding(16)
+        .frame(width: 196, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
+                .fill(Color.offscriptCard)
+        )
+        .shimmer()
+    }
+}
+
+struct SkeletonHeroCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 76, height: 76)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.06))
+                        .frame(width: 90, height: 16)
+
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.white.opacity(0.06))
+                        .frame(width: 100, height: 10)
+
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.white.opacity(0.06))
+                        .frame(height: 18)
+
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.white.opacity(0.06))
+                        .frame(width: 160, height: 18)
+                }
+            }
+
+            HStack(spacing: 10) {
+                Capsule()
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 64, height: 36)
+                Capsule()
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 72, height: 36)
+            }
+        }
+        .padding(20)
+        .offscriptSurface(radius: OffScriptTheme.Radius.large, prominent: true)
+        .shimmer()
+    }
+}
+
+struct SkeletonSearchRow: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            ProgressView()
+                .tint(Color.offscriptAccent)
+
+            VStack(alignment: .leading, spacing: 6) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 200, height: 14)
+
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 140, height: 10)
+            }
+        }
+        .shimmer()
+    }
+}
+
+// MARK: - Duration Formatter
 
 enum EpisodeDurationFormatter {
     static func short(_ duration: TimeInterval) -> String {

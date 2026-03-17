@@ -14,6 +14,12 @@ struct QueueView: View {
         }
     }
 
+    private var queueTotalDuration: String? {
+        let total = orderedItems.compactMap { $0.episode.duration }.reduce(0, +)
+        guard total > 0 else { return nil }
+        return EpisodeDurationFormatter.short(total)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
@@ -37,18 +43,45 @@ struct QueueView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 14) {
-                        OffScriptSectionHeader(
-                            title: "Stack",
-                            subtitle: "Drag to reorder, swipe to remove."
-                        )
+                        HStack {
+                            OffScriptSectionHeader(
+                                title: "Stack",
+                                subtitle: "Hold to reorder. Tap ✕ to remove."
+                            )
+
+                            Spacer()
+
+                            if orderedItems.count > 1 {
+                                Button("Clear All") {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        for item in orderedItems {
+                                            try? QueueService.remove(item, in: modelContext)
+                                        }
+                                    }
+                                }
+                                .font(.offscriptMeta.weight(.semibold))
+                                .foregroundStyle(Color.red.opacity(0.8))
+                            }
+                        }
                         .padding(.horizontal, OffScriptTheme.pagePadding)
 
+                        if let totalDuration = queueTotalDuration {
+                            Text("Total: \(totalDuration)")
+                                .font(.offscriptMeta)
+                                .foregroundStyle(Color.offscriptTextMuted)
+                                .padding(.horizontal, OffScriptTheme.pagePadding)
+                        }
+
                         ForEach(Array(orderedItems.enumerated()), id: \.element.id) { index, item in
-                            QueueItemCard(item: item, rank: index + 1)
+                            QueueItemCard(item: item, rank: index + 1, onRemove: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    try? QueueService.remove(item, in: modelContext)
+                                }
+                            })
                                 .contextMenu {
                                     if index > 0 {
                                         Button {
-                                            withAnimation {
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                                 try? QueueService.move(from: IndexSet(integer: index), to: index - 1, in: modelContext)
                                             }
                                         } label: {
@@ -57,7 +90,7 @@ struct QueueView: View {
                                     }
                                     if index < orderedItems.count - 1 {
                                         Button {
-                                            withAnimation {
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                                 try? QueueService.move(from: IndexSet(integer: index), to: index + 2, in: modelContext)
                                             }
                                         } label: {
@@ -65,7 +98,7 @@ struct QueueView: View {
                                         }
                                     }
                                     Button(role: .destructive) {
-                                        withAnimation {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                             try? QueueService.remove(item, in: modelContext)
                                         }
                                     } label: {
@@ -158,6 +191,7 @@ private struct QueueItemCard: View {
 
     let item: QueueItem
     let rank: Int
+    var onRemove: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 14) {
@@ -202,6 +236,21 @@ private struct QueueItemCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Play \(item.episode.title)")
+
+            if let onRemove {
+                Button {
+                    onRemove()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.offscriptTextMuted)
+                        .frame(width: 28, height: 28)
+                        .background(Color.white.opacity(0.06))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove \(item.episode.title) from queue")
+            }
         }
         .padding(16)
         .offscriptUtilitySurface()

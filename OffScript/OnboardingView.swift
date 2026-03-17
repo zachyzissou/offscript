@@ -120,6 +120,8 @@ private struct OnboardingActionButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(prominent ? Color.clear : Color.white.opacity(0.08), lineWidth: 1)
             )
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 
     private func background(configuration: Configuration) -> Color {

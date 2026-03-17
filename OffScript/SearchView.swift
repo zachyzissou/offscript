@@ -52,14 +52,33 @@ struct SearchView: View {
                 }
 
                 if isSearching {
-                    HStack(spacing: 12) {
-                        ProgressView()
-                            .tint(Color.offscriptAccent)
-                        Text("Searching podcasts, hosts, and topics...")
-                            .font(.offscriptBody)
-                            .foregroundStyle(Color.offscriptTextSecondary)
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            HStack(spacing: 16) {
+                                RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
+                                    .fill(Color.white.opacity(0.06))
+                                    .frame(width: 76, height: 76)
+
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.06))
+                                        .frame(width: 80, height: 14)
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(Color.white.opacity(0.06))
+                                        .frame(width: 160, height: 16)
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(Color.white.opacity(0.06))
+                                        .frame(width: 110, height: 12)
+                                }
+
+                                Spacer()
+                            }
+                            .padding(18)
+                            .offscriptUtilitySurface()
+                        }
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
+                    .shimmer()
                 } else if results.isEmpty, !query.isEmpty {
                     ContentUnavailableView("No podcasts found", systemImage: "magnifyingglass", description: Text("Try another show, host, or topic."))
                         .padding(.horizontal, OffScriptTheme.pagePadding)
