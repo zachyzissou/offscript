@@ -43,7 +43,7 @@ struct QueueView: View {
                 } else {
                     if let first = orderedItems.first {
                         QueueLeadCard(item: first)
-                            .padding(.horizontal, OffScriptTheme.pagePadding)
+                            .padding(.horizontal, OffScriptTheme.spaciousPadding)
                     }
 
                     VStack(alignment: .leading, spacing: 14) {

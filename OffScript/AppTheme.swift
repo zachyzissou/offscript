@@ -2,6 +2,7 @@ import SwiftUI
 
 enum OffScriptTheme {
     static let pagePadding: CGFloat = 20
+    static let spaciousPadding: CGFloat = 28  // for hero sections and lead cards
     static let sectionSpacing: CGFloat = 28
     static let itemSpacing: CGFloat = 16
 
@@ -27,7 +28,7 @@ extension Color {
     static let offscriptTextPrimary = Color(red: 0.96, green: 0.95, blue: 0.92)
     static let offscriptTextSecondary = Color.white.opacity(0.78)
     static let offscriptTextMuted = Color.white.opacity(0.52)
-    static let offscriptHairline = Color.white.opacity(0.08)
+    static let offscriptHairline = Color.white.opacity(0.12)
     static let offscriptProgressTrack = Color.white.opacity(0.12)
 
     // Warm cream secondary accent — for informational highlights that aren't CTAs

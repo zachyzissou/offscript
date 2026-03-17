@@ -67,7 +67,7 @@ struct HomeView: View {
                             episode: leadEpisode,
                             reason: leadSection.explanation(for: leadEpisode)
                         )
-                        .padding(.horizontal, OffScriptTheme.pagePadding)
+                        .padding(.horizontal, OffScriptTheme.spaciousPadding)
                         .staggeredEntrance(index: 0)
 
                         let remainingLeadEpisodes = Array(leadSection.episodes.dropFirst())
