@@ -128,6 +128,27 @@ struct OffScriptReasonBadge: View {
     }
 }
 
+struct OffScriptExplanationTag: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(Color.offscriptAccent)
+                .frame(width: 3, height: 14)
+
+            Text(text)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.offscriptAccentSecondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.offscriptAccentSecondaryMuted)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
 struct OffScriptSectionHeader: View {
     let title: String
     let subtitle: String

@@ -168,7 +168,7 @@ private struct HeroRecommendationCard: View {
                         .frame(width: 76, height: 76)
 
                     VStack(alignment: .leading, spacing: 4) {
-                        OffScriptReasonBadge(text: reason)
+                        OffScriptExplanationTag(text: reason)
 
                         Text(episode.podcast.title)
                             .font(.offscriptMeta.weight(.semibold))
@@ -314,7 +314,7 @@ private struct EpisodeRailCard: View {
                             .padding(.top, 4)
 
                         VStack(alignment: .leading, spacing: 6) {
-                            OffScriptReasonBadge(text: reason)
+                            OffScriptExplanationTag(text: reason)
 
                             Text(episode.podcast.title.uppercased())
                                 .font(.offscriptMicro.weight(.semibold))

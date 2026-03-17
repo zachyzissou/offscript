@@ -319,10 +319,7 @@ private struct PlayerSuggestionRow: View {
             .frame(width: 48, height: 48)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(scored.explanation)
-                    .font(.offscriptMicro.weight(.semibold))
-                    .foregroundStyle(Color.offscriptAccent)
-                    .lineLimit(1)
+                OffScriptExplanationTag(text: scored.explanation)
 
                 Text(scored.episode.title)
                     .font(.subheadline.weight(.semibold))
