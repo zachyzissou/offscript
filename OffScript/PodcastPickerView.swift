@@ -98,7 +98,7 @@ struct PodcastPickerView: View {
         allPodcasts = CuratedPodcastCatalog.all
 
         for genre in prioritizedGenres {
-            let results = await TopPodcastsService.fetchTop(genre: genre, limit: 8)
+            let results = await TopPodcastsService.fetchTop(genre: genre, limit: 25)
             if !results.isEmpty {
                 livePodcasts[genre] = results
                 let existingURLs = Set(allPodcasts.map(\.feedURL))
