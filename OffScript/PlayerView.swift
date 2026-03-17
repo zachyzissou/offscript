@@ -270,23 +270,25 @@ private struct PlayerWhatsNextSection: View {
     private let recommendationService = RecommendationService()
 
     var body: some View {
-        if !suggestions.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text("What's Next")
-                        .font(.offscriptSectionTitle)
-                        .foregroundStyle(Color.offscriptTextPrimary)
-                    Spacer()
-                }
+        Group {
+            if !suggestions.isEmpty {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Text("What's Next")
+                            .font(.offscriptSectionTitle)
+                            .foregroundStyle(Color.offscriptTextPrimary)
+                        Spacer()
+                    }
 
-                ForEach(suggestions, id: \.episode.id) { scored in
-                    PlayerSuggestionRow(scored: scored)
+                    ForEach(suggestions, id: \.episode.id) { scored in
+                        PlayerSuggestionRow(scored: scored)
+                    }
                 }
+                .padding(18)
+                .offscriptSurface()
             }
-            .padding(18)
-            .offscriptSurface()
-            .onAppear { loadSuggestions() }
         }
+        .onAppear { loadSuggestions() }
     }
 
     @MainActor
@@ -359,22 +361,25 @@ private struct PlayerAtmosphereBackground: View {
             OffScriptBackgroundView()
                 .ignoresSafeArea()
 
-            AsyncImage(url: url) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-                    .blur(radius: 90)
-                    .opacity(0.28)
-                    .ignoresSafeArea()
-            } placeholder: {
-                EmptyView()
+            AsyncImage(url: url) { phase in
+                if let image = phase.image {
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .blur(radius: 90)
+                        .opacity(0.22)
+                        .ignoresSafeArea()
+                        .saturation(0.7)
+                }
             }
 
+            // Top region: lighter wash for artwork area
             LinearGradient(
                 colors: [
-                    Color.black.opacity(0.18),
-                    Color.offscriptBackground.opacity(0.72),
-                    Color.offscriptBackground.opacity(0.95)
+                    Color.black.opacity(0.12),
+                    Color.offscriptBackground.opacity(0.55),
+                    Color.offscriptBackground.opacity(0.85),
+                    Color.offscriptBackground
                 ],
                 startPoint: .top,
                 endPoint: .bottom

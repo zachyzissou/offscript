@@ -51,7 +51,7 @@ struct LibraryView: View {
                     if !inProgressEpisodes.isEmpty {
                         LibraryEpisodeRail(
                             title: "Continue Listening",
-                            subtitle: "Pick up where you left off without hunting for the right episode.",
+                            subtitle: "Pick up where you left off.",
                             episodes: Array(inProgressEpisodes.prefix(8)),
                             reasonProvider: { episode in
                                 if let duration = episode.duration {
@@ -79,7 +79,7 @@ struct LibraryView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         OffScriptSectionHeader(
                             title: "Shows",
-                            subtitle: "Your core collection, organized like a shelf instead of a directory."
+                            subtitle: "Your subscribed collection."
                         )
                         .padding(.horizontal, OffScriptTheme.pagePadding)
 
@@ -197,7 +197,7 @@ private struct LibraryHeader: View {
             OffScriptUtilityHeader(
                 eyebrow: "Library",
                 title: "Your listening shelf",
-                subtitle: "A live collection of shows, unfinished episodes, and fresh drops that are ready when you are."
+                subtitle: "Shows, unfinished episodes, and fresh drops."
             )
 
             LazyVGrid(
@@ -336,7 +336,7 @@ private struct PodcastShelfCard: View {
     var body: some View {
         HStack(spacing: 16) {
             OffScriptArtworkView(url: podcast.artworkURL)
-                .frame(width: 82, height: 82)
+                .frame(width: 96, height: 96)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(podcast.title)

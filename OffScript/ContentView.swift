@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var selectedTab = 0
     @State private var isSettingsPresented = false
     @State private var miniPlayerHeight: CGFloat = 0
+    @Query private var queueItems: [QueueItem]
 
     var body: some View {
         Group {
@@ -40,6 +41,7 @@ struct ContentView: View {
                         .tabItem {
                             Label("Queue", systemImage: "text.badge.plus")
                         }
+                        .badge(queueItems.count > 0 ? queueItems.count : 0)
 
                         NavigationStack {
                             SearchView()

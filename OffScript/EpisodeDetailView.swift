@@ -142,6 +142,7 @@ struct EpisodeDetailView: View {
                             .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
+                .sensoryFeedback(.success, trigger: feedbackGiven != nil)
                 .padding(.horizontal, OffScriptTheme.pagePadding)
 
                 NavigationLink {

@@ -174,9 +174,12 @@ private struct QueueLeadCard: View {
                     PlaybackController.shared.play(item.episode, in: modelContext)
                 }
                 .buttonStyle(PrimaryPillButtonStyle())
+                .sensoryFeedback(.impact(flexibility: .soft), trigger: item.episode.id)
 
                 Button("Remove") {
-                    try? QueueService.remove(item, in: modelContext)
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        try? QueueService.remove(item, in: modelContext)
+                    }
                 }
                 .buttonStyle(SecondaryPillButtonStyle())
             }

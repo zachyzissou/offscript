@@ -84,12 +84,29 @@ final class RecommendationService {
             .filter { episodeHasTopicOverlap($0.episode, profiles: profiles, likedTags: likedTags) }
             .prefix(limit))
 
-        return [
+        var allSections = [
             HomeFeedSection(title: "Best Next", subtitle: "High-fit episodes based on your listening signals.", scoredEpisodes: bestNext),
             HomeFeedSection(title: "Quick Wins", subtitle: "Short listens that still feel worth opening right now.", scoredEpisodes: quickWins),
             HomeFeedSection(title: "Fresh From Library", subtitle: "Recent drops from shows you already care about.", scoredEpisodes: Array(fresh)),
             HomeFeedSection(title: "Because You Liked", subtitle: "Similar ideas and voices from your recent favorites.", scoredEpisodes: becauseYouLiked)
         ].filter { !$0.episodes.isEmpty }
+
+        // Adaptive: during commute hours (6-9am, 5-8pm), surface Quick Wins first
+        let hour = Calendar.current.component(.hour, from: Date())
+        let isCommuteTime = (6...9).contains(hour) || (17...20).contains(hour)
+        if isCommuteTime, let quickWinsIndex = allSections.firstIndex(where: { $0.title == "Quick Wins" }), quickWinsIndex > 0 {
+            let quickWinsSection = allSections.remove(at: quickWinsIndex)
+            allSections.insert(quickWinsSection, at: 0)
+        }
+
+        // Late evening (10pm+): surface longer, deeper episodes first
+        let isLateEvening = hour >= 22 || hour < 5
+        if isLateEvening, let bestNextIndex = allSections.firstIndex(where: { $0.title == "Best Next" }), bestNextIndex > 0 {
+            let bestSection = allSections.remove(at: bestNextIndex)
+            allSections.insert(bestSection, at: 0)
+        }
+
+        return allSections
     }
 
     private func scoreWithExplanation(episode: Episode, profiles: [EpisodeProfile], likedTags: Set<String>) -> (score: Double, explanation: String) {

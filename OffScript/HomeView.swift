@@ -192,10 +192,13 @@ private struct HeroRecommendationCard: View {
                 .buttonStyle(PrimaryPillButtonStyle())
 
                 Button(episode.isQueued ? "Queued" : "Queue") {
-                    withAnimation { try? QueueService.add(episode, in: modelContext) }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        try? QueueService.add(episode, in: modelContext)
+                    }
                 }
                 .buttonStyle(SecondaryPillButtonStyle())
                 .disabled(episode.isQueued)
+                .sensoryFeedback(.impact(flexibility: .soft), trigger: episode.isQueued)
 
                 Spacer()
 
