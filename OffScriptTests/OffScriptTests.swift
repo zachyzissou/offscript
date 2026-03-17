@@ -139,6 +139,39 @@ struct OffScriptTests {
         #expect(UserProfileService.currentUserID == nil)
     }
 
+    @Test
+    func genrePreferenceBoostIncreasesScore() {
+        let base = RecommendationScorer.score(
+            RecommendationScoreInputs(
+                recencyDays: 5,
+                durationMinutes: 30,
+                topicOverlap: 1,
+                isFromSubscribedPodcast: true,
+                isUnfinished: false
+            )
+        )
+        let boosted = RecommendationScorer.score(
+            RecommendationScoreInputs(
+                recencyDays: 5,
+                durationMinutes: 30,
+                topicOverlap: 1,
+                isFromSubscribedPodcast: true,
+                isUnfinished: false
+            )
+        ) + RecommendationScorer.genreBoost(podcastCategories: ["technology"], preferredGenres: ["technology"])
+
+        #expect(boosted > base)
+    }
+
+    @Test
+    func genreBoostIsZeroWithNoOverlap() {
+        let boost = RecommendationScorer.genreBoost(
+            podcastCategories: ["comedy", "entertainment"],
+            preferredGenres: ["technology", "science"]
+        )
+        #expect(boost == 0)
+    }
+
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema([
             Podcast.self,
