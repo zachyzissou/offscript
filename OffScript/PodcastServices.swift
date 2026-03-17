@@ -40,6 +40,77 @@ struct PodcastSearchService: PodcastSearchProviding {
     }
 }
 
+enum TopPodcastsService {
+    static func fetchTop(genre: Genre, limit: Int = 10) async -> [PodcastSearchResult] {
+        let urlString = "https://rss.applemarketingtools.com/api/v2/us/podcasts/top/\(limit)/genre=\(genre.appleGenreID)/json"
+        guard let url = URL(string: urlString) else { return [] }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let response = try JSONDecoder().decode(AppleRSSFeedResponse.self, from: data)
+
+            var results: [PodcastSearchResult] = []
+            for item in response.feed.results {
+                guard let id = item.id else { continue }
+                if let resolved = await lookupFeedURL(itunesID: id, fallback: item) {
+                    results.append(resolved)
+                }
+            }
+            return results
+        } catch {
+            return []
+        }
+    }
+
+    private static func lookupFeedURL(itunesID: String, fallback item: AppleRSSPodcast) async -> PodcastSearchResult? {
+        let lookupURL = URL(string: "https://itunes.apple.com/lookup?id=\(itunesID)&entity=podcast")!
+        do {
+            let (data, _) = try await URLSession.shared.data(from: lookupURL)
+            let lookup = try JSONDecoder().decode(ItunesLookupResponse.self, from: data)
+            guard let result = lookup.results.first, let feedURL = result.feedUrl.flatMap({ URL(string: $0) }) else {
+                return nil
+            }
+            return PodcastSearchResult(
+                title: result.collectionName ?? item.name,
+                author: result.artistName ?? item.artistName ?? "",
+                feedURL: feedURL,
+                artworkURL: result.artworkUrl600.flatMap { URL(string: $0) } ?? URL(string: item.artworkUrl100 ?? ""),
+                websiteURL: nil,
+                summary: nil
+            )
+        } catch {
+            return nil
+        }
+    }
+}
+
+private struct AppleRSSFeedResponse: Decodable {
+    let feed: AppleRSSFeed
+}
+
+private struct AppleRSSFeed: Decodable {
+    let results: [AppleRSSPodcast]
+}
+
+private struct AppleRSSPodcast: Decodable {
+    let id: String?
+    let name: String
+    let artistName: String?
+    let url: String
+    let artworkUrl100: String?
+}
+
+private struct ItunesLookupResponse: Decodable {
+    let results: [ItunesLookupResult]
+}
+
+private struct ItunesLookupResult: Decodable {
+    let collectionName: String?
+    let artistName: String?
+    let feedUrl: String?
+    let artworkUrl600: String?
+}
+
 final class FeedSyncService: FeedSyncProviding {
     private let topicExtractionService = TopicExtractionService()
 

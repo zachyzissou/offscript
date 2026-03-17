@@ -182,13 +182,6 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
 
 // MARK: - Placeholder stubs (will be replaced by dedicated files in Tasks 5-6)
 
-struct PodcastPickerView: View {
-    let selectedGenres: Set<Genre>
-    let onContinue: ([PodcastSearchResult]) -> Void
-    let onBack: () -> Void
-    var body: some View { Text("Podcast Picker — placeholder") }
-}
-
 struct ImportProgressView: View {
     let podcasts: [PodcastSearchResult]
     let selectedGenres: Set<Genre>
