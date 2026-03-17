@@ -11,27 +11,11 @@ struct MiniPlayer: View {
                     player.isPlayerPresented = true
                 } label: {
                     HStack(spacing: 12) {
-                        // Artwork with progress ring
-                        ZStack {
-                            Circle()
-                                .stroke(Color.offscriptProgressTrack, lineWidth: 3)
-                                .frame(width: 54, height: 54)
-
-                            Circle()
-                                .trim(from: 0, to: progressValue)
-                                .stroke(
-                                    Color.offscriptAccent,
-                                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                                )
-                                .frame(width: 54, height: 54)
-                                .rotationEffect(.degrees(-90))
-
-                            OffScriptArtworkView(
-                                url: episode.artworkURL ?? episode.podcast.artworkURL,
-                                cornerRadius: 22
-                            )
-                            .frame(width: 44, height: 44)
-                        }
+                        OffScriptArtworkView(
+                            url: episode.artworkURL ?? episode.podcast.artworkURL,
+                            cornerRadius: OffScriptTheme.Radius.small
+                        )
+                        .frame(width: 48, height: 48)
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text(episode.title)
@@ -51,7 +35,7 @@ struct MiniPlayer: View {
                 .accessibilityLabel("Open player")
                 .accessibilityHint("Expand the now playing screen for \(episode.title)")
 
-                // Play/pause — separate button, no gesture conflict
+                // Play/pause — separate button
                 Button {
                     player.togglePlayPause()
                 } label: {
@@ -69,6 +53,17 @@ struct MiniPlayer: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .offscriptSurface(radius: OffScriptTheme.Radius.medium)
+            // Progress bar overlaid at top edge, clipped by card shape
+            .overlay(alignment: .top) {
+                GeometryReader { proxy in
+                    let clamped = min(max(progressValue, 0), 1)
+                    Rectangle()
+                        .fill(Color.offscriptAccent)
+                        .frame(width: proxy.size.width * clamped, height: 3)
+                }
+                .frame(height: 3)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous))
             .padding(.horizontal, 12)
             .shadow(color: Color.black.opacity(0.22), radius: 16, y: 8)
         }
