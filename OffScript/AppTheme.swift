@@ -25,8 +25,8 @@ extension Color {
     static let offscriptAccent = Color(red: 0.96, green: 0.52, blue: 0.19)
     static let offscriptAccentSoft = Color(red: 0.96, green: 0.52, blue: 0.19).opacity(0.18)
     static let offscriptTextPrimary = Color(red: 0.96, green: 0.95, blue: 0.92)
-    static let offscriptTextSecondary = Color.white.opacity(0.74)
-    static let offscriptTextMuted = Color.white.opacity(0.7)
+    static let offscriptTextSecondary = Color.white.opacity(0.78)
+    static let offscriptTextMuted = Color.white.opacity(0.52)
     static let offscriptHairline = Color.white.opacity(0.08)
     static let offscriptProgressTrack = Color.white.opacity(0.12)
 }
@@ -37,7 +37,7 @@ extension Font {
     static let offscriptUtilityTitle = Font.system(.title2, design: .default, weight: .bold)
     static let offscriptSectionTitle = Font.system(.title3, design: .serif, weight: .semibold)
     static let offscriptCardTitle = Font.system(.headline, design: .default, weight: .semibold)
-    static let offscriptBody = Font.system(.subheadline, design: .default)
+    static let offscriptBody = Font.system(.callout, design: .default)
     static let offscriptMeta = Font.system(.caption, design: .monospaced)
     static let offscriptMicro = Font.system(.caption2, design: .monospaced)
 }
@@ -106,7 +106,8 @@ struct OffScriptReasonBadge: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(.offscriptMicro.weight(.semibold))
+            .font(.caption2.weight(.bold))
+            .tracking(0.8)
             .foregroundStyle(Color.offscriptTextPrimary)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
@@ -151,6 +152,7 @@ struct OffScriptUtilityHeader: View {
             if let eyebrow {
                 Text(eyebrow.uppercased())
                     .font(.offscriptMeta.weight(.semibold))
+                    .tracking(1.2)
                     .foregroundStyle(Color.offscriptAccent)
             }
 
