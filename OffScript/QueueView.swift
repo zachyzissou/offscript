@@ -27,7 +27,11 @@ struct QueueView: View {
 
                 if orderedItems.isEmpty {
                     VStack(spacing: 20) {
-                        ContentUnavailableView("Queue is empty", systemImage: "text.badge.plus", description: Text("Save episodes from Home or Library and they'll stack up here in the order you actually want to hear them."))
+                        OffScriptEmptyState(
+                            icon: "text.badge.plus",
+                            headline: "Nothing queued yet",
+                            message: "Your queue is a working set, not a backlog. Add a few episodes you actually plan to hear next."
+                        )
 
                         NavigationLink("Browse Home") {
                             HomeView(onOpenSettings: {})

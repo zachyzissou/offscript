@@ -80,7 +80,11 @@ struct SearchView: View {
                     .padding(.horizontal, OffScriptTheme.pagePadding)
                     .shimmer()
                 } else if results.isEmpty, !query.isEmpty {
-                    ContentUnavailableView("No podcasts found", systemImage: "magnifyingglass", description: Text("Try another show, host, or topic."))
+                    OffScriptEmptyState(
+                        icon: "magnifyingglass",
+                        headline: "No matches",
+                        message: "Try a different show name, host, or topic. Exact titles work best."
+                    )
                         .padding(.horizontal, OffScriptTheme.pagePadding)
                 } else if !results.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {

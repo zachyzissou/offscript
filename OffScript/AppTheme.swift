@@ -149,6 +149,39 @@ struct OffScriptExplanationTag: View {
     }
 }
 
+struct OffScriptEmptyState: View {
+    let icon: String
+    let headline: String
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: icon)
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(Color.offscriptAccent.opacity(0.6))
+                .frame(width: 72, height: 72)
+                .background(Color.offscriptAccentSoft)
+                .clipShape(Circle())
+
+            VStack(spacing: 8) {
+                Text(headline)
+                    .font(.offscriptDisplay)
+                    .foregroundStyle(Color.offscriptTextPrimary)
+                    .multilineTextAlignment(.center)
+
+                Text(message)
+                    .font(.offscriptBody)
+                    .foregroundStyle(Color.offscriptTextSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: 320)
+        .padding(.vertical, 32)
+        .frame(maxWidth: .infinity)
+    }
+}
+
 struct OffScriptSectionHeader: View {
     let title: String
     let subtitle: String

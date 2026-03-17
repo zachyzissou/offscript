@@ -49,7 +49,11 @@ struct HomeView: View {
                     }
                 } else if sections.isEmpty {
                     VStack(spacing: 20) {
-                        ContentUnavailableView("No recommendations yet", systemImage: "waveform.badge.magnifyingglass", description: Text("Add a few shows in Search and OffScript will build your smart feed."))
+                        OffScriptEmptyState(
+                            icon: "waveform.badge.magnifyingglass",
+                            headline: "Your feed starts here",
+                            message: "Add three shows you trust and OffScript will build a feed that feels curated, not algorithmic."
+                        )
 
                         NavigationLink("Browse Search") {
                             SearchView()
