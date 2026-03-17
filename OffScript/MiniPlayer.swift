@@ -6,37 +6,41 @@ struct MiniPlayer: View {
     var body: some View {
         if let episode = player.currentEpisode {
             VStack(spacing: 0) {
-                OffScriptProgressBar(value: progressValue)
-
                 HStack(spacing: 12) {
-                    Button {
-                        player.isPlayerPresented = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            OffScriptArtworkView(
-                                url: episode.artworkURL ?? episode.podcast.artworkURL,
-                                cornerRadius: OffScriptTheme.Radius.small
+                    // Artwork with progress ring
+                    ZStack {
+                        Circle()
+                            .stroke(Color.offscriptProgressTrack, lineWidth: 3)
+                            .frame(width: 54, height: 54)
+
+                        Circle()
+                            .trim(from: 0, to: progressValue)
+                            .stroke(
+                                Color.offscriptAccent,
+                                style: StrokeStyle(lineWidth: 3, lineCap: .round)
                             )
-                            .frame(width: 48, height: 48)
+                            .frame(width: 54, height: 54)
+                            .rotationEffect(.degrees(-90))
 
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(episode.title)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Color.offscriptTextPrimary)
-                                    .lineLimit(1)
-
-                                Text(episode.podcast.title)
-                                    .font(.offscriptMeta)
-                                    .foregroundStyle(Color.offscriptTextMuted)
-                                    .lineLimit(1)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        OffScriptArtworkView(
+                            url: episode.artworkURL ?? episode.podcast.artworkURL,
+                            cornerRadius: 22
+                        )
+                        .frame(width: 44, height: 44)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open player")
-                    .accessibilityHint("Expand the now playing screen for \(episode.title)")
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(episode.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.offscriptTextPrimary)
+                            .lineLimit(1)
+
+                        Text(episode.podcast.title)
+                            .font(.offscriptMeta)
+                            .foregroundStyle(Color.offscriptTextMuted)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                     Button {
                         player.togglePlayPause()
@@ -55,9 +59,16 @@ struct MiniPlayer: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
             }
-            .offscriptUtilitySurface(radius: OffScriptTheme.Radius.medium)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                player.isPlayerPresented = true
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Now playing: \(episode.title)")
+            .accessibilityHint("Tap to expand the player")
+            .offscriptSurface(radius: OffScriptTheme.Radius.medium)
             .padding(.horizontal, 12)
-            .shadow(color: Color.black.opacity(0.2), radius: 14, y: 8)
+            .shadow(color: Color.black.opacity(0.22), radius: 16, y: 8)
         }
     }
 
