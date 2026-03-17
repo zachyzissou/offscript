@@ -198,9 +198,9 @@ private struct HeroRecommendationCard: View {
             .clipShape(
                 UnevenRoundedRectangle(
                     topLeadingRadius: OffScriptTheme.Radius.large,
-                    topTrailingRadius: OffScriptTheme.Radius.large,
                     bottomLeadingRadius: 0,
                     bottomTrailingRadius: 0,
+                    topTrailingRadius: OffScriptTheme.Radius.large,
                     style: .continuous
                 )
             )

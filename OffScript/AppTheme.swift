@@ -519,41 +519,45 @@ struct SkeletonRailCard: View {
 
 struct SkeletonHeroCard: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-                    .frame(width: 76, height: 76)
+        VStack(alignment: .leading, spacing: 0) {
+            // Matches the new full-width artwork hero card layout
+            RoundedRectangle(cornerRadius: 0, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+                .frame(height: 200)
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: OffScriptTheme.Radius.large,
+                        bottomLeadingRadius: 0,
+                        bottomTrailingRadius: 0,
+                        topTrailingRadius: OffScriptTheme.Radius.large,
+                        style: .continuous
+                    )
+                )
 
-                VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(height: 22)
+
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 200, height: 22)
+
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.white.opacity(0.06))
+                    .frame(width: 140, height: 12)
+
+                HStack(spacing: 10) {
                     Capsule()
                         .fill(Color.white.opacity(0.06))
-                        .frame(width: 90, height: 16)
-
-                    RoundedRectangle(cornerRadius: 4)
+                        .frame(width: 64, height: 36)
+                    Capsule()
                         .fill(Color.white.opacity(0.06))
-                        .frame(width: 100, height: 10)
-
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.white.opacity(0.06))
-                        .frame(height: 18)
-
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.white.opacity(0.06))
-                        .frame(width: 160, height: 18)
+                        .frame(width: 72, height: 36)
                 }
             }
-
-            HStack(spacing: 10) {
-                Capsule()
-                    .fill(Color.white.opacity(0.06))
-                    .frame(width: 64, height: 36)
-                Capsule()
-                    .fill(Color.white.opacity(0.06))
-                    .frame(width: 72, height: 36)
-            }
+            .padding(20)
         }
-        .padding(20)
         .offscriptSurface(radius: OffScriptTheme.Radius.large, prominent: true)
         .shimmer()
     }
