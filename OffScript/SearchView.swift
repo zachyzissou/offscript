@@ -287,11 +287,11 @@ private struct SearchErrorCard: View {
             .foregroundStyle(Color.offscriptTextPrimary)
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.red.opacity(0.18))
+            .background(Color.offscriptDestructiveSoft)
             .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                    .stroke(Color.red.opacity(0.35), lineWidth: 1)
+                    .stroke(Color.offscriptDestructive.opacity(0.4), lineWidth: 1)
             )
     }
 }

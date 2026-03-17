@@ -306,14 +306,15 @@ struct PrimaryPillButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.subheadline.weight(.semibold))
+            .font(.subheadline.weight(.bold))
             .foregroundStyle(.black)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 11)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 13)
             .background(Color.offscriptAccent.opacity(configuration.isPressed ? 0.78 : 1.0))
             .clipShape(Capsule())
-            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.96 : 1.0))
-            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+            .shadow(color: Color.offscriptAccent.opacity(configuration.isPressed ? 0 : 0.25), radius: 8, y: 4)
+            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.94 : 1.0))
+            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.65), value: configuration.isPressed)
     }
 }
 

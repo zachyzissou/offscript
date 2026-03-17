@@ -60,7 +60,7 @@ struct QueueView: View {
                                     }
                                 }
                                 .font(.offscriptMeta.weight(.semibold))
-                                .foregroundStyle(Color.red.opacity(0.8))
+                                .foregroundStyle(Color.offscriptDestructive)
                             }
                         }
                         .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -201,10 +201,13 @@ private struct QueueItemCard: View {
         HStack(spacing: 14) {
             Text("\(rank)")
                 .font(.headline.weight(.bold))
-                .foregroundStyle(Color.offscriptAccent)
+                .foregroundStyle(Color.offscriptTextPrimary)
                 .frame(width: 34, height: 34)
-                .background(Color.offscriptAccentSoft)
+                .background(Color.white.opacity(0.08))
                 .clipShape(Circle())
+                .overlay(
+                    Circle().stroke(Color.offscriptHairline, lineWidth: 1)
+                )
 
             OffScriptArtworkView(url: item.episode.artworkURL ?? item.episode.podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.small)
                 .frame(width: 56, height: 56)
