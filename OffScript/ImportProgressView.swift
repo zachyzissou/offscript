@@ -26,8 +26,9 @@ struct ImportProgressView: View {
     private let recommendationService = RecommendationService()
 
     var body: some View {
+        ScrollView {
         VStack(spacing: 32) {
-            Spacer()
+            Spacer(minLength: 40)
 
             VStack(spacing: 14) {
                 if isComplete {
@@ -133,7 +134,8 @@ struct ImportProgressView: View {
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 40)
+        }
         }
         .task {
             await runImports()
