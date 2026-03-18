@@ -64,7 +64,7 @@ struct ContentView: View {
                     .toolbarColorScheme(.dark, for: .tabBar)
                     .safeAreaInset(edge: .bottom) {
                         if player.currentEpisode != nil {
-                            Color.clear.frame(height: miniPlayerInset + 12)
+                            Color.clear.frame(height: miniPlayerInset + 4)
                         }
                     }
                     .overlay(alignment: .bottom) {
@@ -72,7 +72,7 @@ struct ContentView: View {
                             MiniPlayer()
                                 .contentShape(Rectangle())
                                 .measureHeight($miniPlayerHeight)
-                                .padding(.bottom, bottomSafeArea + 56)
+                                .padding(.bottom, bottomSafeArea + 50)
                                 .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
                     }
