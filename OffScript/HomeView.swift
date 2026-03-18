@@ -317,19 +317,27 @@ private struct HeroRecommendationCard: View {
                     Spacer()
 
                     Menu {
-                        Button("Like") { register(.like) }
-                        Button("Less like this") { register(.lessLikeThis) }
-                        Button("Not now") { register(.notInterested) }
+                        Button { register(.like) } label: {
+                            Label("Like", systemImage: "hand.thumbsup")
+                        }
+                        Button { register(.moreLikeThis) } label: {
+                            Label("More like this", systemImage: "arrow.up.heart")
+                        }
+                        Button { register(.lessLikeThis) } label: {
+                            Label("Less like this", systemImage: "hand.thumbsdown")
+                        }
+                        Button(role: .destructive) { register(.notInterested) } label: {
+                            Label("Not interested", systemImage: "xmark.circle")
+                        }
                     } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.subheadline.weight(.semibold))
+                        Image(systemName: "ellipsis.circle.fill")
+                            .font(.title3)
+                            .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(Color.offscriptTextPrimary)
-                            .frame(width: 38, height: 38)
-                            .background(Color.white.opacity(0.05))
-                            .clipShape(Circle())
+                            .frame(width: 44, height: 44)
                     }
-                    .accessibilityLabel("More actions")
-                    .accessibilityHint("Like this episode or tune future recommendations")
+                    .accessibilityLabel("Rate this recommendation")
+                    .accessibilityHint("Like, dislike, or dismiss this episode")
                 }
             }
             .padding(20)
