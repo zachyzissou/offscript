@@ -5,23 +5,23 @@ struct MiniPlayer: View {
 
     var body: some View {
         if let episode = player.currentEpisode {
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 // Artwork + text — tapping opens the full player
                 Button {
                     player.isPlayerPresented = true
                 } label: {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 14) {
                         OffScriptArtworkView(
                             url: episode.artworkURL ?? episode.podcast.artworkURL,
                             cornerRadius: OffScriptTheme.Radius.small
                         )
-                        .frame(width: 48, height: 48)
+                        .frame(width: 52, height: 52)
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text(episode.title)
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(Color.offscriptTextPrimary)
-                                .lineLimit(1)
+                                .lineLimit(2)
 
                             Text(episode.podcast.title)
                                 .font(.offscriptMeta)
@@ -50,9 +50,14 @@ struct MiniPlayer: View {
                 .accessibilityLabel(player.isPlaying ? "Pause playback" : "Resume playback")
                 .accessibilityValue(episode.title)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
             .offscriptSurface(radius: OffScriptTheme.Radius.medium)
+            // Subtle top separator for visual definition
+            .overlay(alignment: .top) {
+                Color.offscriptHairline
+                    .frame(height: 0.5)
+            }
             // Progress bar overlaid at top edge, clipped by card shape
             .overlay(alignment: .top) {
                 GeometryReader { proxy in
