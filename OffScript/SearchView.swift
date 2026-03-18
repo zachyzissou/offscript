@@ -719,6 +719,28 @@ struct SearchResultDetailView: View {
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
 
+                    HStack(spacing: 10) {
+                        Button(isAdded ? "In Library" : (isImporting ? "Adding..." : "Add to Library")) {
+                            onAdd()
+                            if !isAdded {
+                                dismiss()
+                            }
+                        }
+                        .buttonStyle(PrimaryPillButtonStyle())
+                        .disabled(isAdded || isImporting)
+
+                        if isAdded {
+                            Button("Open Show") {
+                                dismiss()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    onNavigateToShow?()
+                                }
+                            }
+                            .buttonStyle(SecondaryPillButtonStyle())
+                        }
+                    }
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+
                     if !fitReasons.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Why it might fit")
@@ -782,18 +804,6 @@ struct SearchResultDetailView: View {
                             .padding(.horizontal, OffScriptTheme.pagePadding)
                     }
 
-                    HStack(spacing: 10) {
-                        Button(isAdded ? "Added" : (isImporting ? "Adding..." : "Add to Library")) {
-                            onAdd()
-                            if !isAdded {
-                                dismiss()
-                            }
-                        }
-                        .buttonStyle(PrimaryPillButtonStyle())
-                        .disabled(isAdded || isImporting)
-
-                    }
-                    .padding(.horizontal, OffScriptTheme.pagePadding)
                 }
                 .padding(.top, 24)
                 .padding(.bottom, 32)
