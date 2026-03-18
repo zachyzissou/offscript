@@ -15,6 +15,18 @@
 - [ ] **0.1 — App Icon images**: `AppIcon.appiconset` has no image files. App Store Connect will reject. Need 1024x1024 icon + dark/tinted variants.
 - [ ] **0.2 — PrivacyInfo.xcprivacy**: Missing. Apple requires privacy manifest for apps using UserDefaults (Required Reasons API). Will trigger rejection.
 
+## Phase 0.5: Recommendation Engine Fixes (Functional but needs tuning)
+
+The engine is fully wired — scoring, taste profiles, topic extraction, preference signals, playback events all work end-to-end. But the deep audit found 7 issues that affect recommendation quality:
+
+- [ ] **0.5.1 — NLTagger stopword filter**: No stopword list on noun extraction. Common words ("episode", "show", "time") pollute the tag space, degrading the 26%-weighted topic overlap signal. High impact, low effort.
+- [ ] **0.5.2 — Duration scoring should use learned preference**: The 18%-weighted `durationScore()` uses a static curve instead of `averageCompletedDurationMinutes` from the taste profile. The learned value only contributes +0.05 via `prefersShortEpisodes`.
+- [ ] **0.5.3 — Fix inverted unfinished-episode affinity**: High abandonment rate (>0.2) boosts unfinished episodes. Should be the opposite — completionists want unfinished surfaced, abandoners don't.
+- [ ] **0.5.4 — Cross-section deduplication**: Same episode can appear in Best Next, Quick Wins, and Because You Liked simultaneously.
+- [ ] **0.5.5 — Real diversity enforcement**: Current diversity penalty is based on DB fetch order, not content. Need max 2 episodes per podcast per section.
+- [ ] **0.5.6 — Genre boost should be proportional**: Flat +0.06 regardless of overlap depth. One matching genre = three matching genres.
+- [ ] **0.5.7 — Remove dead EpisodeProfile fields**: `estimatedListeningContext`, `freshnessBucket`, `confidenceScore`, and `summary` are written but never read by scoring. Either use them or remove them.
+
 ## Phase 1: TestFlight-Ready (Internal testing)
 
 - [ ] **1.1 — Playback speed persistence**: `playbackRate` resets to 1.0x on restart. Persist via `@AppStorage` or SwiftData.
