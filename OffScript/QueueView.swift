@@ -70,10 +70,19 @@ struct QueueView: View {
                         .padding(.horizontal, OffScriptTheme.pagePadding)
 
                         if let totalDuration = queueTotalDuration {
-                            Text("Total: \(totalDuration)")
-                                .font(.offscriptMeta)
-                                .foregroundStyle(Color.offscriptTextMuted)
-                                .padding(.horizontal, OffScriptTheme.pagePadding)
+                            HStack(spacing: 8) {
+                                Image(systemName: "clock")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.offscriptAccent)
+                                Text("\(totalDuration) total listening time")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.offscriptTextPrimary)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(Color.offscriptAccentSoft)
+                            .clipShape(Capsule())
+                            .padding(.horizontal, OffScriptTheme.pagePadding)
                         }
 
                         ForEach(Array(orderedItems.enumerated()), id: \.element.id) { index, item in

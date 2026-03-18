@@ -50,6 +50,24 @@ struct LibraryView: View {
             }
     }
 
+    /// Pre-computed podcast-to-count dictionaries so the ForEach below is O(1) per row
+    /// instead of O(podcasts * episodes).
+    private var unplayedCountByPodcast: [UUID: Int] {
+        var counts: [UUID: Int] = [:]
+        for episode in freshEpisodes {
+            counts[episode.podcast.id, default: 0] += 1
+        }
+        return counts
+    }
+
+    private var inProgressCountByPodcast: [UUID: Int] {
+        var counts: [UUID: Int] = [:]
+        for episode in inProgressEpisodes {
+            counts[episode.podcast.id, default: 0] += 1
+        }
+        return counts
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
@@ -133,8 +151,8 @@ struct LibraryView: View {
                                 } label: {
                                     PodcastShelfCard(
                                         podcast: podcast,
-                                        unplayedCount: freshEpisodes.filter { $0.podcast.id == podcast.id }.count,
-                                        inProgressCount: inProgressEpisodes.filter { $0.podcast.id == podcast.id }.count
+                                        unplayedCount: unplayedCountByPodcast[podcast.id] ?? 0,
+                                        inProgressCount: inProgressCountByPodcast[podcast.id] ?? 0
                                     )
                                 }
                                 .buttonStyle(.plain)
@@ -263,6 +281,13 @@ struct PodcastDetailView: View {
         }
     }
 
+    private var latestUnplayedEpisode: Episode? {
+        podcastEpisodes
+            .filter { !$0.isPlayed }
+            .sorted { $0.pubDate > $1.pubDate }
+            .first
+    }
+
     init(podcast: Podcast) {
         self.podcast = podcast
         // Scope the @Query to only episodes belonging to this podcast
@@ -278,6 +303,31 @@ struct PodcastDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
                 PodcastDetailHeader(podcast: podcast, episodeCount: episodes.count)
+
+                if let latest = latestUnplayedEpisode {
+                    HStack(spacing: 10) {
+                        Button(latest.playedPosition > 0 ? "Resume Latest" : "Play Latest") {
+                            PlaybackController.shared.play(latest, in: modelContext)
+                        }
+                        .buttonStyle(PrimaryPillButtonStyle())
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(latest.title)
+                                .font(.offscriptMeta)
+                                .foregroundStyle(Color.offscriptTextSecondary)
+                                .lineLimit(1)
+                            if let duration = latest.duration {
+                                let timeLabel = latest.playedPosition > 0
+                                    ? "\(EpisodeDurationFormatter.short(max(0, duration - latest.playedPosition))) left"
+                                    : EpisodeDurationFormatter.short(duration)
+                                Text(timeLabel)
+                                    .font(.offscriptMicro)
+                                    .foregroundStyle(Color.offscriptTextMuted)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+                }
 
                 FilterRow(selection: $filter)
                     .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -436,8 +486,12 @@ private struct LibraryEpisodeCard: View {
                 }
                 .buttonStyle(.plain)
 
+                if episode.playedPosition > 0, let duration = episode.duration, duration > 0 {
+                    OffScriptProgressBar(value: episode.playedPosition / duration, height: 4)
+                }
+
                 HStack(spacing: 10) {
-                    Button("Play") {
+                    Button(episode.playedPosition > 0 ? "Resume" : "Play") {
                         PlaybackController.shared.play(episode, in: modelContext)
                     }
                     .buttonStyle(PrimaryPillButtonStyle())
@@ -701,7 +755,7 @@ private struct PodcastEpisodeCard: View {
             }
 
             HStack(spacing: 10) {
-                Button("Play") {
+                Button(episode.playedPosition > 0 ? "Resume" : "Play") {
                     PlaybackController.shared.play(episode, in: modelContext)
                 }
                 .buttonStyle(PrimaryPillButtonStyle())
@@ -721,6 +775,10 @@ private struct PodcastEpisodeCard: View {
 
     private var metadata: String {
         let date = episode.pubDate.formatted(date: .abbreviated, time: .omitted)
+        if episode.playedPosition > 0, let duration = episode.duration {
+            let remaining = max(0, duration - episode.playedPosition)
+            return "\(date) • \(EpisodeDurationFormatter.short(remaining)) left"
+        }
         if let duration = episode.duration {
             return "\(date) • \(EpisodeDurationFormatter.short(duration))"
         }

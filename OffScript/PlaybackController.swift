@@ -5,6 +5,17 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+/// Lightweight publisher holding only time-varying playback state.
+/// Only PlayerView and MiniPlayer should observe this to avoid
+/// per-second invalidations in the rest of the view hierarchy.
+@MainActor
+final class PlaybackTimePublisher: ObservableObject {
+    static let shared = PlaybackTimePublisher()
+    @Published var currentTime: TimeInterval = 0
+    @Published var duration: TimeInterval = 0
+    private init() {}
+}
+
 @MainActor
 final class PlaybackController: ObservableObject {
     enum StartOrigin {
@@ -17,10 +28,21 @@ final class PlaybackController: ObservableObject {
     @Published private(set) var currentEpisode: Episode?
     @Published private(set) var isPlaying = false
     @Published var playbackRate: Float = UserDefaults.standard.float(forKey: "offscript.playbackRate").nonZeroOrDefault(1.0)
-    @Published private(set) var currentTime: TimeInterval = 0
-    @Published private(set) var duration: TimeInterval = 0
     @Published var isPlayerPresented = false
     @Published private(set) var sleepTimerEndDate: Date?
+
+    /// Time state is published via PlaybackTimePublisher so that only
+    /// PlayerView and MiniPlayer re-render every second instead of
+    /// the entire view hierarchy rooted at ContentView.
+    var currentTime: TimeInterval {
+        get { PlaybackTimePublisher.shared.currentTime }
+        set { PlaybackTimePublisher.shared.currentTime = newValue }
+    }
+
+    var duration: TimeInterval {
+        get { PlaybackTimePublisher.shared.duration }
+        set { PlaybackTimePublisher.shared.duration = newValue }
+    }
 
     private let player = AVPlayer()
     private var timeObserver: Any?
@@ -278,20 +300,22 @@ final class PlaybackController: ObservableObject {
 
     private func persistPlaybackProgress(force: Bool = false) {
         guard let episode = currentEpisode else { return }
-        episode.playedPosition = currentTime
-        episode.lastPlayedAt = .now
-
-        if duration > 0, currentTime >= duration * 0.9 {
-            episode.isPlayed = true
-        }
 
         let shouldPersist = force
             || lastPersistedEpisodeID != episode.id
             || abs(currentTime - lastPersistedPosition) >= 15
             || currentTime == 0
-            || episode.isPlayed
 
+        // Only write model properties and hit SQLite when we actually need to persist,
+        // avoiding per-second @Query notifications across the app.
         if shouldPersist {
+            episode.playedPosition = currentTime
+            episode.lastPlayedAt = .now
+
+            if duration > 0, currentTime >= duration * 0.9 {
+                episode.isPlayed = true
+            }
+
             try? modelContext?.save()
             lastPersistedEpisodeID = episode.id
             lastPersistedPosition = currentTime
@@ -458,9 +482,11 @@ final class PlaybackController: ObservableObject {
         guard let savedURL = UserDefaults.standard.string(forKey: "offscript.lastEpisodeAudioURL"),
               let audioURL = URL(string: savedURL) else { return }
 
-        let descriptor = FetchDescriptor<Episode>()
-        guard let episodes = try? context.fetch(descriptor) else { return }
-        guard let episode = episodes.first(where: { $0.audioURL.absoluteString == audioURL.absoluteString }) else { return }
+        var descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.audioURL == audioURL }
+        )
+        descriptor.fetchLimit = 1
+        guard let episode = try? context.fetch(descriptor).first else { return }
 
         // Restore episode in MiniPlayer without auto-playing
         currentEpisode = episode

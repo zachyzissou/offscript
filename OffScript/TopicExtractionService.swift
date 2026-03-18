@@ -32,9 +32,13 @@ final class TopicExtractionService {
     #endif
 
     func enrich(episode: Episode, in context: ModelContext) async throws {
-        // Upsert profile
-        let existing = try context.fetch(FetchDescriptor<EpisodeProfile>())
-            .first(where: { $0.episodeID == episode.id })
+        // Upsert profile — scoped fetch instead of loading ALL profiles
+        let targetID = episode.id
+        var profileDescriptor = FetchDescriptor<EpisodeProfile>(
+            predicate: #Predicate<EpisodeProfile> { $0.episodeID == targetID }
+        )
+        profileDescriptor.fetchLimit = 1
+        let existing = try context.fetch(profileDescriptor).first
         let profile = existing ?? {
             let p = EpisodeProfile(episodeID: episode.id)
             p.episode = episode

@@ -55,7 +55,7 @@ struct HomeView: View {
                         OffScriptEmptyState(
                             icon: "waveform.badge.magnifyingglass",
                             headline: "Your feed starts here",
-                            message: "Add three shows you trust and OffScript will build a feed that feels curated, not algorithmic."
+                            message: "Subscribe to a few shows, listen, and OffScript will learn what you like. The more you play, the sharper your feed gets."
                         )
 
                         NavigationLink("Browse Search") {
@@ -295,7 +295,7 @@ private struct HeroRecommendationCard: View {
                 }
 
                 HStack(spacing: 10) {
-                    Button("Play") {
+                    Button(episode.playedPosition > 0 ? "Resume" : "Play") {
                         TelemetryService.track(
                             "recommendation_opened",
                             metadata: ["source": "home_hero", "episode": episode.title, "podcast": episode.podcast.title],
@@ -405,6 +405,11 @@ private struct EpisodeRailCard: View {
     let episode: Episode
     let reason: String
 
+    private var progressValue: Double {
+        guard let duration = episode.duration, duration > 0 else { return 0 }
+        return episode.playedPosition / duration
+    }
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
@@ -446,8 +451,12 @@ private struct EpisodeRailCard: View {
                 }
                 .buttonStyle(.plain)
 
+                if progressValue > 0 {
+                    OffScriptProgressBar(value: progressValue, height: 4)
+                }
+
                 HStack(spacing: 10) {
-                    Button("Play") {
+                    Button(episode.playedPosition > 0 ? "Resume" : "Play") {
                         TelemetryService.track(
                             "recommendation_opened",
                             metadata: ["source": "home_rail", "episode": episode.title, "podcast": episode.podcast.title],
@@ -486,6 +495,10 @@ private struct EpisodeRailCard: View {
 
     private var metadata: String {
         let dateString = episode.pubDate.formatted(date: .abbreviated, time: .omitted)
+        if episode.playedPosition > 0, let duration = episode.duration {
+            let remaining = max(0, duration - episode.playedPosition)
+            return "\(dateString) • \(EpisodeDurationFormatter.short(remaining)) left"
+        }
         if let duration = episode.duration {
             return "\(dateString) • \(EpisodeDurationFormatter.short(duration))"
         }

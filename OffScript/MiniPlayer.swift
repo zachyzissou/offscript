@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MiniPlayer: View {
     @ObservedObject private var player = PlaybackController.shared
+    @ObservedObject private var timePublisher = PlaybackTimePublisher.shared
 
     var body: some View {
         if let episode = player.currentEpisode {
@@ -23,10 +24,21 @@ struct MiniPlayer: View {
                                 .foregroundStyle(Color.offscriptTextPrimary)
                                 .lineLimit(1)
 
-                            Text(episode.podcast.title)
-                                .font(.offscriptMeta)
-                                .foregroundStyle(Color.offscriptTextMuted)
-                                .lineLimit(1)
+                            HStack(spacing: 6) {
+                                Text(episode.podcast.title)
+                                    .font(.offscriptMeta)
+                                    .foregroundStyle(Color.offscriptTextMuted)
+                                    .lineLimit(1)
+
+                                if timePublisher.duration > 0 {
+                                    Text("•")
+                                        .font(.offscriptMeta)
+                                        .foregroundStyle(Color.offscriptTextMuted)
+                                    Text(remainingTimeLabel)
+                                        .font(.offscriptMeta)
+                                        .foregroundStyle(Color.offscriptTextMuted)
+                                }
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -60,9 +72,9 @@ struct MiniPlayer: View {
                     let clamped = min(max(progressValue, 0), 1)
                     Rectangle()
                         .fill(Color.offscriptAccent)
-                        .frame(width: proxy.size.width * clamped, height: 3)
+                        .frame(width: proxy.size.width * clamped, height: 5)
                 }
-                .frame(height: 3)
+                .frame(height: 5)
             }
             .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous))
             .padding(.horizontal, 12)
@@ -71,7 +83,12 @@ struct MiniPlayer: View {
     }
 
     private var progressValue: Double {
-        guard player.duration > 0 else { return 0 }
-        return player.currentTime / player.duration
+        guard timePublisher.duration > 0 else { return 0 }
+        return timePublisher.currentTime / timePublisher.duration
+    }
+
+    private var remainingTimeLabel: String {
+        let remaining = max(0, timePublisher.duration - timePublisher.currentTime)
+        return "\(EpisodeDurationFormatter.short(remaining)) left"
     }
 }

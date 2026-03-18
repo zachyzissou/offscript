@@ -6,6 +6,7 @@ struct PlayerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @ObservedObject private var player = PlaybackController.shared
+    @ObservedObject private var timePublisher = PlaybackTimePublisher.shared
     @Query private var queueItems: [QueueItem]
 
     private var orderedQueueItems: [QueueItem] {
@@ -49,7 +50,7 @@ struct PlayerView: View {
                                         .foregroundStyle(Color.offscriptTextSecondary)
 
                                     HStack(spacing: 10) {
-                                        OffScriptReasonBadge(text: player.currentTime > 0 ? "In session" : "Now playing")
+                                        OffScriptReasonBadge(text: timePublisher.currentTime > 0 ? "In session" : "Now playing")
                                         if let duration = episode.duration {
                                             OffScriptReasonBadge(text: EpisodeDurationFormatter.short(duration))
                                         }
@@ -73,15 +74,15 @@ struct PlayerView: View {
                                 VStack(alignment: .leading, spacing: 16) {
                                     OffScriptScrubber(
                                         value: Binding(
-                                            get: { player.currentTime },
+                                            get: { timePublisher.currentTime },
                                             set: { _ in }
                                         ),
-                                        duration: player.duration,
+                                        duration: timePublisher.duration,
                                         onSeek: { player.seek(to: $0) }
                                     )
 
                                     HStack {
-                                        Text(time(player.currentTime))
+                                        Text(time(timePublisher.currentTime))
                                         Spacer()
                                         Text(remainingTime)
                                     }
@@ -97,7 +98,7 @@ struct PlayerView: View {
                                     PlayerCircleButton(systemImage: "gobackward.15", accessibilityLabel: "Skip back 15 seconds", isPrimary: false) {
                                         player.seek(by: -15)
                                     }
-                                    .sensoryFeedback(.impact(weight: .light), trigger: player.currentTime)
+                                    .sensoryFeedback(.impact(weight: .light), trigger: timePublisher.currentTime)
 
                                     PlayerCircleButton(
                                         systemImage: player.isPlaying ? "pause.fill" : "play.fill",
@@ -112,7 +113,7 @@ struct PlayerView: View {
                                     PlayerCircleButton(systemImage: "goforward.30", accessibilityLabel: "Skip forward 30 seconds", isPrimary: false) {
                                         player.seek(by: 30)
                                     }
-                                    .sensoryFeedback(.impact(weight: .light), trigger: player.currentTime)
+                                    .sensoryFeedback(.impact(weight: .light), trigger: timePublisher.currentTime)
 
                                     PlayerCircleButton(systemImage: "forward.end.fill", accessibilityLabel: "Play next queued episode", isPrimary: false) {
                                         player.skipToNextInQueue()
@@ -241,7 +242,7 @@ struct PlayerView: View {
     }
 
     private var remainingTime: String {
-        let remaining = max(player.duration - player.currentTime, 0)
+        let remaining = max(timePublisher.duration - timePublisher.currentTime, 0)
         return "-\(time(remaining))"
     }
 

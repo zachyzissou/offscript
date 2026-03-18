@@ -312,13 +312,13 @@ final class FeedSyncService {
 
 enum QueueService {
     static func orderedItems(in context: ModelContext) throws -> [QueueItem] {
-        let items = try context.fetch(FetchDescriptor<QueueItem>())
-        return items.sorted { lhs, rhs in
-            if lhs.position == rhs.position {
-                return lhs.createdAt < rhs.createdAt
-            }
-            return lhs.position < rhs.position
-        }
+        let items = try context.fetch(FetchDescriptor<QueueItem>(
+            sortBy: [
+                SortDescriptor(\QueueItem.position),
+                SortDescriptor(\QueueItem.createdAt)
+            ]
+        ))
+        return items
     }
 
     static func add(_ episode: Episode, in context: ModelContext) throws {
