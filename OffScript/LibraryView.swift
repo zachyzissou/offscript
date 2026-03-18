@@ -385,8 +385,10 @@ private struct PodcastShelfCard: View {
 
 private struct PodcastDetailHeader: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openURL) private var openURL
     let podcast: Podcast
     let episodeCount: Int
+    @State private var showUnsubscribeConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -420,15 +422,46 @@ private struct PodcastDetailHeader: View {
                     .foregroundStyle(Color.offscriptTextSecondary)
             }
 
-            if podcast.isSubscribed {
-                Button("Unsubscribe") {
-                    withAnimation {
-                        podcast.isSubscribed = false
-                        do { try modelContext.save() } catch { libraryLogger.error("Failed to save unsubscribe: \(error.localizedDescription, privacy: .public)") }
+            HStack(spacing: 12) {
+                if podcast.isSubscribed {
+                    Button("Unsubscribe") {
+                        showUnsubscribeConfirmation = true
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.red.opacity(0.85))
+                    .confirmationDialog(
+                        "Unsubscribe from \(podcast.title)?",
+                        isPresented: $showUnsubscribeConfirmation,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Unsubscribe", role: .destructive) {
+                            withAnimation {
+                                podcast.isSubscribed = false
+                                do {
+                                    let queueItems = try QueueService.orderedItems(in: modelContext)
+                                    for item in queueItems where item.episode.podcast.id == podcast.id {
+                                        try QueueService.remove(item, in: modelContext)
+                                    }
+                                    try modelContext.save()
+                                } catch {
+                                    libraryLogger.error("Failed to save unsubscribe: \(error.localizedDescription, privacy: .public)")
+                                }
+                            }
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This will remove the show from your library and dequeue its episodes.")
                     }
                 }
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.red.opacity(0.85))
+
+                if let url = podcast.websiteURL {
+                    Button {
+                        openURL(url)
+                    } label: {
+                        Label("Visit Website", systemImage: "safari")
+                    }
+                    .buttonStyle(SecondaryPillButtonStyle())
+                }
             }
         }
         .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -493,11 +526,17 @@ private struct PodcastEpisodeCard: View {
     }
 
     private var metadata: String {
-        let date = episode.pubDate.formatted(date: .abbreviated, time: .omitted)
-        if let duration = episode.duration {
-            return "\(date) • \(EpisodeDurationFormatter.short(duration))"
+        var parts: [String] = []
+        if let s = episode.seasonNumber, let e = episode.episodeNumber {
+            parts.append("S\(s) E\(e)")
+        } else if let e = episode.episodeNumber {
+            parts.append("E\(e)")
         }
-        return date
+        parts.append(episode.pubDate.formatted(date: .abbreviated, time: .omitted))
+        if let duration = episode.duration {
+            parts.append(EpisodeDurationFormatter.short(duration))
+        }
+        return parts.joined(separator: " \u{2022} ")
     }
 }
 

@@ -49,11 +49,16 @@ final class RecommendationService {
                 .filter { likedEpisodeIDs.contains($0.episodeID) }
                 .flatMap(\.tags)
         )
+        let likedEntities = Set(
+            profiles
+                .filter { likedEpisodeIDs.contains($0.episodeID) }
+                .flatMap(\.entities)
+        )
 
         let scoredEpisodes = episodes
             .filter { !dislikedEpisodeIDs.contains($0.id) }
             .map { episode -> ScoredEpisode in
-                let result = scoreWithExplanation(episode: episode, profiles: profiles, likedTags: likedTags)
+                let result = scoreWithExplanation(episode: episode, profiles: profiles, likedTags: likedTags, likedEntities: likedEntities)
                 return ScoredEpisode(
                     episode: episode,
                     score: result.score,
@@ -109,9 +114,10 @@ final class RecommendationService {
         return allSections
     }
 
-    private func scoreWithExplanation(episode: Episode, profiles: [EpisodeProfile], likedTags: Set<String>) -> (score: Double, explanation: String) {
+    private func scoreWithExplanation(episode: Episode, profiles: [EpisodeProfile], likedTags: Set<String>, likedEntities: Set<String> = []) -> (score: Double, explanation: String) {
         let profile = profiles.first(where: { $0.episodeID == episode.id })
         let matchingTags = Set(profile?.tags ?? []).intersection(likedTags)
+        let matchingEntities = Set(profile?.entities ?? []).intersection(likedEntities)
         let overlap = Double(matchingTags.count)
         let days = max(0, Date().timeIntervalSince(episode.pubDate) / 86_400.0)
         let minutes = (episode.duration ?? 30 * 60) / 60
@@ -130,11 +136,19 @@ final class RecommendationService {
             value += 0.08
         }
 
+        // Boost score for entity overlap
+        if !matchingEntities.isEmpty {
+            value += Double(matchingEntities.count) * 0.04
+        }
+
         // Build data-driven explanation from the strongest signal
         let explanation: String
         if isUnfinished {
             let remaining = max(0, (episode.duration ?? 0) - episode.playedPosition)
             explanation = "\(EpisodeDurationFormatter.short(remaining)) left — pick up where you stopped"
+        } else if !matchingEntities.isEmpty {
+            let sample = Array(matchingEntities.prefix(2)).joined(separator: ", ")
+            explanation = "Mentions \(sample), a topic you've engaged with"
         } else if overlap >= 3 {
             let sample = Array(matchingTags.prefix(2)).joined(separator: ", ")
             explanation = "\(Int(overlap)) topic matches: \(sample)"
@@ -170,6 +184,11 @@ final class RecommendationService {
                 .filter { likedEpisodeIDs.contains($0.episodeID) }
                 .flatMap(\.tags)
         )
+        let likedEntities = Set(
+            profiles
+                .filter { likedEpisodeIDs.contains($0.episodeID) }
+                .flatMap(\.entities)
+        )
 
         // Also boost episodes from the same podcast
         let currentPodcastID = currentEpisode.podcast.id
@@ -178,7 +197,7 @@ final class RecommendationService {
 
         return episodes
             .map { episode -> ScoredEpisode in
-                var result = scoreWithExplanation(episode: episode, profiles: profiles, likedTags: likedTags)
+                var result = scoreWithExplanation(episode: episode, profiles: profiles, likedTags: likedTags, likedEntities: likedEntities)
                 var score = result.score
 
                 // Boost same podcast

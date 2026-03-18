@@ -8,6 +8,7 @@ struct EpisodeDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @ObservedObject private var player = PlaybackController.shared
     @State private var feedbackGiven: PreferenceSignal.Action? = nil
+    @State private var episodeProfile: EpisodeProfile?
     let episode: Episode
 
     private var progressValue: Double {
@@ -88,8 +89,41 @@ struct EpisodeDetailView: View {
                             .buttonStyle(SecondaryPillButtonStyle())
                             .disabled(true)
                     }
+
+                    if episode.isPlayed {
+                        Button("Mark Unplayed") {
+                            withAnimation {
+                                episode.isPlayed = false
+                                episode.playedPosition = 0
+                                do { try modelContext.save() } catch { episodeDetailLogger.error("Failed to mark episode unplayed: \(error.localizedDescription, privacy: .public)") }
+                            }
+                        }
+                        .buttonStyle(SecondaryPillButtonStyle())
+                    }
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
+
+                if let aiSummary = episodeProfile?.summary, !aiSummary.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("AI Summary", systemImage: "sparkles")
+                            .font(.offscriptSectionTitle)
+                            .foregroundStyle(Color.offscriptAccent)
+
+                        Text(aiSummary)
+                            .font(.offscriptBody)
+                            .foregroundStyle(Color.offscriptTextSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.offscriptAccent.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
+                            .stroke(Color.offscriptAccent.opacity(0.2), lineWidth: 1)
+                    )
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+                }
 
                 if let summary = episode.summary {
                     VStack(alignment: .leading, spacing: 10) {
@@ -185,14 +219,28 @@ struct EpisodeDetailView: View {
         .toolbarBackground(Color.offscriptBackgroundTop.opacity(0.98), for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .onAppear {
+            let targetID = episode.id
+            var descriptor = FetchDescriptor<EpisodeProfile>(
+                predicate: #Predicate { $0.episodeID == targetID }
+            )
+            descriptor.fetchLimit = 1
+            episodeProfile = try? modelContext.fetch(descriptor).first
+        }
     }
 
     private var metadata: String {
-        let dateString = episode.pubDate.formatted(date: .abbreviated, time: .omitted)
-        if let duration = episode.duration {
-            return "\(dateString) \u{2022} \(EpisodeDurationFormatter.short(duration))"
+        var parts: [String] = []
+        if let s = episode.seasonNumber, let e = episode.episodeNumber {
+            parts.append("S\(s) E\(e)")
+        } else if let e = episode.episodeNumber {
+            parts.append("E\(e)")
         }
-        return dateString
+        parts.append(episode.pubDate.formatted(date: .abbreviated, time: .omitted))
+        if let duration = episode.duration {
+            parts.append(EpisodeDurationFormatter.short(duration))
+        }
+        return parts.joined(separator: " \u{2022} ")
     }
 
     private var timeRemaining: String {
