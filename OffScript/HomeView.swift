@@ -574,30 +574,28 @@ private struct DiscoveryRailCard: View {
                     )
                 )
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 Button {
                     onPreview()
                 } label: {
-                    VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
                         OffScriptArtworkView(
                             url: scored.result.artworkURL,
-                            cornerRadius: OffScriptTheme.Radius.medium
+                            cornerRadius: 12
                         )
-                        .frame(width: 190, height: 142)
-                        .padding(.top, 4)
+                        .frame(width: 72, height: 72)
 
-                        VStack(alignment: .leading, spacing: 6) {
-                            OffScriptExplanationTag(text: scored.explanation)
-
-                            Text(scored.result.author.uppercased())
-                                .font(.offscriptMicro.weight(.semibold))
-                                .foregroundStyle(Color.offscriptAccent)
-
+                        VStack(alignment: .leading, spacing: 4) {
                             Text(scored.result.title)
                                 .font(.offscriptCardTitle)
                                 .foregroundStyle(Color.offscriptTextPrimary)
                                 .lineLimit(2)
                                 .multilineTextAlignment(.leading)
+
+                            Text(scored.result.author)
+                                .font(.offscriptMeta)
+                                .foregroundStyle(Color.offscriptTextSecondary)
+                                .lineLimit(1)
 
                             if let summary = scored.result.summary {
                                 Text(summary)
@@ -610,24 +608,24 @@ private struct DiscoveryRailCard: View {
                 }
                 .buttonStyle(.plain)
 
-                HStack(spacing: 10) {
+                OffScriptExplanationTag(text: scored.explanation)
+
+                HStack(spacing: 8) {
                     Button("Preview") {
                         onPreview()
                     }
                     .buttonStyle(SecondaryPillButtonStyle())
 
-                    Button(isImporting ? "Adding..." : "Add to Library") {
+                    Button(isImporting ? "Adding..." : "Add") {
                         onAdd()
                     }
                     .buttonStyle(PrimaryPillButtonStyle())
                     .disabled(isImporting)
-
-                    Spacer()
                 }
             }
-            .padding(16)
+            .padding(14)
         }
-        .frame(width: 222, alignment: .leading)
+        .frame(width: 260, alignment: .leading)
         .overlay(
             RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
                 .stroke(Color.offscriptHairline, lineWidth: 1)

@@ -95,21 +95,37 @@ final class TopicExtractionService {
         "question", "answer", "idea", "end", "start", "bit", "sort", "couple",
         "today", "tonight", "tomorrow", "yesterday", "morning", "afternoon",
         "evening", "life", "man", "woman", "guy", "hand", "head", "side",
-        "room", "home", "word", "line", "example", "area", "moment", "reason"
+        "room", "home", "word", "line", "example", "area", "moment", "reason",
+        // HTML/URL noise
+        "href", "https", "http", "www", "com", "org", "net", "html", "htm",
+        "div", "span", "class", "img", "src", "alt", "rel", "target", "blank",
+        "nofollow", "noopener", "noreferrer", "stylesheet", "type", "text",
+        "link", "meta", "charset", "utf", "content", "width", "height",
+        "style", "font", "color", "size", "padding", "margin", "border",
+        "amp", "nbsp", "quot", "apos", "xml", "rss", "url", "uri"
     ]
 
+    private static func stripHTML(_ text: String) -> String {
+        text.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "https?://\\S+", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "&\\w+;", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     static func heuristicTagsAndEntities(from text: String) -> ([String], [String]) {
+        let cleanText = stripHTML(text)
         var tagCounts: [String: Int] = [:]
         var entities: Set<String> = []
 
         let tagger = NLTagger(tagSchemes: [.nameType, .lexicalClass])
-        tagger.string = text
-        let range = text.startIndex..<text.endIndex
+        tagger.string = cleanText
+        let range = cleanText.startIndex..<cleanText.endIndex
         let options: NLTagger.Options = [.omitWhitespace, .omitPunctuation, .omitOther]
 
         tagger.enumerateTags(in: range, unit: .word, scheme: .nameType, options: options) { tag, tokenRange in
             if tag == .personalName || tag == .organizationName || tag == .placeName {
-                let token = String(text[tokenRange])
+                let token = String(cleanText[tokenRange])
                 entities.insert(token)
             }
             return true
@@ -117,7 +133,7 @@ final class TopicExtractionService {
 
         tagger.enumerateTags(in: range, unit: .word, scheme: .lexicalClass, options: options) { tag, tokenRange in
             if tag == .noun {
-                let token = String(text[tokenRange]).lowercased()
+                let token = String(cleanText[tokenRange]).lowercased()
                 if token.count > 2, !stopwords.contains(token) {
                     tagCounts[token, default: 0] += 1
                 }
