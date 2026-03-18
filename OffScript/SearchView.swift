@@ -613,8 +613,10 @@ private struct SearchResultCard: View {
             }
 
             HStack(spacing: 10) {
-                Button("Details") {
+                Button {
                     onPreview()
+                } label: {
+                    Label("Preview", systemImage: "play.fill")
                 }
                 .buttonStyle(SecondaryPillButtonStyle())
 
