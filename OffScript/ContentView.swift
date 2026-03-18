@@ -48,13 +48,18 @@ struct ContentView: View {
                         queueCount: queueItems.count
                     )
 
-                    // MiniPlayer docked at bottom
+                    // MiniPlayer docked at very bottom, extending into safe area
                     if player.currentEpisode != nil {
-                        MiniPlayer()
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        VStack(spacing: 0) {
+                            MiniPlayer()
+                            // Extend background color through the home indicator area
+                            Color.offscriptCardRaised.opacity(0.98)
+                                .frame(height: 34) // home indicator safe area
+                        }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
-                .ignoresSafeArea(.keyboard)
+                .ignoresSafeArea(.container, edges: .bottom)
                 .animation(.spring(response: 0.35, dampingFraction: 0.86), value: player.currentEpisode != nil)
                 .sheet(isPresented: $player.isPlayerPresented) {
                     PlayerView()
@@ -197,16 +202,15 @@ private struct OffScriptTabBar: View {
                 .accessibilityLabel(tab.label)
             }
         }
-        .padding(.top, 10)
-        .padding(.bottom, 6)
-        .background(
-            Color.offscriptCardUtility.opacity(0.98)
-                .overlay(alignment: .top) {
-                    Rectangle()
-                        .fill(Color.offscriptHairline)
-                        .frame(height: 0.5)
-                }
-        )
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+        .background(.regularMaterial)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.offscriptHairline)
+                .frame(height: 0.5)
+        }
+        .environment(\.colorScheme, .dark)
     }
 }
 
