@@ -339,8 +339,11 @@ struct PodcastDetailView: View {
                 } else {
                     LazyVStack(spacing: 14) {
                         ForEach(episodes) { episode in
-                            PodcastEpisodeCard(episode: episode)
-                                .padding(.horizontal, OffScriptTheme.pagePadding)
+                            EpisodeCompactCard(
+                                episode: episode,
+                                showPodcastTitle: false
+                            )
+                            .padding(.horizontal, OffScriptTheme.pagePadding)
                         }
                     }
                 }
@@ -422,98 +425,17 @@ private struct LibraryEpisodeRail: View {
                 .padding(.horizontal, OffScriptTheme.pagePadding)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 18) {
+                HStack(spacing: OffScriptTheme.itemSpacing) {
                     ForEach(episodes) { episode in
-                        LibraryEpisodeCard(episode: episode, reason: reasonProvider(episode))
+                        EpisodeVerticalCard(
+                            episode: episode,
+                            explanationTag: reasonProvider(episode)
+                        )
                     }
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
             }
         }
-    }
-}
-
-private struct LibraryEpisodeCard: View {
-    @Environment(\.modelContext) private var modelContext
-    @ObservedObject private var downloadService = DownloadService.shared
-    let episode: Episode
-    let reason: String
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.offscriptCardRaised, Color.offscriptCardUtility],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            VStack(alignment: .leading, spacing: 12) {
-                NavigationLink {
-                    EpisodeDetailView(episode: episode)
-                } label: {
-                    HStack(alignment: .top, spacing: 14) {
-                        OffScriptArtworkView(
-                            url: episode.artworkURL ?? episode.podcast.artworkURL,
-                            cornerRadius: 18
-                        )
-                        .frame(width: 90, height: 90)
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            OffScriptReasonBadge(text: reason)
-
-                            Text(episode.title)
-                                .font(.offscriptCardTitle)
-                                .foregroundStyle(Color.offscriptTextPrimary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-
-                            Text(episode.podcast.title)
-                                .font(.offscriptBody)
-                                .foregroundStyle(Color.offscriptTextSecondary)
-                                .lineLimit(1)
-
-                            if let downloadStatus = downloadService.statusText(for: episode) {
-                                Text(downloadStatus)
-                                    .font(.offscriptMeta)
-                                    .foregroundStyle(episode.downloadState == .failed ? Color.offscriptDestructive : Color.offscriptTextMuted)
-                                    .lineLimit(2)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                if episode.playedPosition > 0, let duration = episode.duration, duration > 0 {
-                    OffScriptProgressBar(value: episode.playedPosition / duration, height: 4)
-                }
-
-                HStack(spacing: 10) {
-                    Button(episode.playedPosition > 0 ? "Resume" : "Play") {
-                        PlaybackController.shared.play(episode, in: modelContext)
-                    }
-                    .buttonStyle(PrimaryPillButtonStyle())
-
-                    Button(episode.isQueued ? "Queued" : "Queue") {
-                        try? QueueService.add(episode, in: modelContext)
-                    }
-                    .buttonStyle(SecondaryPillButtonStyle())
-                    .disabled(episode.isQueued)
-                }
-            }
-            .padding(16)
-        }
-        .frame(width: 286, alignment: .leading)
-        .overlay(
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                .stroke(Color.offscriptHairline, lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.2), radius: 12, y: 6)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(episode.title), \(episode.podcast.title), \(reason)")
     }
 }
 
@@ -708,84 +630,6 @@ private struct PodcastDetailHeader: View {
     }
 }
 
-private struct PodcastEpisodeCard: View {
-    @Environment(\.modelContext) private var modelContext
-    @ObservedObject private var downloadService = DownloadService.shared
-    let episode: Episode
-
-    private var progressValue: Double {
-        guard let duration = episode.duration, duration > 0 else { return 0 }
-        return episode.playedPosition / duration
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            NavigationLink {
-                EpisodeDetailView(episode: episode)
-            } label: {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(episode.title)
-                        .font(.headline)
-                        .foregroundStyle(Color.offscriptTextPrimary)
-                        .multilineTextAlignment(.leading)
-
-                    Text(metadata)
-                        .font(.offscriptMeta)
-                        .foregroundStyle(Color.offscriptTextMuted)
-
-                    if let summary = episode.summary {
-                        Text(summary.strippingHTML)
-                            .font(.offscriptBody)
-                            .foregroundStyle(Color.offscriptTextSecondary)
-                            .lineLimit(3)
-                            .multilineTextAlignment(.leading)
-                    }
-
-                    if let downloadStatus = downloadService.statusText(for: episode) {
-                        Text(downloadStatus)
-                            .font(.offscriptMeta)
-                            .foregroundStyle(episode.downloadState == .failed ? Color.offscriptDestructive : Color.offscriptTextMuted)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.plain)
-
-            if progressValue > 0 {
-                OffScriptProgressBar(value: progressValue, height: 5)
-            }
-
-            HStack(spacing: 10) {
-                Button(episode.playedPosition > 0 ? "Resume" : "Play") {
-                    PlaybackController.shared.play(episode, in: modelContext)
-                }
-                .buttonStyle(PrimaryPillButtonStyle())
-
-                Button(episode.isQueued ? "Queued" : "Queue") {
-                    try? QueueService.add(episode, in: modelContext)
-                }
-                .buttonStyle(SecondaryPillButtonStyle())
-                .disabled(episode.isQueued)
-
-                DownloadButton(episode: episode)
-            }
-        }
-        .padding(18)
-        .offscriptSurface()
-    }
-
-    private var metadata: String {
-        let date = episode.pubDate.formatted(date: .abbreviated, time: .omitted)
-        if episode.playedPosition > 0, let duration = episode.duration {
-            let remaining = max(0, duration - episode.playedPosition)
-            return "\(date) • \(EpisodeDurationFormatter.short(remaining)) left"
-        }
-        if let duration = episode.duration {
-            return "\(date) • \(EpisodeDurationFormatter.short(duration))"
-        }
-        return date
-    }
-}
 
 private struct FilterRow: View {
     @Binding var selection: EpisodeFilter

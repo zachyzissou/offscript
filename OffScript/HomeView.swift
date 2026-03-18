@@ -407,121 +407,17 @@ private struct RecommendationRail: View {
                 .padding(.horizontal, OffScriptTheme.pagePadding)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 18) {
+                HStack(spacing: OffScriptTheme.itemSpacing) {
                     ForEach(episodes) { episode in
-                        EpisodeRailCard(episode: episode, reason: reasonProvider(episode))
+                        EpisodeVerticalCard(
+                            episode: episode,
+                            explanationTag: reasonProvider(episode)
+                        )
                     }
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
             }
         }
-    }
-}
-
-private struct EpisodeRailCard: View {
-    @Environment(\.modelContext) private var modelContext
-
-    let episode: Episode
-    let reason: String
-
-    private var progressValue: Double {
-        guard let duration = episode.duration, duration > 0 else { return 0 }
-        return episode.playedPosition / duration
-    }
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.offscriptCardRaised, Color.offscriptCardUtility],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            VStack(alignment: .leading, spacing: 12) {
-                NavigationLink {
-                    EpisodeDetailView(episode: episode)
-                } label: {
-                    VStack(alignment: .leading, spacing: 12) {
-                        OffScriptArtworkView(url: episode.artworkURL ?? episode.podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.medium)
-                            .frame(width: 190, height: 142)
-                            .padding(.top, 4)
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            OffScriptExplanationTag(text: reason)
-
-                            Text(episode.podcast.title.uppercased())
-                                .font(.offscriptMicro.weight(.semibold))
-                                .foregroundStyle(Color.offscriptAccent)
-
-                            Text(episode.title)
-                                .font(.offscriptCardTitle)
-                                .foregroundStyle(Color.offscriptTextPrimary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-
-                            Text(metadata)
-                                .font(.offscriptMeta)
-                                .foregroundStyle(Color.offscriptTextMuted)
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-
-                if progressValue > 0 {
-                    OffScriptProgressBar(value: progressValue, height: 4)
-                }
-
-                HStack(spacing: 10) {
-                    Button(episode.playedPosition > 0 ? "Resume" : "Play") {
-                        TelemetryService.track(
-                            "recommendation_opened",
-                            metadata: ["source": "home_rail", "episode": episode.title, "podcast": episode.podcast.title],
-                            in: modelContext
-                        )
-                        PlaybackController.shared.play(episode, in: modelContext)
-                    }
-                    .buttonStyle(PrimaryPillButtonStyle())
-
-                    Button {
-                        try? QueueService.add(episode, in: modelContext)
-                    } label: {
-                        Image(systemName: episode.isQueued ? "checkmark" : "plus")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.offscriptTextPrimary)
-                            .frame(width: 36, height: 36)
-                            .background(Color.offscriptFillLight)
-                            .clipShape(Circle())
-                    }
-                    .disabled(episode.isQueued)
-
-                    Spacer()
-                }
-            }
-            .padding(16)
-        }
-        .frame(width: 222, alignment: .leading)
-        .overlay(
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                .stroke(Color.offscriptHairline, lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.2), radius: 12, y: 6)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(reason)")
-    }
-
-    private var metadata: String {
-        let dateString = episode.pubDate.formatted(date: .abbreviated, time: .omitted)
-        if episode.playedPosition > 0, let duration = episode.duration {
-            let remaining = max(0, duration - episode.playedPosition)
-            return "\(dateString) • \(EpisodeDurationFormatter.short(remaining)) left"
-        }
-        if let duration = episode.duration {
-            return "\(dateString) • \(EpisodeDurationFormatter.short(duration))"
-        }
-        return dateString
     }
 }
 

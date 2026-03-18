@@ -86,14 +86,21 @@ struct QueueView: View {
                         }
 
                         ForEach(Array(orderedItems.enumerated()), id: \.element.id) { index, item in
-                            QueueItemCard(item: item, rank: index + 1, onRemove: {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    try? QueueService.remove(item, in: modelContext)
-                                }
-                            })
+                            EpisodeCompactCard(
+                                episode: item.episode,
+                                onRemove: {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        try? QueueService.remove(item, in: modelContext)
+                                    }
+                                },
+                                rank: index + 1
+                            )
                                 .draggable(item.id.uuidString) {
-                                    QueueItemCard(item: item, rank: index + 1)
-                                        .frame(width: 320)
+                                    EpisodeCompactCard(
+                                        episode: item.episode,
+                                        rank: index + 1
+                                    )
+                                    .frame(width: 320)
                                 }
                                 .dropDestination(for: String.self) { items, _ in
                                     guard let sourceRaw = items.first,
@@ -227,76 +234,3 @@ private struct QueueLeadCard: View {
     }
 }
 
-private struct QueueItemCard: View {
-    @Environment(\.modelContext) private var modelContext
-
-    let item: QueueItem
-    let rank: Int
-    var onRemove: (() -> Void)? = nil
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Text("\(rank)")
-                .font(.headline.weight(.bold))
-                .foregroundStyle(Color.offscriptTextPrimary)
-                .frame(width: 34, height: 34)
-                .background(Color.offscriptFillLight)
-                .clipShape(Circle())
-                .overlay(
-                    Circle().stroke(Color.offscriptHairline, lineWidth: 1)
-                )
-
-            OffScriptArtworkView(url: item.episode.artworkURL ?? item.episode.podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.small)
-                .frame(width: 56, height: 56)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(item.episode.title)
-                    .font(.headline)
-                    .foregroundStyle(Color.offscriptTextPrimary)
-                    .lineLimit(2)
-
-                Text(item.episode.podcast.title)
-                    .font(.offscriptBody)
-                    .foregroundStyle(Color.offscriptTextSecondary)
-                    .lineLimit(1)
-
-                if let duration = item.episode.duration {
-                    Text(EpisodeDurationFormatter.short(duration))
-                        .font(.offscriptMeta)
-                        .foregroundStyle(Color.offscriptTextMuted)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button {
-                PlaybackController.shared.play(item.episode, in: modelContext)
-            } label: {
-                Image(systemName: "play.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.black)
-                    .frame(width: 36, height: 36)
-                    .background(Color.offscriptAccent)
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Play \(item.episode.title)")
-
-            if let onRemove {
-                Button {
-                    onRemove()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.offscriptTextMuted)
-                        .frame(width: 28, height: 28)
-                        .background(Color.offscriptFillSubtle)
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Remove \(item.episode.title) from queue")
-            }
-        }
-        .padding(16)
-        .offscriptUtilitySurface()
-    }
-}
