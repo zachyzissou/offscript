@@ -277,11 +277,15 @@ final class FeedSyncService {
             podcast.syncFailureCount = 0
             podcast.nextRetryAt = nil
 
-            // Use the podcast's persistentModelID for a predicate-filtered fetch
-            // instead of fetching ALL episodes then filtering in memory.
-            let podcastModelID = podcast.persistentModelID
+            // Use the podcast's stable UUID (a stored property) for the
+            // predicate instead of persistentModelID, which SwiftData cannot
+            // always translate into a reliable SQLite query.  A failed
+            // predicate caused the fetch to return zero results, so every
+            // feed item was treated as new — duplicating all episodes on
+            // every sync.
+            let podcastID = podcast.id
             let existingEpisodes = try context.fetch(FetchDescriptor<Episode>(
-                predicate: #Predicate<Episode> { $0.podcast.persistentModelID == podcastModelID }
+                predicate: #Predicate<Episode> { $0.podcast.id == podcastID }
             ))
 
             // Sort by pub date (newest first) and limit if requested

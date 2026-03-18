@@ -217,6 +217,8 @@ private struct HeroRecommendationCard: View {
     let episode: Episode
     let reason: String
 
+    @State private var navigateToDetail = false
+
     private var progressValue: Double {
         guard let duration = episode.duration, duration > 0 else { return 0 }
         return episode.playedPosition / duration
@@ -224,34 +226,39 @@ private struct HeroRecommendationCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Artwork hero zone — larger, more dominant
-            ZStack(alignment: .bottomLeading) {
-                OffScriptArtworkView(
-                    url: episode.artworkURL ?? episode.podcast.artworkURL,
-                    cornerRadius: 0
-                )
-                .frame(height: 200)
-                .clipped()
-                .overlay(
-                    LinearGradient(
-                        colors: [.clear, .clear, Color.offscriptCardStrong.opacity(0.7), Color.offscriptCardStrong],
-                        startPoint: .top,
-                        endPoint: .bottom
+            // Artwork hero zone — tappable for navigation
+            Button {
+                navigateToDetail = true
+            } label: {
+                ZStack(alignment: .bottomLeading) {
+                    OffScriptArtworkView(
+                        url: episode.artworkURL ?? episode.podcast.artworkURL,
+                        cornerRadius: 0
                     )
-                )
+                    .frame(height: 200)
+                    .clipped()
+                    .overlay(
+                        LinearGradient(
+                            colors: [.clear, .clear, Color.offscriptCardStrong.opacity(0.7), Color.offscriptCardStrong],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
 
-                // Overlay the explanation tag on the artwork
-                VStack(alignment: .leading, spacing: 8) {
-                    OffScriptExplanationTag(text: reason)
+                    // Overlay the explanation tag on the artwork
+                    VStack(alignment: .leading, spacing: 8) {
+                        OffScriptExplanationTag(text: reason)
 
-                    Text(episode.podcast.title)
-                        .font(.offscriptMeta.weight(.semibold))
-                        .tracking(0.8)
-                        .foregroundStyle(Color.offscriptTextSecondary)
-                        .lineLimit(1)
+                        Text(episode.podcast.title)
+                            .font(.offscriptMeta.weight(.semibold))
+                            .tracking(0.8)
+                            .foregroundStyle(Color.offscriptTextSecondary)
+                            .lineLimit(1)
+                    }
+                    .padding(20)
                 }
-                .padding(20)
             }
+            .buttonStyle(.plain)
             .clipShape(
                 UnevenRoundedRectangle(
                     topLeadingRadius: OffScriptTheme.Radius.large,
@@ -264,8 +271,8 @@ private struct HeroRecommendationCard: View {
 
             // Content zone
             VStack(alignment: .leading, spacing: 14) {
-                NavigationLink {
-                    EpisodeDetailView(episode: episode)
+                Button {
+                    navigateToDetail = true
                 } label: {
                     Text(episode.title)
                         .font(.system(.title2, design: .serif, weight: .bold))
@@ -335,6 +342,7 @@ private struct HeroRecommendationCard: View {
                             .symbolRenderingMode(.hierarchical)
                             .foregroundStyle(Color.offscriptTextPrimary)
                             .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .accessibilityLabel("Rate this recommendation")
                     .accessibilityHint("Like, dislike, or dismiss this episode")
@@ -342,6 +350,9 @@ private struct HeroRecommendationCard: View {
             }
             .padding(20)
             .padding(.bottom, 4)
+        }
+        .navigationDestination(isPresented: $navigateToDetail) {
+            EpisodeDetailView(episode: episode)
         }
         .background(
             RoundedRectangle(cornerRadius: OffScriptTheme.Radius.large, style: .continuous)

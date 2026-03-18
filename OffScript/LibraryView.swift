@@ -290,11 +290,12 @@ struct PodcastDetailView: View {
 
     init(podcast: Podcast) {
         self.podcast = podcast
-        // Scope the @Query to only episodes belonging to this podcast
-        // instead of fetching ALL episodes and filtering in memory.
-        let podcastModelID = podcast.persistentModelID
+        // Scope the @Query to only episodes belonging to this podcast.
+        // Use the stable UUID instead of persistentModelID, which SwiftData
+        // cannot always translate into a reliable SQLite predicate.
+        let podcastID = podcast.id
         _podcastEpisodes = Query(
-            filter: #Predicate<Episode> { $0.podcast.persistentModelID == podcastModelID },
+            filter: #Predicate<Episode> { $0.podcast.id == podcastID },
             sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]
         )
     }

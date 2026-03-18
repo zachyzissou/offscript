@@ -404,12 +404,14 @@ struct SettingsView: View {
 
     // Use fetchCount to avoid loading all episodes into memory just for stats
     private var episodeCount: Int {
-        (try? modelContext.fetchCount(FetchDescriptor<Episode>())) ?? 0
+        (try? modelContext.fetchCount(FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast.isSubscribed == true }
+        ))) ?? 0
     }
 
     private var unplayedCount: Int {
         (try? modelContext.fetchCount(FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { $0.isPlayed == false }
+            predicate: #Predicate<Episode> { $0.isPlayed == false && $0.podcast.isSubscribed == true }
         ))) ?? 0
     }
 
