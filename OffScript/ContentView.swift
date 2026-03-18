@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var selectedTab = 0
     @State private var isSettingsPresented = false
     @State private var miniPlayerHeight: CGFloat = 0
+    @State private var networkMonitor = NetworkMonitor.shared
     @Query private var queueItems: [QueueItem]
 
     var body: some View {
@@ -87,6 +88,24 @@ struct ContentView: View {
                 OnboardingFlowView {
                     hasSeenOnboarding = true
                 }
+            }
+        }
+        .overlay(alignment: .top) {
+            if !networkMonitor.isConnected {
+                HStack(spacing: 8) {
+                    Image(systemName: "wifi.slash")
+                        .font(.caption.weight(.semibold))
+                    Text("No connection")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(Color.offscriptTextPrimary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.offscriptDestructive.opacity(0.9))
+                .clipShape(Capsule())
+                .padding(.top, 52)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.spring(response: 0.35), value: networkMonitor.isConnected)
             }
         }
         .preferredColorScheme(.dark)
