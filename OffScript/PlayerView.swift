@@ -570,6 +570,7 @@ private struct PlayerTranscriptSection: View {
 
 private struct PlayerAtmosphereBackground: View {
     let url: URL?
+    @State private var breathe = false
 
     var body: some View {
         ZStack {
@@ -585,6 +586,9 @@ private struct PlayerAtmosphereBackground: View {
                         .opacity(0.22)
                         .ignoresSafeArea()
                         .saturation(0.7)
+                        .scaleEffect(breathe ? 1.04 : 1.0)
+                        .animation(.easeInOut(duration: 8).repeatForever(autoreverses: true), value: breathe)
+                        .onAppear { breathe = true }
                 }
             }
 
