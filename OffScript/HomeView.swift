@@ -363,7 +363,7 @@ private struct EpisodeRailCard: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 12) {
                         OffScriptArtworkView(url: episode.artworkURL ?? episode.podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.medium)
-                            .frame(width: 160, height: 160)
+                            .frame(width: 190, height: 142)
                             .padding(.top, 4)
 
                         VStack(alignment: .leading, spacing: 6) {
@@ -415,7 +415,7 @@ private struct EpisodeRailCard: View {
             }
             .padding(16)
         }
-        .frame(width: 196, alignment: .leading)
+        .frame(width: 222, alignment: .leading)
         .overlay(
             RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
                 .stroke(Color.offscriptHairline, lineWidth: 1)

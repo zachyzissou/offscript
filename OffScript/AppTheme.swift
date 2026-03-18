@@ -613,7 +613,7 @@ struct SkeletonRailCard: View {
         VStack(alignment: .leading, spacing: 12) {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(Color.offscriptFillSubtle)
-                .frame(width: 160, height: 160)
+                .frame(width: 190, height: 142)
 
             VStack(alignment: .leading, spacing: 8) {
                 Capsule()
@@ -638,7 +638,7 @@ struct SkeletonRailCard: View {
                 .frame(width: 56, height: 32)
         }
         .padding(16)
-        .frame(width: 196, alignment: .leading)
+        .frame(width: 222, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
                 .fill(Color.offscriptCard)
