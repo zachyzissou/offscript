@@ -1,4 +1,29 @@
+import SafariServices
 import SwiftUI
+
+// MARK: - In-App Safari Browser
+
+struct SafariView: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> SFSafariViewController {
+        let config = SFSafariViewController.Configuration()
+        config.entersReaderIfAvailable = false
+        let vc = SFSafariViewController(url: url, configuration: config)
+        vc.preferredBarTintColor = UIColor(Color.offscriptBackground)
+        vc.preferredControlTintColor = UIColor(Color.offscriptAccent)
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
+}
+
+struct IdentifiableURL: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
+}
+
+// MARK: - Theme
 
 enum OffScriptTheme {
     static let pagePadding: CGFloat = 20

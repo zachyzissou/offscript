@@ -497,6 +497,7 @@ private struct PlayerChaptersSection: View {
 
 private struct PlayerTranscriptSection: View {
     let transcripts: [EpisodeTranscriptReference]
+    @State private var transcriptURL: URL? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -506,7 +507,9 @@ private struct PlayerTranscriptSection: View {
 
             VStack(spacing: 10) {
                 ForEach(transcripts) { transcript in
-                    Link(destination: transcript.url) {
+                    Button {
+                        transcriptURL = transcript.url
+                    } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "captions.bubble.fill")
                                 .font(.body)
@@ -524,7 +527,7 @@ private struct PlayerTranscriptSection: View {
 
                             Spacer()
 
-                            Image(systemName: "arrow.up.right")
+                            Image(systemName: "doc.text")
                                 .font(.footnote.weight(.semibold))
                                 .foregroundStyle(Color.offscriptTextMuted)
                         }
@@ -537,6 +540,13 @@ private struct PlayerTranscriptSection: View {
         }
         .padding(18)
         .offscriptSurface()
+        .sheet(item: Binding(
+            get: { transcriptURL.map { IdentifiableURL(url: $0) } },
+            set: { transcriptURL = $0?.url }
+        )) { item in
+            SafariView(url: item.url)
+                .ignoresSafeArea()
+        }
     }
 }
 

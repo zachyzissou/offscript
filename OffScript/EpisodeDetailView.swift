@@ -6,6 +6,7 @@ struct EpisodeDetailView: View {
     @ObservedObject private var player = PlaybackController.shared
     @ObservedObject private var downloadService = DownloadService.shared
     @State private var feedbackGiven: PreferenceSignal.Action? = nil
+    @State private var transcriptURL: URL? = nil
     let episode: Episode
 
     private var progressValue: Double {
@@ -160,7 +161,9 @@ struct EpisodeDetailView: View {
                             .foregroundStyle(Color.offscriptTextPrimary)
 
                         ForEach(transcriptReferences) { transcript in
-                            Link(destination: transcript.url) {
+                            Button {
+                                transcriptURL = transcript.url
+                            } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: "captions.bubble.fill")
                                         .font(.body)
@@ -177,7 +180,7 @@ struct EpisodeDetailView: View {
 
                                     Spacer()
 
-                                    Image(systemName: "arrow.up.right")
+                                    Image(systemName: "doc.text")
                                         .font(.footnote.weight(.semibold))
                                         .foregroundStyle(Color.offscriptTextMuted)
                                 }
@@ -263,6 +266,13 @@ struct EpisodeDetailView: View {
             }
             .padding(.top, 16)
             .padding(.bottom, 0)
+        }
+        .sheet(item: Binding(
+            get: { transcriptURL.map { IdentifiableURL(url: $0) } },
+            set: { transcriptURL = $0?.url }
+        )) { item in
+            SafariView(url: item.url)
+                .ignoresSafeArea()
         }
         .offscriptPageBackground()
         .navigationTitle("Episode")
