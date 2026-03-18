@@ -460,68 +460,64 @@ private struct DiscoveryRailCard: View {
     let onAdd: () -> Void
 
     var body: some View {
-        ZStack {
+        Button {
+            onPreview()
+        } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                OffScriptArtworkView(
+                    url: scored.result.artworkURL,
+                    cornerRadius: 0
+                )
+                .frame(width: 200, height: 150)
+                .clipped()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    OffScriptExplanationTag(text: scored.explanation)
+
+                    Text(scored.result.title)
+                        .font(.offscriptCardTitle)
+                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    Text(scored.result.author)
+                        .font(.offscriptMicro)
+                        .foregroundStyle(Color.offscriptTextSecondary)
+                        .lineLimit(1)
+
+                    HStack(spacing: 8) {
+                        Button {
+                            onAdd()
+                        } label: {
+                            Image(systemName: isImporting ? "arrow.2.circlepath" : "plus")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(isImporting ? Color.offscriptTextMuted : Color.offscriptAccent)
+                                .frame(width: 36, height: 36)
+                                .background(Color.white.opacity(0.08), in: Circle())
+                        }
+                        .disabled(isImporting)
+
+                        Text(isImporting ? "Adding..." : "Add to Library")
+                            .font(.offscriptMeta)
+                            .foregroundStyle(Color.offscriptTextMuted)
+                    }
+                }
+                .padding(12)
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(width: 200)
+        .background(
             RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [Color.offscriptCardRaised, Color.offscriptCardUtility],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        colors: [Color.offscriptCardRaised, Color.offscriptCard],
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
                 )
-
-            VStack(alignment: .leading, spacing: 10) {
-                Button {
-                    onPreview()
-                } label: {
-                    HStack(alignment: .top, spacing: 12) {
-                        OffScriptArtworkView(
-                            url: scored.result.artworkURL,
-                            cornerRadius: 12
-                        )
-                        .frame(width: 72, height: 72)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(scored.result.title)
-                                .font(.offscriptCardTitle)
-                                .foregroundStyle(Color.offscriptTextPrimary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-
-                            Text(scored.result.author)
-                                .font(.offscriptMeta)
-                                .foregroundStyle(Color.offscriptTextSecondary)
-                                .lineLimit(1)
-
-                            if let summary = scored.result.summary {
-                                Text(summary)
-                                    .font(.offscriptMeta)
-                                    .foregroundStyle(Color.offscriptTextMuted)
-                                    .lineLimit(1)
-                            }
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-
-                OffScriptExplanationTag(text: scored.explanation)
-
-                HStack(spacing: 8) {
-                    Button("Preview") {
-                        onPreview()
-                    }
-                    .buttonStyle(SecondaryPillButtonStyle())
-
-                    Button(isImporting ? "Adding..." : "Add") {
-                        onAdd()
-                    }
-                    .buttonStyle(PrimaryPillButtonStyle())
-                    .disabled(isImporting)
-                }
-            }
-            .padding(14)
-        }
-        .frame(width: 260, alignment: .leading)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
                 .stroke(Color.offscriptHairline, lineWidth: 1)
