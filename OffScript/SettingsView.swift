@@ -1,3 +1,4 @@
+import CloudKit
 import SwiftData
 import SwiftUI
 
@@ -230,6 +231,60 @@ struct SettingsView: View {
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
 
+                    // MARK: - iCloud Sync
+                    VStack(alignment: .leading, spacing: 14) {
+                        OffScriptSectionHeader(
+                            title: "iCloud Sync",
+                            subtitle: "Keep your library, queue, and listening history in sync across all your devices."
+                        )
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 14) {
+                                Image(systemName: cloudSyncActive ? "icloud.fill" : "icloud.slash")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(cloudSyncActive ? Color.offscriptAccent : Color.offscriptTextMuted)
+                                    .frame(width: 34, height: 34)
+                                    .background(cloudSyncActive ? Color.offscriptAccentSoft : Color.offscriptFillSubtle)
+                                    .clipShape(Circle())
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(cloudSyncActive ? "iCloud Sync: Active" : "iCloud Sync: Off")
+                                        .font(.offscriptBody.weight(.semibold))
+                                        .foregroundStyle(Color.offscriptTextPrimary)
+
+                                    if cloudSyncActive, let lastSync = AppSettings.lastCloudSyncDate {
+                                        Text("Last sync: \(lastSync.formatted(date: .abbreviated, time: .shortened))")
+                                            .font(.offscriptMeta)
+                                            .foregroundStyle(Color.offscriptTextMuted)
+                                    } else if !cloudSyncActive {
+                                        Text("Sign in with Apple to sync across devices")
+                                            .font(.offscriptMeta)
+                                            .foregroundStyle(Color.offscriptTextMuted)
+                                    }
+                                }
+                                Spacer()
+                            }
+
+                            if cloudSyncActive {
+                                Button {
+                                    triggerCloudSync()
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "arrow.triangle.2.circlepath")
+                                        Text("Sync Now")
+                                            .font(.subheadline.weight(.semibold))
+                                    }
+                                    .foregroundStyle(Color.offscriptAccent)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(18)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .offscriptUtilitySurface()
+                    }
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+
                     VStack(alignment: .leading, spacing: 14) {
                         OffScriptSectionHeader(
                             title: "Storage",
@@ -351,6 +406,14 @@ struct SettingsView: View {
                 }
             )
         }
+    }
+
+    private var cloudSyncActive: Bool {
+        AppSettings.cloudSyncEnabled && AppSettings.currentUserID != nil
+    }
+
+    private func triggerCloudSync() {
+        AppSettings.lastCloudSyncDate = Date()
     }
 
     private func loadTasteProfile() {

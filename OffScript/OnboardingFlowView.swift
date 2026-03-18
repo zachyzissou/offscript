@@ -113,17 +113,26 @@ struct OnboardingFlowView: View {
 
                 VStack(spacing: 12) {
                     SignInWithAppleButtonView(onComplete: {
+                        // Enable CloudKit sync when user signs in with Apple
+                        if AppSettings.currentUserID != nil {
+                            AppSettings.cloudSyncEnabled = true
+                        }
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { step = 1 }
                     })
                     .frame(height: 52)
                     .staggeredEntrance(index: 3, delay: 0.12)
+
+                    Text("Sign in to sync your library across devices")
+                        .font(.offscriptMeta)
+                        .foregroundStyle(Color.offscriptTextMuted)
+                        .staggeredEntrance(index: 4, delay: 0.12)
 
                     Button("Skip for now") {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { step = 1 }
                     }
                     .font(.offscriptBody)
                     .foregroundStyle(Color.offscriptTextMuted)
-                    .staggeredEntrance(index: 4, delay: 0.12)
+                    .staggeredEntrance(index: 5, delay: 0.12)
                 }
 
                 Spacer(minLength: 40)

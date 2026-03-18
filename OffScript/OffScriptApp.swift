@@ -6,6 +6,7 @@
 //
 
 import BackgroundTasks
+import CloudKit
 import Foundation
 import OSLog
 import SwiftData
@@ -74,7 +75,17 @@ struct OffScriptApp: App {
     }
 
     private static func makeModelContainer(schema: Schema) throws -> ModelContainer {
-        let configuration = ModelConfiguration(schema: schema, url: persistentStoreURL)
+        let cloudKitEnabled = AppSettings.cloudSyncEnabled && AppSettings.currentUserID != nil
+        let configuration = ModelConfiguration(
+            schema: schema,
+            url: persistentStoreURL,
+            cloudKitDatabase: cloudKitEnabled ? .automatic : .none
+        )
+        if cloudKitEnabled {
+            logger.info("CloudKit sync enabled — creating ModelContainer with iCloud backing")
+        } else {
+            logger.info("CloudKit sync disabled — using local-only ModelContainer")
+        }
         return try ModelContainer(
             for: schema,
             migrationPlan: OffScriptMigrationPlan.self,

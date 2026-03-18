@@ -5,23 +5,23 @@ import SwiftData
 final class Podcast {
     private static let listSeparator = "\u{1F}"
 
-    @Attribute(.unique) var id: UUID
-    var title: String
+    var id: UUID = UUID()
+    var title: String = ""
     var author: String?
     var summary: String?
-    var feedURL: URL
+    var feedURL: URL = URL(string: "https://placeholder.invalid")!
     var websiteURL: URL?
     var artworkURL: URL?
-    private var categoriesStorage: String
-    var isSubscribed: Bool
+    private var categoriesStorage: String = ""
+    var isSubscribed: Bool = true
     var subscribedAt: Date?
     var latestPubDate: Date?
     var lastSyncAt: Date?
     var lastSyncAttemptAt: Date?
     var feedETag: String?
     var feedLastModified: String?
-    var syncStatus: String
-    var syncFailureCount: Int
+    var syncStatus: String = "idle"
+    var syncFailureCount: Int = 0
     var syncErrorMessage: String?
     var nextRetryAt: Date?
 
@@ -73,19 +73,19 @@ final class Episode {
         case failed
     }
 
-    @Attribute(.unique) var id: UUID
-    var guid: String
-    var title: String
+    var id: UUID = UUID()
+    var guid: String = ""
+    var title: String = ""
     var summary: String?
-    var pubDate: Date
+    var pubDate: Date = Date.distantPast
     var duration: TimeInterval?
-    var audioURL: URL
+    var audioURL: URL = URL(string: "https://placeholder.invalid")!
     var artworkURL: URL?
     var localFileURL: URL?
-    private var downloadStateRawValue: String
-    private var chaptersStorage: String
-    private var transcriptReferencesStorage: String
-    var downloadProgress: Double
+    private var downloadStateRawValue: String = DownloadState.notDownloaded.rawValue
+    private var chaptersStorage: String = ""
+    private var transcriptReferencesStorage: String = ""
+    var downloadProgress: Double = 0
     var downloadRequestedAt: Date?
     var downloadCompletedAt: Date?
     var downloadErrorMessage: String?
@@ -196,9 +196,9 @@ final class Episode {
 
 @Model
 final class QueueItem {
-    @Attribute(.unique) var id: UUID
+    var id: UUID = UUID()
     var createdAt: Date = Date()
-    var position: Int
+    var position: Int = 0
     @Relationship(deleteRule: .noAction)
     var episode: Episode
 
@@ -223,8 +223,8 @@ final class PlaybackEvent {
     }
 
     var date: Date = Date()
-    private var kindRawValue: String
-    var position: TimeInterval
+    private var kindRawValue: String = Kind.started.rawValue
+    var position: TimeInterval = 0
     @Relationship(deleteRule: .noAction)
     var episode: Episode?
 
@@ -244,7 +244,7 @@ final class PlaybackEvent {
 final class PreferenceSignal {
     enum Action: String, Codable { case like, notInterested, moreLikeThis, lessLikeThis }
     var date: Date = Date()
-    private var actionRawValue: String
+    private var actionRawValue: String = Action.like.rawValue
     @Relationship(deleteRule: .noAction)
     var episode: Episode?
 
@@ -263,7 +263,7 @@ final class PreferenceSignal {
 final class UserTasteProfile {
     private static let listSeparator = "\u{1F}"
 
-    @Attribute(.unique) var id: String
+    var id: String = "primary"
     private var preferredGenresStorage: String
     private var topTagsStorage: String
     private var showAffinityStorage: String
@@ -318,7 +318,7 @@ final class UserTasteProfile {
 final class EpisodeProfile {
     private static let listSeparator = "\u{1F}"
 
-    @Attribute(.unique) var episodeID: UUID
+    var episodeID: UUID = UUID()
     private var tagsStorage: String = ""
     private var entitiesStorage: String = ""
     var summary: String?
@@ -398,10 +398,10 @@ final class TelemetryEvent {
     private static let pairSeparator = "\u{1E}"
     private static let valueSeparator = "\u{1F}"
 
-    @Attribute(.unique) var id: UUID
-    var name: String
-    var createdAt: Date
-    private var metadataStorage: String
+    var id: UUID = UUID()
+    var name: String = ""
+    var createdAt: Date = Date()
+    private var metadataStorage: String = ""
 
     init(id: UUID = UUID(), name: String, createdAt: Date = .now, metadata: [String: String] = [:]) {
         self.id = id

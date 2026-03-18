@@ -34,6 +34,8 @@ enum AppSettings {
         static let recentSearches = "offscript.recentSearches"
         static let libraryShowDownloadedOnly = "offscript.libraryShowDownloadedOnly"
         static let librarySortMode = "offscript.librarySortMode"
+        static let cloudSyncEnabled = "offscript.cloudSyncEnabled"
+        static let lastCloudSyncDate = "offscript.lastCloudSyncDate"
     }
 
     enum LibrarySortMode: String, CaseIterable {
@@ -91,6 +93,16 @@ enum AppSettings {
             return mode
         }
         set { defaults.set(newValue.rawValue, forKey: Key.librarySortMode) }
+    }
+
+    static var cloudSyncEnabled: Bool {
+        get { defaults.bool(forKey: Key.cloudSyncEnabled) }
+        set { defaults.set(newValue, forKey: Key.cloudSyncEnabled) }
+    }
+
+    static var lastCloudSyncDate: Date? {
+        get { defaults.object(forKey: Key.lastCloudSyncDate) as? Date }
+        set { defaults.set(newValue, forKey: Key.lastCloudSyncDate) }
     }
 
     static var currentUserID: String? {
