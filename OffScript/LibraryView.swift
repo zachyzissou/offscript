@@ -427,6 +427,8 @@ private struct LibraryEpisodeCard: View {
                 .stroke(Color.offscriptHairline, lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.2), radius: 12, y: 6)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(episode.title), \(episode.podcast.title), \(reason)")
     }
 }
 
@@ -561,6 +563,8 @@ private struct PodcastShelfCard: View {
         }
         .padding(18)
         .offscriptSurface()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(podcast.title)\(podcast.author.map { ", by \($0)" } ?? ""), \(unplayedCount) unplayed")
     }
 }
 

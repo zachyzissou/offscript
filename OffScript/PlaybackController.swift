@@ -61,14 +61,11 @@ final class PlaybackController: ObservableObject {
         player.replaceCurrentItem(with: item)
 
         let savedPosition = episode.playedPosition
-        let profile = episodeProfile(for: episode)
-        let introSkip = profile?.introSkipSeconds ?? 0
-        let startPosition = savedPosition > 0 ? savedPosition : introSkip
 
-        if startPosition > 0 {
-            let time = CMTime(seconds: startPosition, preferredTimescale: 600)
+        if savedPosition > 0 {
+            let time = CMTime(seconds: savedPosition, preferredTimescale: 600)
             player.seek(to: time)
-            currentTime = startPosition
+            currentTime = savedPosition
         } else {
             currentTime = 0
         }
@@ -217,7 +214,6 @@ final class PlaybackController: ObservableObject {
                     duration = itemDuration
                 }
 
-                applyOutroSkipIfNeeded()
                 persistPlaybackProgress()
             }
         }
@@ -294,18 +290,6 @@ final class PlaybackController: ObservableObject {
             lastPersistedPosition = currentTime
         }
         updateNowPlaying(episode: episode)
-    }
-
-    private func applyOutroSkipIfNeeded() {
-        guard let episode = currentEpisode,
-              duration > 0,
-              !isFinishingCurrentEpisode else { return }
-
-        let outroSkip = episodeProfile(for: episode)?.outroSkipSeconds ?? 0
-        guard outroSkip > 0 else { return }
-        if currentTime >= max(duration - outroSkip, 0), !episode.isPlayed {
-            completeCurrentEpisode(markFromPosition: duration, shouldAutoAdvance: true)
-        }
     }
 
     private func configureAudioSession() {
@@ -484,11 +468,5 @@ final class PlaybackController: ObservableObject {
         default:
             break
         }
-    }
-
-    private func episodeProfile(for episode: Episode) -> EpisodeProfile? {
-        guard let modelContext else { return nil }
-        return try? modelContext.fetch(FetchDescriptor<EpisodeProfile>())
-            .first(where: { $0.episodeID == episode.id })
     }
 }

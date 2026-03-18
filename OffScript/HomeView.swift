@@ -122,11 +122,9 @@ struct HomeView: View {
     private func loadSections() async {
         do {
             let loaded = try recommendationService.homeSections(context: modelContext)
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                sections = loaded
-                errorMessage = nil
-                isLoading = false
-            }
+            sections = loaded
+            errorMessage = nil
+            isLoading = false
         } catch {
             errorMessage = error.localizedDescription
             isLoading = false

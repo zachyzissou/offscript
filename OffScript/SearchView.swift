@@ -237,14 +237,14 @@ struct SearchView: View {
             return
         }
 
+        isSearching = true
+        defer { isSearching = false }
+
         do {
             try await Task.sleep(for: .milliseconds(300))
         } catch {
             return
         }
-
-        isSearching = true
-        defer { isSearching = false }
 
         do {
             results = try await searchService.search(query: trimmed)
@@ -597,6 +597,8 @@ private struct SearchResultCard: View {
         }
         .padding(18)
         .offscriptUtilitySurface()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(result.title) by \(result.author)\(isAdded ? ", in library" : "")")
     }
 }
 

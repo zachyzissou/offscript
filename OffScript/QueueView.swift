@@ -213,6 +213,8 @@ private struct QueueLeadCard: View {
         }
         .padding(22)
         .offscriptSurface(radius: OffScriptTheme.Radius.large, prominent: true)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Next up: \(item.episode.title) from \(item.episode.podcast.title)")
     }
 }
 

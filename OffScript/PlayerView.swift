@@ -224,11 +224,6 @@ struct PlayerView: View {
         .presentationDragIndicator(.visible)
     }
 
-    private var progressValue: Double {
-        guard player.duration > 0 else { return 0 }
-        return player.currentTime / player.duration
-    }
-
     private var remainingTime: String {
         let remaining = max(player.duration - player.currentTime, 0)
         return "-\(time(remaining))"

@@ -1,15 +1,6 @@
 import Foundation
 import SwiftData
 
-protocol PodcastSearchProviding {
-    func search(query: String) async throws -> [PodcastSearchResult]
-}
-
-protocol FeedSyncProviding {
-    func importPodcast(from result: PodcastSearchResult, into context: ModelContext, episodeLimit: Int?) async throws -> Podcast
-    func sync(podcast: Podcast, in context: ModelContext, episodeLimit: Int?) async throws
-}
-
 struct PodcastPreviewEpisode: Identifiable, Hashable {
     let id: String
     let title: String
@@ -57,7 +48,7 @@ enum PodcastPreviewService {
     }
 }
 
-struct PodcastSearchService: PodcastSearchProviding {
+struct PodcastSearchService {
     func search(query: String) async throws -> [PodcastSearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
@@ -158,7 +149,7 @@ private struct ItunesLookupResult: Decodable {
     let artworkUrl600: String?
 }
 
-final class FeedSyncService: FeedSyncProviding {
+final class FeedSyncService {
     private let topicExtractionService = TopicExtractionService()
 
     @MainActor
