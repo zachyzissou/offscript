@@ -58,8 +58,10 @@ struct SearchView: View {
                         }
                     )
 
+                    // Show featured results immediately after genre selection — not below the fold
                     if isLoadingFeatured {
                         FeaturedSearchLoadingSection()
+                            .transition(.opacity)
                     } else if let selectedGenre, !featuredResults.isEmpty {
                         FeaturedResultsSection(
                             genre: selectedGenre,
@@ -76,6 +78,7 @@ struct SearchView: View {
                             },
                             onAdd: { result in Task { await add(result, source: "featured_genre") } }
                         )
+                        .transition(.opacity)
                     }
 
                     if !recentSearches.isEmpty {
@@ -436,19 +439,18 @@ private struct BrowseGenresSection: View {
             )
             .padding(.horizontal, OffScriptTheme.pagePadding)
 
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 120), spacing: 10)],
-                alignment: .leading,
-                spacing: 10
-            ) {
-                ForEach(genres) { genre in
-                    Button {
-                        onSelect(genre)
-                    } label: {
-                        Label(genre.title, systemImage: genre.systemImage)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(genres) { genre in
+                        Button {
+                            onSelect(genre)
+                        } label: {
+                            Label(genre.title, systemImage: genre.systemImage)
+                        }
+                        .modifier(GenreBrowseButtonStyle(isSelected: selectedGenre == genre))
                     }
-                    .modifier(GenreBrowseButtonStyle(isSelected: selectedGenre == genre))
                 }
+                .padding(.horizontal, OffScriptTheme.pagePadding)
             }
             .padding(.horizontal, OffScriptTheme.pagePadding)
         }
