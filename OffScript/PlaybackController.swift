@@ -302,7 +302,7 @@ final class PlaybackController: ObservableObject {
     private func configureAudioSession() {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio, options: [.allowAirPlay])
+        try? session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio)
         try? session.setActive(true)
         #endif
     }
