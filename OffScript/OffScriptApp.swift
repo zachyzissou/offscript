@@ -27,6 +27,14 @@ struct OffScriptApp: App {
         UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
     }
 
+    // MARK: - Destructive Migration (Pre-Release)
+    // During development the SwiftData schema changes frequently. Rather than
+    // maintaining a full VersionedSchema + SchemaMigrationPlan, we simply
+    // delete the on-disk store when a schema mismatch is detected and let
+    // SwiftData recreate it from scratch. This is acceptable while the app is
+    // pre-release — all persisted data is re-fetchable from the network.
+    //
+    // TODO: Replace with VersionedSchema migrations before production release.
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Podcast.self,
@@ -41,10 +49,12 @@ struct OffScriptApp: App {
         do {
             return try Self.makeModelContainer(schema: schema)
         } catch {
-            Self.logger.error("Primary SwiftData store failed to load: \(String(describing: error), privacy: .public)")
+            Self.logger.error("Primary SwiftData store failed to load (likely schema mismatch): \(String(describing: error), privacy: .public)")
 
+            // Destructive migration: wipe the store and recreate from scratch.
             do {
                 try Self.resetPersistentStore()
+                Self.logger.info("Persistent store deleted — recreating with current schema")
                 return try Self.makeModelContainer(schema: schema)
             } catch {
                 Self.logger.fault("SwiftData store recovery failed: \(String(describing: error), privacy: .public)")
