@@ -600,7 +600,7 @@ private struct PodcastDetailHeader: View {
             }
 
             if let summary = podcast.summary {
-                Text(summary)
+                Text(summary.strippingHTML)
                     .font(.offscriptBody)
                     .foregroundStyle(Color.offscriptTextSecondary)
             }
@@ -646,7 +646,7 @@ private struct PodcastEpisodeCard: View {
                         .foregroundStyle(Color.offscriptTextMuted)
 
                     if let summary = episode.summary {
-                        Text(summary)
+                        Text(summary.strippingHTML)
                             .font(.offscriptBody)
                             .foregroundStyle(Color.offscriptTextSecondary)
                             .lineLimit(3)

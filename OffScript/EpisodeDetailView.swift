@@ -113,7 +113,7 @@ struct EpisodeDetailView: View {
                             .font(.offscriptSectionTitle)
                             .foregroundStyle(Color.offscriptTextPrimary)
 
-                        Text(summary)
+                        Text(summary.strippingHTML)
                             .font(.offscriptBody)
                             .foregroundStyle(Color.offscriptTextSecondary)
                             .fixedSize(horizontal: false, vertical: true)

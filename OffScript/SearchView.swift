@@ -201,7 +201,12 @@ struct SearchView: View {
                 result: result,
                 isAdded: subscribedFeedURLs.contains(result.feedURL.absoluteString),
                 isImporting: importingID == result.id,
-                onAdd: { Task { await add(result, source: "detail_preview") } }
+                onAdd: { Task { await add(result, source: "detail_preview") } },
+                onNavigateToShow: {
+                    if let podcast = podcasts.first(where: { $0.feedURL == result.feedURL }) {
+                        navigatedPodcast = podcast
+                    }
+                }
             )
         }
         .navigationDestination(item: $navigatedPodcast) { podcast in
@@ -563,7 +568,7 @@ private struct SearchResultCard: View {
             }
 
             if let summary = result.summary {
-                Text(summary)
+                Text(summary.strippingHTML)
                     .font(.offscriptBody)
                     .foregroundStyle(Color.offscriptTextSecondary)
                     .lineLimit(2)
@@ -637,6 +642,7 @@ private struct SearchResultDetailView: View {
     let isAdded: Bool
     let isImporting: Bool
     let onAdd: () -> Void
+    var onNavigateToShow: (() -> Void)?
 
     @State private var preview: PodcastPreviewSnapshot?
     @State private var isLoadingPreview = true
@@ -751,28 +757,46 @@ private struct SearchResultDetailView: View {
                                 .foregroundStyle(Color.offscriptTextPrimary)
 
                             ForEach(preview.latestEpisodes.prefix(4)) { episode in
-                                VStack(alignment: .leading, spacing: 6) {
-                                    HStack {
-                                        Text(episode.title)
-                                            .font(.offscriptBody.weight(.semibold))
-                                            .foregroundStyle(Color.offscriptTextPrimary)
-                                            .lineLimit(2)
-                                        Spacer()
-                                        if let duration = episode.duration {
-                                            Text(EpisodeDurationFormatter.short(duration))
+                                Button {
+                                    if isAdded {
+                                        dismiss()
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                            onNavigateToShow?()
+                                        }
+                                    } else {
+                                        onAdd()
+                                    }
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack {
+                                            Text(episode.title)
+                                                .font(.offscriptBody.weight(.semibold))
+                                                .foregroundStyle(Color.offscriptTextPrimary)
+                                                .lineLimit(2)
+                                            Spacer()
+                                            if let duration = episode.duration {
+                                                Text(EpisodeDurationFormatter.short(duration))
+                                                    .font(.offscriptMeta)
+                                                    .foregroundStyle(Color.offscriptTextMuted)
+                                            }
+                                        }
+
+                                        if let pubDate = episode.pubDate {
+                                            Text(pubDate.formatted(date: .abbreviated, time: .omitted))
                                                 .font(.offscriptMeta)
                                                 .foregroundStyle(Color.offscriptTextMuted)
                                         }
-                                    }
 
-                                    if let pubDate = episode.pubDate {
-                                        Text(pubDate.formatted(date: .abbreviated, time: .omitted))
-                                            .font(.offscriptMeta)
-                                            .foregroundStyle(Color.offscriptTextMuted)
+                                        if !isAdded {
+                                            Text("Tap to add show to library")
+                                                .font(.offscriptMeta)
+                                                .foregroundStyle(Color.offscriptAccent)
+                                        }
                                     }
+                                    .padding(14)
+                                    .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
                                 }
-                                .padding(14)
-                                .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
+                                .buttonStyle(.plain)
                             }
                         }
                         .padding(.horizontal, OffScriptTheme.pagePadding)
