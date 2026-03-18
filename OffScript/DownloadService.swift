@@ -134,6 +134,26 @@ final class DownloadService: NSObject, ObservableObject {
         resumeQueuedDownloadsIfNeeded()
     }
 
+    func deleteAllDownloads() {
+        guard let modelContext else { return }
+        objectWillChange.send()
+        let descriptor = FetchDescriptor<Episode>(predicate: #Predicate<Episode> { $0.isDownloaded == true })
+        guard let downloaded = try? modelContext.fetch(descriptor) else { return }
+        for episode in downloaded {
+            deleteDownload(for: episode)
+        }
+    }
+
+    var totalDownloadSizeBytes: Int64 {
+        let supportURL = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+        guard let downloadsURL = supportURL?.appending(path: "Downloads") else { return 0 }
+        guard let files = try? FileManager.default.contentsOfDirectory(at: downloadsURL, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
+        return files.reduce(0) { total, url in
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+            return total + Int64(size)
+        }
+    }
+
     func localURL(for episode: Episode) -> URL? {
         guard let localFileURL = episode.localFileURL else { return nil }
         if FileManager.default.fileExists(atPath: localFileURL.path) {

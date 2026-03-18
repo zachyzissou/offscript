@@ -85,6 +85,35 @@ struct SettingsView: View {
 
                     VStack(alignment: .leading, spacing: 14) {
                         OffScriptSectionHeader(
+                            title: "Storage",
+                            subtitle: "Manage downloaded episodes and free up space."
+                        )
+
+                        HStack(spacing: 16) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Downloads")
+                                    .font(.offscriptCardTitle)
+                                    .foregroundStyle(Color.offscriptTextPrimary)
+                                Text(downloadStorageLabel)
+                                    .font(.offscriptMeta)
+                                    .foregroundStyle(Color.offscriptTextMuted)
+                            }
+                            Spacer()
+                            if downloadStorageBytes > 0 {
+                                Button("Clear All") {
+                                    DownloadService.shared.deleteAllDownloads()
+                                }
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Color.offscriptDestructive)
+                            }
+                        }
+                        .padding(18)
+                        .offscriptUtilitySurface()
+                    }
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        OffScriptSectionHeader(
                             title: "Diagnostics",
                             subtitle: "A quick read on sync health, offline readiness, and the event trail from this build."
                         )
@@ -234,5 +263,17 @@ struct SettingsView: View {
         (try? modelContext.fetchCount(FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { $0.isDownloaded == true }
         ))) ?? 0
+    }
+
+    private var downloadStorageBytes: Int64 {
+        DownloadService.shared.totalDownloadSizeBytes
+    }
+
+    private var downloadStorageLabel: String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return downloadStorageBytes > 0
+            ? "\(offlineReadyCount) episodes, \(formatter.string(fromByteCount: downloadStorageBytes))"
+            : "No downloads"
     }
 }
