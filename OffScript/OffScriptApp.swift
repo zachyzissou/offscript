@@ -76,20 +76,37 @@ struct OffScriptApp: App {
 
     private static func makeModelContainer(schema: Schema) throws -> ModelContainer {
         let cloudKitEnabled = AppSettings.cloudSyncEnabled && AppSettings.currentUserID != nil
-        let configuration = ModelConfiguration(
+
+        if cloudKitEnabled {
+            // Try CloudKit first, fall back to local if it fails (e.g., no dev account)
+            do {
+                let cloudConfig = ModelConfiguration(
+                    schema: schema,
+                    url: persistentStoreURL,
+                    cloudKitDatabase: .automatic
+                )
+                logger.info("CloudKit sync enabled — creating ModelContainer with iCloud backing")
+                return try ModelContainer(
+                    for: schema,
+                    migrationPlan: OffScriptMigrationPlan.self,
+                    configurations: [cloudConfig]
+                )
+            } catch {
+                logger.warning("CloudKit ModelContainer failed, falling back to local: \(String(describing: error), privacy: .public)")
+                // Fall through to local-only
+            }
+        }
+
+        let localConfig = ModelConfiguration(
             schema: schema,
             url: persistentStoreURL,
-            cloudKitDatabase: cloudKitEnabled ? .automatic : .none
+            cloudKitDatabase: .none
         )
-        if cloudKitEnabled {
-            logger.info("CloudKit sync enabled — creating ModelContainer with iCloud backing")
-        } else {
-            logger.info("CloudKit sync disabled — using local-only ModelContainer")
-        }
+        logger.info("Using local-only ModelContainer")
         return try ModelContainer(
             for: schema,
             migrationPlan: OffScriptMigrationPlan.self,
-            configurations: [configuration]
+            configurations: [localConfig]
         )
     }
 
