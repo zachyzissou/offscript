@@ -11,5 +11,10 @@
 		<string>PlayfairDisplay-Variable.ttf</string>
 		<string>PlayfairDisplay-Italic-Variable.ttf</string>
 	</array>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
 </dict>
 </plist>
