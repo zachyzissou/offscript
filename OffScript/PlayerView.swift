@@ -27,8 +27,8 @@ struct PlayerView: View {
                         let nextItem = orderedQueueItems.first
                         let chapters = episode.resolvedChapters
                         let transcripts = episode.transcriptReferences
-                        let downloadStatus = DownloadService.shared.statusText(for: episode)
                         let isOfflineReady = DownloadService.shared.localURL(for: episode) != nil
+                        let _ = DownloadService.shared.statusText(for: episode) // keep observation
 
                         ScrollView {
                             VStack(spacing: 18) {
@@ -49,29 +49,32 @@ struct PlayerView: View {
                                         .font(.headline)
                                         .foregroundStyle(Color.offscriptTextSecondary)
 
-                                    HStack(spacing: 10) {
-                                        OffScriptReasonBadge(text: timePublisher.currentTime > 0 ? "In session" : "Now playing")
+                                    HStack(spacing: 8) {
                                         if let duration = episode.duration {
-                                            OffScriptReasonBadge(text: EpisodeDurationFormatter.short(duration))
+                                            Text(EpisodeDurationFormatter.short(duration))
+                                                .font(.offscriptMeta)
+                                                .foregroundStyle(Color.offscriptTextMuted)
                                         }
-                                        OffScriptReasonBadge(text: isOfflineReady ? "Offline ready" : "Streaming")
+                                        if isOfflineReady {
+                                            Image(systemName: "arrow.down.circle.fill")
+                                                .font(.caption)
+                                                .foregroundStyle(Color.offscriptAccent)
+                                        }
                                         if !transcripts.isEmpty {
-                                            OffScriptReasonBadge(text: "Transcript")
+                                            Image(systemName: "captions.bubble.fill")
+                                                .font(.caption)
+                                                .foregroundStyle(Color.offscriptAccent)
                                         }
                                         if let sleepTimerEndDate = player.sleepTimerEndDate {
-                                            OffScriptReasonBadge(text: "Sleep \(sleepTimerEndDate.formatted(date: .omitted, time: .shortened))")
+                                            Text("Sleep \(sleepTimerEndDate.formatted(date: .omitted, time: .shortened))")
+                                                .font(.offscriptMeta)
+                                                .foregroundStyle(Color.offscriptTextMuted)
                                         }
                                     }
 
-                                    if let downloadStatus {
-                                        Text(downloadStatus)
-                                            .font(.offscriptMeta)
-                                            .foregroundStyle(Color.offscriptTextMuted)
-                                            .multilineTextAlignment(.center)
-                                    }
                                 }
 
-                                VStack(alignment: .leading, spacing: 16) {
+                                VStack(spacing: 8) {
                                     OffScriptScrubber(
                                         value: Binding(
                                             get: { timePublisher.currentTime },
@@ -88,10 +91,7 @@ struct PlayerView: View {
                                     }
                                     .font(.offscriptMeta.monospacedDigit())
                                     .foregroundStyle(Color.offscriptTextMuted)
-
                                 }
-                                .padding(20)
-                                .offscriptSurface()
                                 .frame(maxWidth: 440)
 
                                 HStack(spacing: 18) {
@@ -157,14 +157,11 @@ struct PlayerView: View {
                                         Label(String(format: "%.2gx", player.playbackRate), systemImage: "speedometer")
                                     }
                                     .buttonStyle(SecondaryPillButtonStyle())
-                                    .accessibilityLabel("Playback speed, currently \(String(format: "%.2gx", player.playbackRate))")
-                                    .accessibilityHint("Opens menu to change playback speed")
 
                                     Menu {
                                         Button("Play Next") {
                                             try? QueueService.playNext(episode, in: modelContext)
                                         }
-
                                         Button("Add to End") {
                                             try? QueueService.addToEnd(episode, in: modelContext)
                                         }
@@ -173,43 +170,33 @@ struct PlayerView: View {
                                     }
                                     .buttonStyle(SecondaryPillButtonStyle())
                                     .disabled(episode.isQueued)
-                                    .accessibilityLabel(episode.isQueued ? "Episode already in queue" : "Add to queue")
-                                    .accessibilityHint(episode.isQueued ? "" : "Opens menu to add this episode to the queue")
 
                                     Button("Mark Played") {
                                         player.completeCurrentEpisode(shouldAutoAdvance: false)
                                     }
                                     .buttonStyle(PrimaryPillButtonStyle())
-                                    .accessibilityLabel("Mark episode as played")
-                                    .accessibilityHint("Marks this episode complete without auto-advancing")
                                 }
 
                                 HStack(spacing: 10) {
                                     Menu {
-                                        Button("Sleep in 15 min") { player.setSleepTimer(minutes: 15) }
-                                        Button("Sleep in 30 min") { player.setSleepTimer(minutes: 30) }
-                                        Button("Sleep in 60 min") { player.setSleepTimer(minutes: 60) }
+                                        Button("15 minutes") { player.setSleepTimer(minutes: 15) }
+                                        Button("30 minutes") { player.setSleepTimer(minutes: 30) }
+                                        Button("60 minutes") { player.setSleepTimer(minutes: 60) }
                                         if player.sleepTimerEndDate != nil {
-                                            Button("Cancel Sleep Timer", role: .destructive) { player.cancelSleepTimer() }
+                                            Button("Cancel Timer", role: .destructive) { player.cancelSleepTimer() }
                                         }
                                     } label: {
-                                        Label("Sleep", systemImage: "moon.zzz.fill")
+                                        Image(systemName: "moon.zzz.fill")
                                     }
                                     .buttonStyle(SecondaryPillButtonStyle())
-                                    .accessibilityLabel(player.sleepTimerEndDate != nil ? "Sleep timer active" : "Sleep timer")
-                                    .accessibilityHint("Opens menu to set or cancel a sleep timer")
 
                                     AirPlayRouteButton()
-                                        .frame(width: 52, height: 40)
-                                        .accessibilityLabel("AirPlay")
-                                        .accessibilityHint("Select audio output device")
+                                        .frame(width: 44, height: 36)
 
                                     ShareLink(item: episode.audioURL) {
-                                        Label("Share", systemImage: "square.and.arrow.up")
+                                        Image(systemName: "square.and.arrow.up")
                                     }
                                     .buttonStyle(SecondaryPillButtonStyle())
-                                    .accessibilityLabel("Share episode")
-                                    .accessibilityHint("Opens the share sheet for this episode's audio")
 
                                     DownloadButton(episode: episode)
                                 }
