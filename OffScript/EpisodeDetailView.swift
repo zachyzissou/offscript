@@ -29,40 +29,43 @@ struct EpisodeDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
-                HStack(alignment: .top, spacing: 18) {
-                    OffScriptArtworkView(
-                        url: episode.artworkURL ?? episode.podcast.artworkURL,
-                        cornerRadius: OffScriptTheme.Radius.large
-                    )
-                    .frame(width: 122, height: 122)
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .top, spacing: 18) {
+                        OffScriptArtworkView(
+                            url: episode.artworkURL ?? episode.podcast.artworkURL,
+                            cornerRadius: OffScriptTheme.Radius.large
+                        )
+                        .frame(width: 96, height: 96)
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(episode.podcast.title.uppercased())
-                            .font(.offscriptMicro.weight(.semibold))
-                            .foregroundStyle(Color.offscriptAccent)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(episode.podcast.title.uppercased())
+                                .font(.offscriptMicro.weight(.semibold))
+                                .foregroundStyle(Color.offscriptAccent)
+                                .lineLimit(1)
 
-                        Text(episode.title)
-                            .font(.offscriptDisplay)
-                            .foregroundStyle(Color.offscriptTextPrimary)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        HStack(spacing: 8) {
-                            Label(metadata, systemImage: "clock")
-                                .font(.offscriptMeta)
-                                .foregroundStyle(Color.offscriptTextMuted)
-                        }
-
-                        HStack(spacing: 8) {
-                            if episode.isPlayed {
-                                OffScriptReasonBadge(text: "Played")
-                            } else if episode.playedPosition > 0 {
-                                OffScriptReasonBadge(text: "In progress")
+                            HStack(spacing: 8) {
+                                Label(metadata, systemImage: "clock")
+                                    .font(.offscriptMeta)
+                                    .foregroundStyle(Color.offscriptTextMuted)
                             }
-                            if episode.isQueued {
-                                OffScriptReasonBadge(text: "Queued")
+
+                            HStack(spacing: 8) {
+                                if episode.isPlayed {
+                                    OffScriptReasonBadge(text: "Played")
+                                } else if episode.playedPosition > 0 {
+                                    OffScriptReasonBadge(text: "In progress")
+                                }
+                                if episode.isQueued {
+                                    OffScriptReasonBadge(text: "Queued")
+                                }
                             }
                         }
                     }
+
+                    Text(episode.title)
+                        .font(.offscriptDisplay)
+                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .lineLimit(4)
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
 

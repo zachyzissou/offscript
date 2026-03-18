@@ -411,6 +411,7 @@ struct PrimaryPillButtonStyle: ButtonStyle {
         configuration.label
             .font(.subheadline.weight(.bold))
             .foregroundStyle(.black)
+            .lineLimit(1)
             .padding(.horizontal, 18)
             .padding(.vertical, 13)
             .background(Color.offscriptAccent.opacity(configuration.isPressed ? 0.78 : 1.0))
@@ -428,6 +429,7 @@ struct SecondaryPillButtonStyle: ButtonStyle {
         configuration.label
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(Color.offscriptTextPrimary)
+            .lineLimit(1)
             .padding(.horizontal, 16)
             .padding(.vertical, 11)
             .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.08))
