@@ -82,6 +82,25 @@ struct QueueView: View {
                                     try? QueueService.remove(item, in: modelContext)
                                 }
                             })
+                                .draggable(item.id.uuidString) {
+                                    QueueItemCard(item: item, rank: index + 1)
+                                        .frame(width: 320)
+                                }
+                                .dropDestination(for: String.self) { items, _ in
+                                    guard let sourceRaw = items.first,
+                                          let sourceID = UUID(uuidString: sourceRaw),
+                                          let sourceIndex = orderedItems.firstIndex(where: { $0.id == sourceID }),
+                                          let targetIndex = orderedItems.firstIndex(where: { $0.id == item.id }),
+                                          sourceIndex != targetIndex else {
+                                        return false
+                                    }
+
+                                    let destination = sourceIndex < targetIndex ? targetIndex + 1 : targetIndex
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        try? QueueService.move(from: IndexSet(integer: sourceIndex), to: destination, in: modelContext)
+                                    }
+                                    return true
+                                }
                                 .contextMenu {
                                     if index > 0 {
                                         Button {
@@ -116,11 +135,14 @@ struct QueueView: View {
                 }
             }
             .padding(.top, 16)
-            .padding(.bottom, 90)
+            .padding(.bottom, 0)
         }
         .offscriptPageBackground()
         .navigationTitle("Queue")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.offscriptBackgroundTop.opacity(0.98), for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
     }
 }
 

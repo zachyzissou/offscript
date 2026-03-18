@@ -1,3 +1,4 @@
+import AVKit
 import SwiftData
 import SwiftUI
 
@@ -23,6 +24,10 @@ struct PlayerView: View {
                     GeometryReader { proxy in
                         let artworkSize = min(max(proxy.size.width - 168, 196), 272)
                         let nextItem = orderedQueueItems.first
+                        let chapters = episode.resolvedChapters
+                        let transcripts = episode.transcriptReferences
+                        let downloadStatus = DownloadService.shared.statusText(for: episode)
+                        let isOfflineReady = DownloadService.shared.localURL(for: episode) != nil
 
                         ScrollView {
                             VStack(spacing: 18) {
@@ -48,6 +53,20 @@ struct PlayerView: View {
                                         if let duration = episode.duration {
                                             OffScriptReasonBadge(text: EpisodeDurationFormatter.short(duration))
                                         }
+                                        OffScriptReasonBadge(text: isOfflineReady ? "Offline ready" : "Streaming")
+                                        if !transcripts.isEmpty {
+                                            OffScriptReasonBadge(text: "Transcript")
+                                        }
+                                        if let sleepTimerEndDate = player.sleepTimerEndDate {
+                                            OffScriptReasonBadge(text: "Sleep \(sleepTimerEndDate.formatted(date: .omitted, time: .shortened))")
+                                        }
+                                    }
+
+                                    if let downloadStatus {
+                                        Text(downloadStatus)
+                                            .font(.offscriptMeta)
+                                            .foregroundStyle(Color.offscriptTextMuted)
+                                            .multilineTextAlignment(.center)
                                     }
                                 }
 
@@ -102,6 +121,16 @@ struct PlayerView: View {
                                         .frame(maxWidth: 440)
                                 }
 
+                                if !chapters.isEmpty {
+                                    PlayerChaptersSection(chapters: chapters)
+                                        .frame(maxWidth: 440)
+                                }
+
+                                if !transcripts.isEmpty {
+                                    PlayerTranscriptSection(transcripts: transcripts)
+                                        .frame(maxWidth: 440)
+                                }
+
                                 PlayerWhatsNextSection(currentEpisode: episode)
                                     .frame(maxWidth: 440)
 
@@ -124,19 +153,48 @@ struct PlayerView: View {
                                     }
                                     .buttonStyle(SecondaryPillButtonStyle())
 
-                                    if !episode.isQueued {
-                                        Button("Queue Next") {
-                                            try? QueueService.add(episode, in: modelContext)
+                                    Menu {
+                                        Button("Play Next") {
+                                            try? QueueService.playNext(episode, in: modelContext)
                                         }
-                                        .buttonStyle(SecondaryPillButtonStyle())
+
+                                        Button("Add to End") {
+                                            try? QueueService.addToEnd(episode, in: modelContext)
+                                        }
+                                    } label: {
+                                        Label(episode.isQueued ? "Queued" : "Queue", systemImage: "text.badge.plus")
                                     }
+                                    .buttonStyle(SecondaryPillButtonStyle())
+                                    .disabled(episode.isQueued)
 
                                     Button("Mark Played") {
-                                        episode.isPlayed = true
-                                        episode.playedPosition = player.duration
-                                        try? modelContext.save()
+                                        player.completeCurrentEpisode(shouldAutoAdvance: false)
                                     }
                                     .buttonStyle(PrimaryPillButtonStyle())
+                                }
+
+                                HStack(spacing: 10) {
+                                    Menu {
+                                        Button("Sleep in 15 min") { player.setSleepTimer(minutes: 15) }
+                                        Button("Sleep in 30 min") { player.setSleepTimer(minutes: 30) }
+                                        Button("Sleep in 60 min") { player.setSleepTimer(minutes: 60) }
+                                        if player.sleepTimerEndDate != nil {
+                                            Button("Cancel Sleep Timer", role: .destructive) { player.cancelSleepTimer() }
+                                        }
+                                    } label: {
+                                        Label("Sleep", systemImage: "moon.zzz.fill")
+                                    }
+                                    .buttonStyle(SecondaryPillButtonStyle())
+
+                                    AirPlayRouteButton()
+                                        .frame(width: 52, height: 40)
+
+                                    ShareLink(item: episode.audioURL) {
+                                        Label("Share", systemImage: "square.and.arrow.up")
+                                    }
+                                    .buttonStyle(SecondaryPillButtonStyle())
+
+                                    DownloadButton(episode: episode)
                                 }
 
                                 Spacer(minLength: 8)
@@ -185,6 +243,18 @@ struct PlayerView: View {
     }
 }
 
+private struct AirPlayRouteButton: UIViewRepresentable {
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let view = AVRoutePickerView()
+        view.activeTintColor = UIColor(Color.offscriptAccent)
+        view.tintColor = UIColor(Color.offscriptTextPrimary)
+        view.prioritizesVideoDevices = false
+        return view
+    }
+
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
+}
+
 private struct PlayerCircleButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -222,38 +292,54 @@ private struct PlayerCircleButton: View {
 }
 
 private struct PlayerUpNextStrip: View {
+    @ObservedObject private var player = PlaybackController.shared
     let item: QueueItem
 
     var body: some View {
-        HStack(spacing: 14) {
-            OffScriptArtworkView(
-                url: item.episode.artworkURL ?? item.episode.podcast.artworkURL,
-                cornerRadius: OffScriptTheme.Radius.small
-            )
-            .frame(width: 56, height: 56)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 14) {
+                OffScriptArtworkView(
+                    url: item.episode.artworkURL ?? item.episode.podcast.artworkURL,
+                    cornerRadius: OffScriptTheme.Radius.small
+                )
+                .frame(width: 56, height: 56)
 
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
-                    OffScriptReasonBadge(text: "Up Next")
-                    if let duration = item.episode.duration {
-                        Text(EpisodeDurationFormatter.short(duration))
-                            .font(.offscriptMeta)
-                            .foregroundStyle(Color.offscriptTextMuted)
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 8) {
+                        OffScriptReasonBadge(text: "Up Next")
+                        if let duration = item.episode.duration {
+                            Text(EpisodeDurationFormatter.short(duration))
+                                .font(.offscriptMeta)
+                                .foregroundStyle(Color.offscriptTextMuted)
+                        }
                     }
+
+                    Text(item.episode.title)
+                        .font(.headline)
+                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .lineLimit(2)
+
+                    Text(item.episode.podcast.title)
+                        .font(.offscriptBody)
+                        .foregroundStyle(Color.offscriptTextSecondary)
+                        .lineLimit(1)
                 }
 
-                Text(item.episode.title)
-                    .font(.headline)
-                    .foregroundStyle(Color.offscriptTextPrimary)
-                    .lineLimit(2)
-
-                Text(item.episode.podcast.title)
-                    .font(.offscriptBody)
-                    .foregroundStyle(Color.offscriptTextSecondary)
-                    .lineLimit(1)
+                Spacer()
             }
 
-            Spacer()
+            HStack(spacing: 10) {
+                Text("Autoplays when this episode ends.")
+                    .font(.offscriptMeta)
+                    .foregroundStyle(Color.offscriptTextMuted)
+
+                Spacer()
+
+                Button("Play Next Now") {
+                    player.skipToNextInQueue()
+                }
+                .buttonStyle(SecondaryPillButtonStyle())
+            }
         }
         .padding(18)
         .offscriptSurface()
@@ -288,12 +374,12 @@ private struct PlayerWhatsNextSection: View {
                 .offscriptSurface()
             }
         }
-        .onAppear { loadSuggestions() }
+        .task(id: currentEpisode.id) { loadSuggestions() }
     }
 
     @MainActor
     private func loadSuggestions() {
-        guard suggestions.isEmpty else { return }
+        suggestions = []
         if let results = try? recommendationService.playerSuggestions(
             currentEpisode: currentEpisode,
             context: modelContext,
@@ -335,6 +421,15 @@ private struct PlayerSuggestionRow: View {
             Spacer()
 
             Button {
+                TelemetryService.track(
+                    "recommendation_opened",
+                    metadata: [
+                        "source": "player",
+                        "episode": scored.episode.title,
+                        "podcast": scored.episode.podcast.title
+                    ],
+                    in: modelContext
+                )
                 PlaybackController.shared.play(scored.episode, in: modelContext)
             } label: {
                 Image(systemName: "play.fill")
@@ -347,6 +442,106 @@ private struct PlayerSuggestionRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Play \(scored.episode.title)")
         }
+    }
+}
+
+private struct PlayerChaptersSection: View {
+    let chapters: [EpisodeChapter]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Chapters")
+                .font(.offscriptSectionTitle)
+                .foregroundStyle(Color.offscriptTextPrimary)
+
+            VStack(spacing: 10) {
+                ForEach(chapters) { chapter in
+                    Button {
+                        PlaybackController.shared.seek(to: chapter.startTime)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Text(Self.timestamp(chapter.startTime))
+                                .font(.offscriptMeta.monospacedDigit())
+                                .foregroundStyle(Color.offscriptAccent)
+                                .frame(width: 46, alignment: .leading)
+
+                            Text(chapter.title)
+                                .font(.offscriptBody)
+                                .foregroundStyle(Color.offscriptTextPrimary)
+                                .multilineTextAlignment(.leading)
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Color.offscriptTextMuted)
+                        }
+                        .padding(14)
+                        .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Jump to \(chapter.title) at \(Self.timestamp(chapter.startTime))")
+                }
+            }
+        }
+        .padding(18)
+        .offscriptSurface()
+    }
+
+    private static func timestamp(_ seconds: TimeInterval) -> String {
+        let totalSeconds = Int(seconds)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let remainder = totalSeconds % 60
+        if hours > 0 {
+            return "\(hours):\(String(format: "%02d", minutes)):\(String(format: "%02d", remainder))"
+        }
+        return "\(minutes):\(String(format: "%02d", remainder))"
+    }
+}
+
+private struct PlayerTranscriptSection: View {
+    let transcripts: [EpisodeTranscriptReference]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Transcript")
+                .font(.offscriptSectionTitle)
+                .foregroundStyle(Color.offscriptTextPrimary)
+
+            VStack(spacing: 10) {
+                ForEach(transcripts) { transcript in
+                    Link(destination: transcript.url) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "captions.bubble.fill")
+                                .font(.body)
+                                .foregroundStyle(Color.offscriptAccent)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(transcript.displayTitle)
+                                    .font(.offscriptBody.weight(.semibold))
+                                    .foregroundStyle(Color.offscriptTextPrimary)
+
+                                Text(transcript.accessoryLabel)
+                                    .font(.offscriptMeta)
+                                    .foregroundStyle(Color.offscriptTextMuted)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "arrow.up.right")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Color.offscriptTextMuted)
+                        }
+                        .padding(14)
+                        .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(18)
+        .offscriptSurface()
     }
 }
 

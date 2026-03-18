@@ -2,10 +2,14 @@ import AuthenticationServices
 import SwiftUI
 
 struct OnboardingFlowView: View {
-    @AppStorage("offscript.hasSeenOnboarding") private var hasSeenOnboarding = false
+    let onComplete: (() -> Void)?
     @State private var step = 0
     @State private var selectedGenres: Set<Genre> = []
     @State private var selectedPodcasts: [PodcastSearchResult] = []
+
+    init(onComplete: (() -> Void)? = nil) {
+        self.onComplete = onComplete
+    }
 
     var body: some View {
         ZStack {
@@ -62,7 +66,10 @@ struct OnboardingFlowView: View {
                 ImportProgressView(
                     podcasts: selectedPodcasts,
                     selectedGenres: selectedGenres,
-                    onComplete: { hasSeenOnboarding = true }
+                    onComplete: {
+                        AppSettings.hasSeenOnboarding = true
+                        onComplete?()
+                    }
                 )
                 .transition(.asymmetric(
                     insertion: .move(edge: .trailing).combined(with: .opacity),
@@ -166,7 +173,7 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
                 let displayName = [credential.fullName?.givenName, credential.fullName?.familyName]
                     .compactMap { $0 }
                     .joined(separator: " ")
-                try? UserProfileService.saveCredential(
+                try? AppSettings.saveCredential(
                     userID: credential.user,
                     displayName: displayName.isEmpty ? nil : displayName
                 )
@@ -179,4 +186,3 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
         }
     }
 }
-

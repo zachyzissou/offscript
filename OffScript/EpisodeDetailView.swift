@@ -4,6 +4,7 @@ import SwiftUI
 struct EpisodeDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @ObservedObject private var player = PlaybackController.shared
+    @ObservedObject private var downloadService = DownloadService.shared
     @State private var feedbackGiven: PreferenceSignal.Action? = nil
     let episode: Episode
 
@@ -14,6 +15,14 @@ struct EpisodeDetailView: View {
 
     private var isCurrentlyPlaying: Bool {
         player.currentEpisode?.id == episode.id
+    }
+
+    private var chapters: [EpisodeChapter] {
+        episode.resolvedChapters
+    }
+
+    private var transcriptReferences: [EpisodeTranscriptReference] {
+        episode.transcriptReferences
     }
 
     var body: some View {
@@ -85,8 +94,17 @@ struct EpisodeDetailView: View {
                             .buttonStyle(SecondaryPillButtonStyle())
                             .disabled(true)
                     }
+
+                    DownloadButton(episode: episode)
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
+
+                if let downloadStatus = downloadService.statusText(for: episode) {
+                    Text(downloadStatus)
+                        .font(.offscriptMeta)
+                        .foregroundStyle(Color.offscriptTextMuted)
+                        .padding(.horizontal, OffScriptTheme.pagePadding)
+                }
 
                 if let summary = episode.summary {
                     VStack(alignment: .leading, spacing: 10) {
@@ -98,6 +116,76 @@ struct EpisodeDetailView: View {
                             .font(.offscriptBody)
                             .foregroundStyle(Color.offscriptTextSecondary)
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+                }
+
+                if !chapters.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Chapters")
+                            .font(.offscriptSectionTitle)
+                            .foregroundStyle(Color.offscriptTextPrimary)
+
+                        ForEach(chapters) { chapter in
+                            Button {
+                                PlaybackController.shared.play(episode, in: modelContext)
+                                PlaybackController.shared.seek(to: chapter.startTime)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Text(timestamp(chapter.startTime))
+                                        .font(.offscriptMeta.monospacedDigit())
+                                        .foregroundStyle(Color.offscriptAccent)
+                                        .frame(width: 50, alignment: .leading)
+
+                                    Text(chapter.title)
+                                        .font(.offscriptBody)
+                                        .foregroundStyle(Color.offscriptTextPrimary)
+                                        .multilineTextAlignment(.leading)
+
+                                    Spacer()
+                                }
+                                .padding(14)
+                                .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+                }
+
+                if !transcriptReferences.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Transcripts")
+                            .font(.offscriptSectionTitle)
+                            .foregroundStyle(Color.offscriptTextPrimary)
+
+                        ForEach(transcriptReferences) { transcript in
+                            Link(destination: transcript.url) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "captions.bubble.fill")
+                                        .font(.body)
+                                        .foregroundStyle(Color.offscriptAccent)
+
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(transcript.displayTitle)
+                                            .font(.offscriptBody.weight(.semibold))
+                                            .foregroundStyle(Color.offscriptTextPrimary)
+                                        Text(transcript.accessoryLabel)
+                                            .font(.offscriptMeta)
+                                            .foregroundStyle(Color.offscriptTextMuted)
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(Color.offscriptTextMuted)
+                                }
+                                .padding(14)
+                                .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
                 }
@@ -174,7 +262,7 @@ struct EpisodeDetailView: View {
                 .padding(.horizontal, OffScriptTheme.pagePadding)
             }
             .padding(.top, 16)
-            .padding(.bottom, 90)
+            .padding(.bottom, 0)
         }
         .offscriptPageBackground()
         .navigationTitle("Episode")
@@ -201,5 +289,17 @@ struct EpisodeDetailView: View {
     private func register(_ action: PreferenceSignal.Action) {
         modelContext.insert(PreferenceSignal(action: action, episode: episode))
         try? modelContext.save()
+        try? TasteProfileService.refresh(in: modelContext)
+    }
+
+    private func timestamp(_ seconds: TimeInterval) -> String {
+        let totalSeconds = Int(seconds)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let remainder = totalSeconds % 60
+        if hours > 0 {
+            return "\(hours):\(String(format: "%02d", minutes)):\(String(format: "%02d", remainder))"
+        }
+        return "\(minutes):\(String(format: "%02d", remainder))"
     }
 }

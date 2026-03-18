@@ -4,27 +4,49 @@ import SwiftUI
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var podcasts: [Podcast]
-    @Query(sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]) private var episodes: [Episode]
+    // Scope to subscribed podcasts at the database level to avoid loading all episodes
+    @Query(
+        filter: #Predicate<Episode> { $0.podcast.isSubscribed == true },
+        sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]
+    ) private var episodes: [Episode]
+    @State private var showDownloadedOnly = AppSettings.libraryShowDownloadedOnly
+    @State private var sortMode = AppSettings.LibrarySortMode.newest
     let onOpenSettings: () -> Void
-
-    private let syncService = FeedSyncService()
 
     private var subscribedPodcasts: [Podcast] {
         podcasts
             .filter(\.isSubscribed)
-            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            .sorted(by: comparePodcasts)
     }
 
     private var inProgressEpisodes: [Episode] {
         episodes
-            .filter { $0.podcast.isSubscribed && $0.playedPosition > 0 && !$0.isPlayed }
+            .filter { $0.playedPosition > 0 && !$0.isPlayed }
+            .filter { !showDownloadedOnly || $0.downloadState == .downloaded }
             .sorted { ($0.lastPlayedAt ?? .distantPast) > ($1.lastPlayedAt ?? .distantPast) }
     }
 
     private var freshEpisodes: [Episode] {
         episodes
-            .filter { $0.podcast.isSubscribed && !$0.isPlayed }
+            .filter { !$0.isPlayed }
+            .filter { !showDownloadedOnly || $0.downloadState == .downloaded }
             .sorted { $0.pubDate > $1.pubDate }
+    }
+
+    private var downloadedEpisodes: [Episode] {
+        episodes
+            .filter { $0.downloadState == .downloaded }
+            .sorted { ($0.downloadCompletedAt ?? .distantPast) > ($1.downloadCompletedAt ?? .distantPast) }
+    }
+
+    private var downloadActivityEpisodes: [Episode] {
+        episodes
+            .filter { $0.downloadState == .queued || $0.downloadState == .downloading || $0.downloadState == .failed }
+            .sorted { lhs, rhs in
+                let lhsDate = lhs.downloadRequestedAt ?? lhs.pubDate
+                let rhsDate = rhs.downloadRequestedAt ?? rhs.pubDate
+                return lhsDate > rhsDate
+            }
     }
 
     var body: some View {
@@ -33,7 +55,9 @@ struct LibraryView: View {
                 LibraryHeader(
                     showCount: subscribedPodcasts.count,
                     unplayedCount: freshEpisodes.count,
-                    inProgressCount: inProgressEpisodes.count
+                    inProgressCount: inProgressEpisodes.count,
+                    downloadedCount: downloadedEpisodes.count,
+                    showDownloadedOnly: showDownloadedOnly
                 )
 
                 if subscribedPodcasts.isEmpty {
@@ -76,6 +100,24 @@ struct LibraryView: View {
                         )
                     }
 
+                    if !downloadActivityEpisodes.isEmpty {
+                        LibraryDownloadActivitySection(episodes: downloadActivityEpisodes)
+                    }
+
+                    if !downloadedEpisodes.isEmpty {
+                        LibraryEpisodeRail(
+                            title: "Downloaded",
+                            subtitle: "Ready when the signal drops.",
+                            episodes: Array(downloadedEpisodes.prefix(10)),
+                            reasonProvider: { episode in
+                                if let duration = episode.duration {
+                                    return "Offline • \(EpisodeDurationFormatter.short(duration))"
+                                }
+                                return "Offline"
+                            }
+                        )
+                    }
+
                     VStack(alignment: .leading, spacing: 14) {
                         OffScriptSectionHeader(
                             title: "Shows",
@@ -102,7 +144,7 @@ struct LibraryView: View {
                 }
             }
             .padding(.top, 16)
-            .padding(.bottom, 90)
+            .padding(.bottom, 0)
         }
         .offscriptPageBackground()
         .navigationTitle("Library")
@@ -119,27 +161,65 @@ struct LibraryView: View {
                 .accessibilityLabel("Open settings")
                 .accessibilityHint("Adjust playback and recommendation preferences")
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Toggle("Downloaded only", isOn: $showDownloadedOnly)
+
+                    Picker("Sort library", selection: $sortMode) {
+                        Text("Newest").tag(AppSettings.LibrarySortMode.newest)
+                        Text("Oldest").tag(AppSettings.LibrarySortMode.oldest)
+                        Text("Recently Played").tag(AppSettings.LibrarySortMode.recentlyPlayed)
+                    }
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                }
+                .accessibilityLabel("Filter library")
+            }
+        }
+        .task {
+            sortMode = AppSettings.librarySortMode
+        }
+        .onChange(of: showDownloadedOnly) { _, newValue in
+            AppSettings.libraryShowDownloadedOnly = newValue
+        }
+        .onChange(of: sortMode) { _, newValue in
+            AppSettings.librarySortMode = newValue
         }
     }
 
     @MainActor
     private func syncSubscriptions() async {
-        for podcast in subscribedPodcasts {
-            try? await syncService.sync(podcast: podcast, in: modelContext)
+        await SyncCoordinator.shared.refreshSubscriptions(subscribedPodcasts, force: true)
+    }
+
+    private func comparePodcasts(_ lhs: Podcast, _ rhs: Podcast) -> Bool {
+        switch sortMode {
+        case .newest:
+            return (lhs.latestPubDate ?? .distantPast) > (rhs.latestPubDate ?? .distantPast)
+        case .oldest:
+            return (lhs.latestPubDate ?? .distantFuture) < (rhs.latestPubDate ?? .distantFuture)
+        case .recentlyPlayed:
+            return lastPlayedDate(for: lhs) > lastPlayedDate(for: rhs)
         }
+    }
+
+    private func lastPlayedDate(for podcast: Podcast) -> Date {
+        episodes
+            .filter { $0.podcast.id == podcast.id }
+            .compactMap(\.lastPlayedAt)
+            .max() ?? .distantPast
     }
 }
 
 struct PodcastDetailView: View {
     @Environment(\.modelContext) private var modelContext
     let podcast: Podcast
-    @Query(sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]) private var allEpisodes: [Episode]
+    @Query private var podcastEpisodes: [Episode]
     @State private var filter: EpisodeFilter = .all
     @State private var episodeSearchQuery = ""
 
     private var episodes: [Episode] {
-        let filtered = allEpisodes
-            .filter { $0.podcast.id == podcast.id }
+        let filtered = podcastEpisodes
             .filter { filter.matches($0) }
 
         if episodeSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -155,6 +235,13 @@ struct PodcastDetailView: View {
 
     init(podcast: Podcast) {
         self.podcast = podcast
+        // Scope the @Query to only episodes belonging to this podcast
+        // instead of fetching ALL episodes and filtering in memory.
+        let podcastModelID = podcast.persistentModelID
+        _podcastEpisodes = Query(
+            filter: #Predicate<Episode> { $0.podcast.persistentModelID == podcastModelID },
+            sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]
+        )
     }
 
     var body: some View {
@@ -178,7 +265,7 @@ struct PodcastDetailView: View {
                 }
             }
             .padding(.top, 16)
-            .padding(.bottom, 90)
+            .padding(.bottom, 0)
         }
         .offscriptPageBackground()
         .navigationTitle(podcast.title)
@@ -191,6 +278,8 @@ private struct LibraryHeader: View {
     let showCount: Int
     let unplayedCount: Int
     let inProgressCount: Int
+    let downloadedCount: Int
+    let showDownloadedOnly: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -208,6 +297,11 @@ private struct LibraryHeader: View {
                 LibraryStatPill(label: "Shows", value: "\(showCount)")
                 LibraryStatPill(label: "Unplayed", value: "\(unplayedCount)")
                 LibraryStatPill(label: "In Progress", value: "\(inProgressCount)")
+                LibraryStatPill(label: "Downloads", value: "\(downloadedCount)")
+            }
+
+            if showDownloadedOnly {
+                OffScriptReasonBadge(text: "Downloaded only")
             }
         }
         .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -260,6 +354,7 @@ private struct LibraryEpisodeRail: View {
 
 private struct LibraryEpisodeCard: View {
     @Environment(\.modelContext) private var modelContext
+    @ObservedObject private var downloadService = DownloadService.shared
     let episode: Episode
     let reason: String
 
@@ -298,6 +393,13 @@ private struct LibraryEpisodeCard: View {
                                 .font(.offscriptBody)
                                 .foregroundStyle(Color.offscriptTextSecondary)
                                 .lineLimit(1)
+
+                            if let downloadStatus = downloadService.statusText(for: episode) {
+                                Text(downloadStatus)
+                                    .font(.offscriptMeta)
+                                    .foregroundStyle(episode.downloadState == .failed ? Color.offscriptDestructive : Color.offscriptTextMuted)
+                                    .lineLimit(2)
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -325,6 +427,82 @@ private struct LibraryEpisodeCard: View {
                 .stroke(Color.offscriptHairline, lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.2), radius: 12, y: 6)
+    }
+}
+
+private struct LibraryDownloadActivitySection: View {
+    let episodes: [Episode]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            OffScriptSectionHeader(
+                title: "Download Activity",
+                subtitle: "Watch offline saves finish, or retry anything that got interrupted."
+            )
+            .padding(.horizontal, OffScriptTheme.pagePadding)
+
+            LazyVStack(spacing: 12) {
+                ForEach(episodes) { episode in
+                    LibraryDownloadStatusCard(episode: episode)
+                        .padding(.horizontal, OffScriptTheme.pagePadding)
+                }
+            }
+        }
+    }
+}
+
+private struct LibraryDownloadStatusCard: View {
+    @ObservedObject private var downloadService = DownloadService.shared
+    let episode: Episode
+
+    var body: some View {
+        HStack(spacing: 14) {
+            OffScriptArtworkView(url: episode.artworkURL ?? episode.podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.small)
+                .frame(width: 54, height: 54)
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    OffScriptReasonBadge(text: stateLabel)
+
+                    if let duration = episode.duration {
+                        Text(EpisodeDurationFormatter.short(duration))
+                            .font(.offscriptMeta)
+                            .foregroundStyle(Color.offscriptTextMuted)
+                    }
+                }
+
+                Text(episode.title)
+                    .font(.headline)
+                    .foregroundStyle(Color.offscriptTextPrimary)
+                    .lineLimit(2)
+
+                Text(downloadService.statusText(for: episode) ?? "Offline status unknown")
+                    .font(.offscriptMeta)
+                    .foregroundStyle(episode.downloadState == .failed ? Color.offscriptDestructive : Color.offscriptTextSecondary)
+                    .lineLimit(2)
+            }
+
+            Spacer()
+
+            DownloadButton(episode: episode)
+        }
+        .padding(16)
+        .offscriptUtilitySurface()
+    }
+
+    private var stateLabel: String {
+        switch episode.downloadState {
+        case .queued:
+            return "Queued"
+        case .downloading:
+            return "Downloading"
+        case .failed:
+            return "Needs Retry"
+        case .downloaded:
+            return "Offline"
+        case .notDownloaded:
+            return "Not Saved"
+        }
     }
 }
 
@@ -356,12 +534,22 @@ private struct PodcastShelfCard: View {
                         OffScriptReasonBadge(text: "\(inProgressCount) in progress")
                     }
                     OffScriptReasonBadge(text: "\(unplayedCount) unplayed")
+                    if podcast.syncStatus == "failed" {
+                        OffScriptReasonBadge(text: "Sync issue")
+                    }
                 }
 
                 if let latestPubDate = podcast.latestPubDate {
                     Text("Updated \(latestPubDate.formatted(date: .abbreviated, time: .omitted))")
                         .font(.offscriptMeta)
                         .foregroundStyle(Color.offscriptTextMuted)
+                }
+
+                if let syncErrorMessage = podcast.syncErrorMessage, podcast.syncStatus == "failed" {
+                    Text(syncErrorMessage)
+                        .font(.offscriptMeta)
+                        .foregroundStyle(Color.offscriptDestructive)
+                        .lineLimit(2)
                 }
             }
 
@@ -430,6 +618,7 @@ private struct PodcastDetailHeader: View {
 
 private struct PodcastEpisodeCard: View {
     @Environment(\.modelContext) private var modelContext
+    @ObservedObject private var downloadService = DownloadService.shared
     let episode: Episode
 
     private var progressValue: Double {
@@ -459,6 +648,12 @@ private struct PodcastEpisodeCard: View {
                             .lineLimit(3)
                             .multilineTextAlignment(.leading)
                     }
+
+                    if let downloadStatus = downloadService.statusText(for: episode) {
+                        Text(downloadStatus)
+                            .font(.offscriptMeta)
+                            .foregroundStyle(episode.downloadState == .failed ? Color.offscriptDestructive : Color.offscriptTextMuted)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -479,6 +674,8 @@ private struct PodcastEpisodeCard: View {
                 }
                 .buttonStyle(SecondaryPillButtonStyle())
                 .disabled(episode.isQueued)
+
+                DownloadButton(episode: episode)
             }
         }
         .padding(18)

@@ -17,9 +17,13 @@ final class Podcast {
     var subscribedAt: Date?
     var latestPubDate: Date?
     var lastSyncAt: Date?
+    var lastSyncAttemptAt: Date?
     var feedETag: String?
     var feedLastModified: String?
     var syncStatus: String
+    var syncFailureCount: Int
+    var syncErrorMessage: String?
+    var nextRetryAt: Date?
 
     @Relationship(deleteRule: .cascade, inverse: \Episode.podcast)
     var episodes: [Episode] = []
@@ -45,6 +49,7 @@ final class Podcast {
         self.categoriesStorage = categories.joined(separator: Self.listSeparator)
         self.isSubscribed = isSubscribed
         self.syncStatus = "idle"
+        self.syncFailureCount = 0
     }
 
     var categories: [String] {
@@ -60,6 +65,14 @@ final class Podcast {
 
 @Model
 final class Episode {
+    enum DownloadState: String, Codable {
+        case notDownloaded
+        case queued
+        case downloading
+        case downloaded
+        case failed
+    }
+
     @Attribute(.unique) var id: UUID
     var guid: String
     var title: String
@@ -69,6 +82,13 @@ final class Episode {
     var audioURL: URL
     var artworkURL: URL?
     var localFileURL: URL?
+    private var downloadStateRawValue: String
+    private var chaptersStorage: String
+    private var transcriptReferencesStorage: String
+    var downloadProgress: Double
+    var downloadRequestedAt: Date?
+    var downloadCompletedAt: Date?
+    var downloadErrorMessage: String?
     var playedPosition: TimeInterval = 0
     var isPlayed: Bool = false
     var isDownloaded: Bool = false
@@ -78,6 +98,18 @@ final class Episode {
     var episodeNumber: Int?
 
     var podcast: Podcast
+
+    @Relationship(deleteRule: .cascade, inverse: \QueueItem.episode)
+    var queueItems: [QueueItem] = []
+
+    @Relationship(deleteRule: .nullify, inverse: \PlaybackEvent.episode)
+    var playbackEvents: [PlaybackEvent] = []
+
+    @Relationship(deleteRule: .nullify, inverse: \PreferenceSignal.episode)
+    var preferenceSignals: [PreferenceSignal] = []
+
+    @Relationship(deleteRule: .cascade, inverse: \EpisodeProfile.episode)
+    var profile: EpisodeProfile?
 
     init(
         id: UUID = UUID(),
@@ -102,9 +134,63 @@ final class Episode {
         self.audioURL = audioURL
         self.artworkURL = artworkURL
         self.localFileURL = localFileURL
+        self.downloadStateRawValue = DownloadState.notDownloaded.rawValue
+        self.chaptersStorage = ""
+        self.transcriptReferencesStorage = ""
+        self.downloadProgress = 0
         self.seasonNumber = seasonNumber
         self.episodeNumber = episodeNumber
         self.podcast = podcast
+    }
+
+    var downloadState: DownloadState {
+        get { DownloadState(rawValue: downloadStateRawValue) ?? .notDownloaded }
+        set { downloadStateRawValue = newValue.rawValue }
+    }
+
+    var chapters: [EpisodeChapter] {
+        get {
+            Self.decodeJSON([EpisodeChapter].self, from: chaptersStorage) ?? []
+        }
+        set {
+            let normalized = EpisodeChapterParser.normalize(newValue, duration: duration)
+            chaptersStorage = Self.encodeJSON(normalized)
+        }
+    }
+
+    var transcriptReferences: [EpisodeTranscriptReference] {
+        get {
+            Self.decodeJSON([EpisodeTranscriptReference].self, from: transcriptReferencesStorage) ?? []
+        }
+        set {
+            let normalized = newValue
+                .sorted { lhs, rhs in
+                    if lhs.language == rhs.language {
+                        return lhs.url.absoluteString < rhs.url.absoluteString
+                    }
+                    return (lhs.language ?? "") < (rhs.language ?? "")
+                }
+            transcriptReferencesStorage = Self.encodeJSON(normalized)
+        }
+    }
+
+    var resolvedChapters: [EpisodeChapter] {
+        let persisted = EpisodeChapterParser.normalize(chapters, duration: duration)
+        guard persisted.isEmpty else { return persisted }
+        return EpisodeChapterParser.chapters(from: summary, duration: duration)
+    }
+
+    private static func encodeJSON<T: Encodable>(_ value: T) -> String {
+        guard let data = try? JSONEncoder().encode(value),
+              let string = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+        return string
+    }
+
+    private static func decodeJSON<T: Decodable>(_ type: T.Type, from storage: String) -> T? {
+        guard !storage.isEmpty, let data = storage.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
     }
 }
 
@@ -113,6 +199,7 @@ final class QueueItem {
     @Attribute(.unique) var id: UUID
     var createdAt: Date = Date()
     var position: Int
+    @Relationship(deleteRule: .noAction)
     var episode: Episode
 
     init(id: UUID = UUID(), episode: Episode, position: Int) {
@@ -125,13 +212,21 @@ final class QueueItem {
 @Model
 final class PlaybackEvent {
     enum Kind: String, Codable {
-        case started, completed, skippedQuickly, seekedForward, seekedBackward
+        case started
+        case completed
+        case skippedQuickly
+        case seekedForward
+        case seekedBackward
+        case abandoned
+        case advancedFromQueue
+        case resumed
     }
 
     var date: Date = Date()
     private var kindRawValue: String
     var position: TimeInterval
-    var episode: Episode
+    @Relationship(deleteRule: .noAction)
+    var episode: Episode?
 
     init(kind: Kind, position: TimeInterval, episode: Episode) {
         self.kindRawValue = kind.rawValue
@@ -150,7 +245,8 @@ final class PreferenceSignal {
     enum Action: String, Codable { case like, notInterested, moreLikeThis, lessLikeThis }
     var date: Date = Date()
     private var actionRawValue: String
-    var episode: Episode
+    @Relationship(deleteRule: .noAction)
+    var episode: Episode?
 
     init(action: Action, episode: Episode) {
         self.actionRawValue = action.rawValue
@@ -160,6 +256,61 @@ final class PreferenceSignal {
     var action: Action {
         get { Action(rawValue: actionRawValue) ?? .like }
         set { actionRawValue = newValue.rawValue }
+    }
+}
+
+@Model
+final class UserTasteProfile {
+    private static let listSeparator = "\u{1F}"
+
+    @Attribute(.unique) var id: String
+    private var preferredGenresStorage: String
+    private var topTagsStorage: String
+    private var showAffinityStorage: String
+    var averageCompletedDurationMinutes: Double
+    var prefersShortEpisodes: Bool
+    var unfinishedEpisodeAffinity: Double
+    var lastUpdatedAt: Date
+
+    init(id: String = "primary") {
+        self.id = id
+        self.preferredGenresStorage = ""
+        self.topTagsStorage = ""
+        self.showAffinityStorage = ""
+        self.averageCompletedDurationMinutes = 30
+        self.prefersShortEpisodes = false
+        self.unfinishedEpisodeAffinity = 0
+        self.lastUpdatedAt = .now
+    }
+
+    var preferredGenres: [String] {
+        get {
+            guard !preferredGenresStorage.isEmpty else { return [] }
+            return preferredGenresStorage.components(separatedBy: Self.listSeparator)
+        }
+        set {
+            preferredGenresStorage = newValue.joined(separator: Self.listSeparator)
+        }
+    }
+
+    var topTags: [String] {
+        get {
+            guard !topTagsStorage.isEmpty else { return [] }
+            return topTagsStorage.components(separatedBy: Self.listSeparator)
+        }
+        set {
+            topTagsStorage = newValue.joined(separator: Self.listSeparator)
+        }
+    }
+
+    var showAffinity: [String] {
+        get {
+            guard !showAffinityStorage.isEmpty else { return [] }
+            return showAffinityStorage.components(separatedBy: Self.listSeparator)
+        }
+        set {
+            showAffinityStorage = newValue.joined(separator: Self.listSeparator)
+        }
     }
 }
 
@@ -177,6 +328,9 @@ final class EpisodeProfile {
     var freshnessBucket: String?
     var introSkipSeconds: TimeInterval = 0
     var outroSkipSeconds: TimeInterval = 0
+
+    @Relationship(deleteRule: .noAction)
+    var episode: Episode?
 
     init(episodeID: UUID) {
         self.episodeID = episodeID
@@ -225,5 +379,152 @@ struct HomeFeedSection: Identifiable {
 
     func explanation(for episode: Episode) -> String {
         scoredEpisodes.first(where: { $0.episode.id == episode.id })?.explanation ?? "Picked for you"
+    }
+}
+
+@Model
+final class TelemetryEvent {
+    private static let pairSeparator = "\u{1E}"
+    private static let valueSeparator = "\u{1F}"
+
+    @Attribute(.unique) var id: UUID
+    var name: String
+    var createdAt: Date
+    private var metadataStorage: String
+
+    init(id: UUID = UUID(), name: String, createdAt: Date = .now, metadata: [String: String] = [:]) {
+        self.id = id
+        self.name = name
+        self.createdAt = createdAt
+        self.metadataStorage = ""
+        self.metadata = metadata
+    }
+
+    var metadata: [String: String] {
+        get {
+            guard !metadataStorage.isEmpty else { return [:] }
+            return metadataStorage
+                .components(separatedBy: Self.pairSeparator)
+                .reduce(into: [:]) { partialResult, pair in
+                    let parts = pair.components(separatedBy: Self.valueSeparator)
+                    guard parts.count == 2 else { return }
+                    partialResult[parts[0]] = parts[1]
+                }
+        }
+        set {
+            metadataStorage = newValue
+                .sorted { $0.key < $1.key }
+                .map { key, value in
+                    "\(key)\(Self.valueSeparator)\(value)"
+                }
+                .joined(separator: Self.pairSeparator)
+        }
+    }
+}
+
+struct EpisodeChapter: Identifiable, Hashable, Codable {
+    let title: String
+    let startTime: TimeInterval
+
+    var id: String {
+        "\(Int(startTime * 1000))-\(title)"
+    }
+
+    init(title: String, startTime: TimeInterval) {
+        self.title = title
+        self.startTime = startTime
+    }
+}
+
+struct EpisodeTranscriptReference: Identifiable, Hashable, Codable {
+    let url: URL
+    let mimeType: String?
+    let language: String?
+    let rel: String?
+
+    var id: String {
+        url.absoluteString
+    }
+
+    var displayTitle: String {
+        var components: [String] = []
+        if let rel, !rel.isEmpty {
+            components.append(rel.replacingOccurrences(of: "-", with: " ").capitalized)
+        } else {
+            components.append("Transcript")
+        }
+        if let language, !language.isEmpty {
+            components.append(language.uppercased())
+        }
+        return components.joined(separator: " • ")
+    }
+
+    var accessoryLabel: String {
+        if let mimeType, !mimeType.isEmpty {
+            return mimeType
+                .split(separator: "/")
+                .last
+                .map { String($0).uppercased() } ?? mimeType.uppercased()
+        }
+        return "Open"
+    }
+}
+
+enum EpisodeChapterParser {
+    private static let chapterPattern = #"(?m)^\s*((?:\d{1,2}:)?\d{1,2}:\d{2})\s+(.*\S)\s*$"#
+
+    static func chapters(from summary: String?, duration: TimeInterval?) -> [EpisodeChapter] {
+        guard let summary, !summary.isEmpty else { return [] }
+        guard let regex = try? NSRegularExpression(pattern: chapterPattern) else { return [] }
+
+        let range = NSRange(summary.startIndex..<summary.endIndex, in: summary)
+        let matches = regex.matches(in: summary, range: range)
+        guard !matches.isEmpty else { return [] }
+
+        let parsed = matches.compactMap { match -> EpisodeChapter? in
+            guard match.numberOfRanges == 3,
+                  let timeRange = Range(match.range(at: 1), in: summary),
+                  let titleRange = Range(match.range(at: 2), in: summary),
+                  let startTime = seconds(from: String(summary[timeRange])) else {
+                return nil
+            }
+
+            let title = String(summary[titleRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty else { return nil }
+
+            if let duration, duration > 0, startTime > duration {
+                return nil
+            }
+
+            return EpisodeChapter(title: title, startTime: startTime)
+        }
+
+        return normalize(parsed, duration: duration)
+    }
+
+    static func normalize(_ chapters: [EpisodeChapter], duration: TimeInterval?) -> [EpisodeChapter] {
+        chapters
+            .filter { !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .filter { chapter in
+                guard let duration, duration > 0 else { return true }
+                return chapter.startTime <= duration
+            }
+            .sorted { $0.startTime < $1.startTime }
+            .reduce(into: [EpisodeChapter]()) { result, chapter in
+                guard result.last?.startTime != chapter.startTime else { return }
+                result.append(chapter)
+            }
+    }
+
+    static func seconds(from timestamp: String) -> TimeInterval? {
+        let parts = timestamp.split(separator: ":").compactMap { Double($0) }
+        guard !parts.isEmpty else { return nil }
+        if parts.count == 3 {
+            return (parts[0] * 3600) + (parts[1] * 60) + parts[2]
+        }
+        if parts.count == 2 {
+            return (parts[0] * 60) + parts[1]
+        }
+        return parts[0]
     }
 }

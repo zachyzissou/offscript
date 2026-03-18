@@ -239,6 +239,11 @@ private struct HeroRecommendationCard: View {
 
                 HStack(spacing: 10) {
                     Button("Play") {
+                        TelemetryService.track(
+                            "recommendation_opened",
+                            metadata: ["source": "home_hero", "episode": episode.title, "podcast": episode.podcast.title],
+                            in: modelContext
+                        )
                         PlaybackController.shared.play(episode, in: modelContext)
                     }
                     .buttonStyle(PrimaryPillButtonStyle())
@@ -359,7 +364,7 @@ private struct EpisodeRailCard: View {
                     EpisodeDetailView(episode: episode)
                 } label: {
                     VStack(alignment: .leading, spacing: 12) {
-                        OffScriptArtworkView(url: episode.artworkURL ?? episode.podcast.artworkURL, cornerRadius: 20)
+                        OffScriptArtworkView(url: episode.artworkURL ?? episode.podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.medium)
                             .frame(width: 160, height: 160)
                             .padding(.top, 4)
 
@@ -386,6 +391,11 @@ private struct EpisodeRailCard: View {
 
                 HStack(spacing: 10) {
                     Button("Play") {
+                        TelemetryService.track(
+                            "recommendation_opened",
+                            metadata: ["source": "home_rail", "episode": episode.title, "podcast": episode.podcast.title],
+                            in: modelContext
+                        )
                         PlaybackController.shared.play(episode, in: modelContext)
                     }
                     .buttonStyle(PrimaryPillButtonStyle())

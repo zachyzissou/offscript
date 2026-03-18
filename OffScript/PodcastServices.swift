@@ -10,6 +10,53 @@ protocol FeedSyncProviding {
     func sync(podcast: Podcast, in context: ModelContext, episodeLimit: Int?) async throws
 }
 
+struct PodcastPreviewEpisode: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let pubDate: Date?
+    let duration: TimeInterval?
+    let summary: String?
+
+    init(item: ParsedFeedItem) {
+        self.id = item.guid ?? item.audioURL.absoluteString
+        self.title = item.title
+        self.pubDate = item.pubDate
+        self.duration = item.duration
+        self.summary = item.summary
+    }
+}
+
+struct PodcastPreviewSnapshot {
+    let title: String
+    let author: String
+    let summary: String?
+    let categories: [String]
+    let websiteURL: URL?
+    let latestEpisodes: [PodcastPreviewEpisode]
+}
+
+enum PodcastPreviewService {
+    static func preview(for result: PodcastSearchResult, episodeLimit: Int = 5) async throws -> PodcastPreviewSnapshot {
+        var request = URLRequest(url: result.feedURL)
+        request.timeoutInterval = 20
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let parsed = try RSSFeedParser().parse(data: data)
+        let latestEpisodes = parsed.items
+            .sorted { ($0.pubDate ?? .distantPast) > ($1.pubDate ?? .distantPast) }
+            .prefix(episodeLimit)
+            .map(PodcastPreviewEpisode.init)
+
+        return PodcastPreviewSnapshot(
+            title: parsed.title ?? result.title,
+            author: parsed.author ?? result.author,
+            summary: parsed.summary ?? result.summary,
+            categories: parsed.categories,
+            websiteURL: parsed.websiteURL ?? result.websiteURL,
+            latestEpisodes: latestEpisodes
+        )
+    }
+}
+
 struct PodcastSearchService: PodcastSearchProviding {
     func search(query: String) async throws -> [PodcastSearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -116,8 +163,12 @@ final class FeedSyncService: FeedSyncProviding {
 
     @MainActor
     func importPodcast(from result: PodcastSearchResult, into context: ModelContext, episodeLimit: Int? = nil) async throws -> Podcast {
-        let existing = try context.fetch(FetchDescriptor<Podcast>())
-            .first(where: { $0.feedURL == result.feedURL })
+        let feedURL = result.feedURL
+        var podcastDescriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.feedURL == feedURL }
+        )
+        podcastDescriptor.fetchLimit = 1
+        let existing = try context.fetch(podcastDescriptor).first
 
         let podcast: Podcast
         if let existing {
@@ -153,6 +204,8 @@ final class FeedSyncService: FeedSyncProviding {
     @MainActor
     func sync(podcast: Podcast, in context: ModelContext, episodeLimit: Int? = nil) async throws {
         podcast.syncStatus = "syncing"
+        podcast.lastSyncAttemptAt = .now
+        podcast.syncErrorMessage = nil
         var request = URLRequest(url: podcast.feedURL)
         request.timeoutInterval = 20
         if let eTag = podcast.feedETag {
@@ -166,6 +219,7 @@ final class FeedSyncService: FeedSyncProviding {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
                 podcast.syncStatus = "failed"
+                podcast.syncErrorMessage = "Unexpected feed response."
                 try context.save()
                 return
             }
@@ -173,12 +227,15 @@ final class FeedSyncService: FeedSyncProviding {
             if httpResponse.statusCode == 304 {
                 podcast.lastSyncAt = Date()
                 podcast.syncStatus = "idle"
+                podcast.syncFailureCount = 0
+                podcast.nextRetryAt = nil
                 try context.save()
                 return
             }
 
             guard (200..<300).contains(httpResponse.statusCode) else {
                 podcast.syncStatus = "failed"
+                podcast.syncErrorMessage = "Feed returned HTTP \(httpResponse.statusCode)."
                 try context.save()
                 return
             }
@@ -196,9 +253,15 @@ final class FeedSyncService: FeedSyncProviding {
             podcast.latestPubDate = parsed.items.compactMap(\.pubDate).max()
             podcast.lastSyncAt = Date()
             podcast.syncStatus = "idle"
+            podcast.syncFailureCount = 0
+            podcast.nextRetryAt = nil
 
-            let existingEpisodes = try context.fetch(FetchDescriptor<Episode>())
-                .filter { $0.podcast.id == podcast.id }
+            // Use the podcast's persistentModelID for a predicate-filtered fetch
+            // instead of fetching ALL episodes then filtering in memory.
+            let podcastModelID = podcast.persistentModelID
+            let existingEpisodes = try context.fetch(FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.podcast.persistentModelID == podcastModelID }
+            ))
 
             // Sort by pub date (newest first) and limit if requested
             let sortedItems = parsed.items.sorted { ($0.pubDate ?? .distantPast) > ($1.pubDate ?? .distantPast) }
@@ -206,6 +269,7 @@ final class FeedSyncService: FeedSyncProviding {
 
             for item in itemsToProcess {
                 let guid = item.guid ?? item.audioURL.absoluteString
+                let resolvedChapters = await resolvedChapters(for: item)
                 if let existing = existingEpisodes.first(where: { $0.guid == guid || $0.audioURL == item.audioURL }) {
                     existing.title = item.title
                     existing.summary = item.summary
@@ -214,6 +278,8 @@ final class FeedSyncService: FeedSyncProviding {
                     existing.artworkURL = item.artworkURL ?? existing.artworkURL
                     existing.seasonNumber = item.seasonNumber ?? existing.seasonNumber
                     existing.episodeNumber = item.episodeNumber ?? existing.episodeNumber
+                    existing.chapters = resolvedChapters
+                    existing.transcriptReferences = item.transcriptReferences
                 } else {
                     let episode = Episode(
                         guid: guid,
@@ -227,6 +293,8 @@ final class FeedSyncService: FeedSyncProviding {
                         episodeNumber: item.episodeNumber,
                         podcast: podcast
                     )
+                    episode.chapters = resolvedChapters
+                    episode.transcriptReferences = item.transcriptReferences
                     context.insert(episode)
                     try await topicExtractionService.enrich(episode: episode, in: context)
                 }
@@ -235,9 +303,19 @@ final class FeedSyncService: FeedSyncProviding {
             try context.save()
         } catch {
             podcast.syncStatus = "failed"
+            podcast.syncErrorMessage = error.localizedDescription
             try? context.save()
             throw error
         }
+    }
+
+    private func resolvedChapters(for item: ParsedFeedItem) async -> [EpisodeChapter] {
+        let embedded = EpisodeChapterParser.normalize(item.chapters, duration: item.duration)
+        if !embedded.isEmpty {
+            return embedded
+        }
+        guard let externalChapterURL = item.externalChapterURL else { return [] }
+        return (try? await ExternalChapterLoader.load(from: externalChapterURL, duration: item.duration)) ?? []
     }
 }
 
@@ -253,6 +331,10 @@ enum QueueService {
     }
 
     static func add(_ episode: Episode, in context: ModelContext) throws {
+        try addToEnd(episode, in: context)
+    }
+
+    static func addToEnd(_ episode: Episode, in context: ModelContext) throws {
         let existing = try orderedItems(in: context)
         guard !existing.contains(where: { $0.episode.id == episode.id }) else { return }
         let nextPosition = (existing.last?.position ?? -1) + 1
@@ -260,12 +342,44 @@ enum QueueService {
         episode.isQueued = true
         context.insert(item)
         try context.save()
+        TelemetryService.track(
+            "queue_add_to_end",
+            metadata: ["episode": episode.title, "podcast": episode.podcast.title],
+            in: context
+        )
+    }
+
+    static func playNext(_ episode: Episode, in context: ModelContext) throws {
+        let existing = try orderedItems(in: context)
+        if let current = existing.first(where: { $0.episode.id == episode.id }) {
+            current.position = 0
+            try reorder(in: context)
+            return
+        }
+
+        for item in existing {
+            item.position += 1
+        }
+        let item = QueueItem(episode: episode, position: 0)
+        episode.isQueued = true
+        context.insert(item)
+        try reorder(in: context)
+        TelemetryService.track(
+            "queue_play_next",
+            metadata: ["episode": episode.title, "podcast": episode.podcast.title],
+            in: context
+        )
     }
 
     static func remove(_ item: QueueItem, in context: ModelContext) throws {
         item.episode.isQueued = false
         context.delete(item)
         try reorder(in: context)
+        TelemetryService.track(
+            "queue_remove",
+            metadata: ["episode": item.episode.title, "podcast": item.episode.podcast.title],
+            in: context
+        )
     }
 
     static func move(from offsets: IndexSet, to destination: Int, in context: ModelContext) throws {
@@ -280,12 +394,22 @@ enum QueueService {
             item.position = index
         }
         try context.save()
+        TelemetryService.track(
+            "queue_reorder",
+            metadata: ["count": "\(items.count)"],
+            in: context
+        )
     }
 
     static func popNextEpisode(in context: ModelContext) throws -> Episode? {
         guard let first = try orderedItems(in: context).first else { return nil }
         let episode = first.episode
         try remove(first, in: context)
+        TelemetryService.track(
+            "queue_pop_next",
+            metadata: ["episode": episode.title, "podcast": episode.podcast.title],
+            in: context
+        )
         return episode
     }
 
@@ -341,6 +465,9 @@ struct ParsedFeedItem {
     var artworkURL: URL?
     var seasonNumber: Int?
     var episodeNumber: Int?
+    var chapters: [EpisodeChapter] = []
+    var externalChapterURL: URL?
+    var transcriptReferences: [EpisodeTranscriptReference] = []
 }
 
 final class RSSFeedParser: NSObject, XMLParserDelegate {
@@ -374,19 +501,49 @@ final class RSSFeedParser: NSObject, XMLParserDelegate {
         }
 
         if insideItem, currentElement == "enclosure", let urlString = attributeDict["url"], let url = URL(string: urlString) {
-            if currentItem == nil {
-                currentItem = ParsedFeedItem(title: "", audioURL: url)
-            } else {
-                currentItem?.audioURL = url
-            }
+            ensureCurrentItem(audioURL: url)
+            currentItem?.audioURL = url
         }
 
         if currentElement == "itunes:image", let href = attributeDict["href"], let url = URL(string: href) {
             if insideItem {
+                ensureCurrentItem()
                 currentItem?.artworkURL = url
             } else {
                 feed.artworkURL = url
             }
+        }
+
+        if !insideItem, currentElement == "itunes:category", let category = attributeDict["text"], !category.isEmpty {
+            if !feed.categories.contains(category) {
+                feed.categories.append(category)
+            }
+        }
+
+        if insideItem, currentElement == "psc:chapter" {
+            ensureCurrentItem()
+            let startText = attributeDict["start"] ?? attributeDict["startTime"] ?? attributeDict["time"]
+            let title = attributeDict["title"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if let startText, let startTime = EpisodeChapterParser.seconds(from: startText), !title.isEmpty {
+                currentItem?.chapters.append(EpisodeChapter(title: title, startTime: startTime))
+            }
+        }
+
+        if insideItem, currentElement == "podcast:chapters", let urlString = attributeDict["url"], let url = URL(string: urlString) {
+            ensureCurrentItem()
+            currentItem?.externalChapterURL = url
+        }
+
+        if insideItem, currentElement == "podcast:transcript", let urlString = attributeDict["url"], let url = URL(string: urlString) {
+            ensureCurrentItem()
+            currentItem?.transcriptReferences.append(
+                EpisodeTranscriptReference(
+                    url: url,
+                    mimeType: attributeDict["type"],
+                    language: attributeDict["language"],
+                    rel: attributeDict["rel"]
+                )
+            )
         }
     }
 
@@ -405,24 +562,27 @@ final class RSSFeedParser: NSObject, XMLParserDelegate {
         if insideItem {
             switch element {
             case "title":
-                if currentItem == nil {
-                    currentItem = ParsedFeedItem(title: text, audioURL: URL(string: "https://example.com/unset.mp3")!)
-                } else {
-                    currentItem?.title = text
-                }
+                ensureCurrentItem()
+                currentItem?.title = text
             case "description", "content:encoded":
+                ensureCurrentItem()
                 if currentItem?.summary?.isEmpty != false {
                     currentItem?.summary = text
                 }
             case "pubDate":
+                ensureCurrentItem()
                 currentItem?.pubDate = Self.dateFormatter.date(from: text)
             case "guid":
+                ensureCurrentItem()
                 currentItem?.guid = text
             case "itunes:duration":
+                ensureCurrentItem()
                 currentItem?.duration = Self.duration(from: text)
             case "itunes:season":
+                ensureCurrentItem()
                 currentItem?.seasonNumber = Int(text)
             case "itunes:episode":
+                ensureCurrentItem()
                 currentItem?.episodeNumber = Int(text)
             case "item":
                 insideItem = false
@@ -453,6 +613,12 @@ final class RSSFeedParser: NSObject, XMLParserDelegate {
         }
     }
 
+    private func ensureCurrentItem(audioURL: URL = URL(string: "https://example.com/unset.mp3")!) {
+        if currentItem == nil {
+            currentItem = ParsedFeedItem(title: "", audioURL: audioURL)
+        }
+    }
+
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -470,5 +636,66 @@ final class RSSFeedParser: NSObject, XMLParserDelegate {
             return parts[0] * 60 + parts[1]
         }
         return parts[0]
+    }
+}
+
+enum ExternalChapterLoader {
+    static func load(from url: URL, duration: TimeInterval?) async throws -> [EpisodeChapter] {
+        let (data, _) = try await URLSession.shared.data(from: url)
+        if let response = try? JSONDecoder().decode(ExternalChapterEnvelope.self, from: data) {
+            return EpisodeChapterParser.normalize(response.chapters.map(\.chapter), duration: duration)
+        }
+        if let response = try? JSONDecoder().decode([ExternalChapterRecord].self, from: data) {
+            return EpisodeChapterParser.normalize(response.map(\.chapter), duration: duration)
+        }
+        return []
+    }
+}
+
+private struct ExternalChapterEnvelope: Decodable {
+    let chapters: [ExternalChapterRecord]
+}
+
+private struct ExternalChapterRecord: Decodable {
+    let title: String
+    let startSeconds: TimeInterval
+
+    var chapter: EpisodeChapter {
+        EpisodeChapter(title: title, startTime: startSeconds)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case title
+        case startTime
+        case start
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.title = try container.decode(String.self, forKey: .title)
+
+        if let raw = try? container.decode(String.self, forKey: .startTime),
+           let seconds = EpisodeChapterParser.seconds(from: raw) ?? Double(raw) {
+            self.startSeconds = seconds
+            return
+        }
+
+        if let raw = try? container.decode(Double.self, forKey: .startTime) {
+            self.startSeconds = raw
+            return
+        }
+
+        if let raw = try? container.decode(String.self, forKey: .start),
+           let seconds = EpisodeChapterParser.seconds(from: raw) ?? Double(raw) {
+            self.startSeconds = seconds
+            return
+        }
+
+        if let raw = try? container.decode(Double.self, forKey: .start) {
+            self.startSeconds = raw
+            return
+        }
+
+        throw DecodingError.dataCorruptedError(forKey: .startTime, in: container, debugDescription: "Missing chapter start time")
     }
 }

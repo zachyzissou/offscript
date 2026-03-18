@@ -1,32 +1,24 @@
-//
-//  OffScriptUITestsLaunchTests.swift
-//  OffScriptUITests
-//
-//  Created by Zach Gonser on 3/16/26.
-//
-
 import XCTest
 
 final class OffScriptUITestsLaunchTests: XCTestCase {
-
-    override class var runsForEachTargetApplicationUIConfiguration: Bool {
-        true
-    }
-
     override func setUpWithError() throws {
         continueAfterFailure = false
     }
 
     @MainActor
-    func testLaunch() throws {
+    func testLaunchSmoke() throws {
         let app = XCUIApplication()
+        app.launchArguments += [
+            "-offscript.hasSeenOnboarding",
+            "YES"
+        ]
         app.launch()
 
-        // Insert steps here to perform after app launch but before taking a screenshot,
-        // such as logging into a test account or navigating somewhere in the app
+        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 5))
 
         let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = "Launch Screen"
+        attachment.name = "Shell Launch Smoke"
         attachment.lifetime = .keepAlways
         add(attachment)
     }

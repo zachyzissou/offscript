@@ -3,8 +3,9 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var player = PlaybackController.shared
-    @AppStorage("offscript.hasSeenOnboarding") private var hasSeenOnboarding = false
+    @State private var hasSeenOnboarding = AppSettings.hasSeenOnboarding
     @State private var selectedTab = 0
     @State private var isSettingsPresented = false
     @State private var miniPlayerHeight: CGFloat = 0
@@ -82,16 +83,24 @@ struct ContentView: View {
                     }
                 }
             } else {
-                OnboardingFlowView()
+                OnboardingFlowView {
+                    hasSeenOnboarding = true
+                }
             }
         }
         .preferredColorScheme(.dark)
         .task {
             PlaybackController.shared.configure(context: modelContext)
+            SyncCoordinator.shared.configure(context: modelContext)
+            DownloadService.shared.configure(context: modelContext)
             #if DEBUG
             configureDebugSelectedTabIfNeeded()
             configureDebugPlaybackIfNeeded()
             #endif
+        }
+        .onChange(of: scenePhase) { _, newValue in
+            guard newValue == .active, hasSeenOnboarding else { return }
+            SyncCoordinator.shared.scheduleForegroundRefreshIfNeeded()
         }
     }
 }
@@ -147,6 +156,8 @@ private extension ContentView {
             EpisodeProfile.self,
             PlaybackEvent.self,
             PreferenceSignal.self,
-            QueueItem.self
+            QueueItem.self,
+            UserTasteProfile.self,
+            TelemetryEvent.self
         ], inMemory: true)
 }

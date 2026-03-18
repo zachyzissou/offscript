@@ -35,7 +35,11 @@ final class TopicExtractionService {
         // Upsert profile
         let existing = try context.fetch(FetchDescriptor<EpisodeProfile>())
             .first(where: { $0.episodeID == episode.id })
-        let profile = existing ?? EpisodeProfile(episodeID: episode.id)
+        let profile = existing ?? {
+            let p = EpisodeProfile(episodeID: episode.id)
+            p.episode = episode
+            return p
+        }()
 
         let baseText = """
         Title: \(episode.title)

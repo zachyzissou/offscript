@@ -88,22 +88,41 @@ struct OffScriptArtworkView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            AsyncImage(url: url) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
-                    .overlay(
-                        LinearGradient(
-                            colors: [Color.clear, Color.black.opacity(0.08)],
-                            startPoint: .top,
-                            endPoint: .bottom
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                        .overlay(
+                            LinearGradient(
+                                colors: [Color.clear, Color.black.opacity(0.08)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
                         )
-                    )
-            } placeholder: {
-                OffScriptArtworkPlaceholder(cornerRadius: cornerRadius)
-                    .frame(width: proxy.size.width, height: proxy.size.height)
+                case .failure:
+                    ZStack {
+                        OffScriptArtworkPlaceholder(cornerRadius: cornerRadius)
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+
+                        VStack(spacing: 4) {
+                            Spacer()
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(Color.offscriptTextMuted.opacity(0.6))
+                        }
+                        .padding(.bottom, 8)
+                    }
+                case .empty:
+                    OffScriptArtworkPlaceholder(cornerRadius: cornerRadius)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                @unknown default:
+                    OffScriptArtworkPlaceholder(cornerRadius: cornerRadius)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                }
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
@@ -118,6 +137,7 @@ struct OffScriptReasonBadge: View {
             .font(.caption2.weight(.bold))
             .tracking(0.8)
             .foregroundStyle(Color.offscriptTextPrimary)
+            .lineLimit(1)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(Color.white.opacity(0.08))
@@ -378,14 +398,18 @@ struct ShimmerModifier: ViewModifier {
     @State private var phase: CGFloat = -1.0
 
     func body(content: Content) -> some View {
+        let lead = min(max(phase - 0.3, 0), 1)
+        let center = min(max(phase, lead), 1)
+        let trail = min(max(phase + 0.3, center), 1)
+
         content
             .overlay(
                 GeometryReader { proxy in
                     LinearGradient(
                         stops: [
-                            .init(color: .clear, location: max(phase - 0.3, 0)),
-                            .init(color: Color.white.opacity(0.08), location: phase),
-                            .init(color: .clear, location: min(phase + 0.3, 1))
+                            .init(color: .clear, location: lead),
+                            .init(color: Color.white.opacity(0.08), location: center),
+                            .init(color: .clear, location: trail)
                         ],
                         startPoint: .leading,
                         endPoint: .trailing

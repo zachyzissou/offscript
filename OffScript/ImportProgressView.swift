@@ -9,7 +9,11 @@ struct ImportProgressView: View {
     let onComplete: () -> Void
 
     @State private var statuses: [URL: ImportStatus] = [:]
+    @State private var errorMessages: [URL: String] = [:]
     @State private var isComplete = false
+    @State private var isImporting = false
+    @State private var recommendedEpisode: Episode?
+    @State private var recommendedExplanation: String?
 
     enum ImportStatus {
         case pending
@@ -19,6 +23,7 @@ struct ImportProgressView: View {
     }
 
     private let syncService = FeedSyncService()
+    private let recommendationService = RecommendationService()
 
     var body: some View {
         VStack(spacing: 32) {
@@ -26,9 +31,9 @@ struct ImportProgressView: View {
 
             VStack(spacing: 14) {
                 if isComplete {
-                    Image(systemName: "checkmark.circle.fill")
+                    Image(systemName: failedPodcasts.isEmpty ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                         .font(.system(size: 48))
-                        .foregroundStyle(Color.offscriptAccent)
+                        .foregroundStyle(failedPodcasts.isEmpty ? Color.offscriptAccent : Color.offscriptDestructive)
                         .transition(.scale.combined(with: .opacity))
                 } else {
                     ProgressView()
@@ -36,11 +41,11 @@ struct ImportProgressView: View {
                         .tint(Color.offscriptAccent)
                 }
 
-                Text(isComplete ? "Your feed is ready" : "Building your feed...")
+                Text(titleText)
                     .font(.system(.title2, design: .serif, weight: .bold))
                     .foregroundStyle(Color.offscriptTextPrimary)
 
-                Text(isComplete ? "Head in — your recommendations are waiting." : "Fetching episodes and learning your taste...")
+                Text(subtitleText)
                     .font(.offscriptBody)
                     .foregroundStyle(Color.offscriptTextSecondary)
                     .multilineTextAlignment(.center)
@@ -56,6 +61,78 @@ struct ImportProgressView: View {
             }
             .padding(.horizontal, 24)
 
+            if isComplete {
+                VStack(spacing: 12) {
+                    if !failedPodcasts.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Some feeds need another pass")
+                                .font(.headline)
+                                .foregroundStyle(Color.offscriptTextPrimary)
+
+                            ForEach(failedPodcasts, id: \.feedURL) { podcast in
+                                Text("\(podcast.title): \(errorMessages[podcast.feedURL] ?? "This feed timed out or returned invalid data.")")
+                                    .font(.offscriptMeta)
+                                    .foregroundStyle(Color.offscriptTextMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(18)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .offscriptUtilitySurface()
+                        .padding(.horizontal, 24)
+
+                        HStack(spacing: 10) {
+                            Button(isImporting ? "Retrying..." : "Retry failed") {
+                                Task { await retryFailedImports() }
+                            }
+                            .buttonStyle(PrimaryPillButtonStyle())
+                            .disabled(isImporting)
+
+                            Button("Continue anyway") {
+                                finishOnboarding()
+                            }
+                            .buttonStyle(SecondaryPillButtonStyle())
+                        }
+                    } else {
+                        VStack(spacing: 10) {
+                            if let recommendedEpisode {
+                                FirstRecommendationCard(
+                                    episode: recommendedEpisode,
+                                    explanation: recommendedExplanation ?? "Start here."
+                                )
+                                .padding(.horizontal, 24)
+                            } else {
+                                Text("\(successfulImportCount) shows are in. Your first recommendations are ready.")
+                                    .font(.offscriptBody)
+                                    .foregroundStyle(Color.offscriptTextSecondary)
+                                    .multilineTextAlignment(.center)
+                            }
+
+                            HStack(spacing: 10) {
+                                if recommendedEpisode != nil {
+                                    Button("Play Best Next") {
+                                        playRecommendationAndFinish()
+                                    }
+                                    .buttonStyle(PrimaryPillButtonStyle())
+                                }
+
+                                if recommendedEpisode == nil {
+                                    Button("Open OffScript") {
+                                        finishOnboarding()
+                                    }
+                                    .buttonStyle(PrimaryPillButtonStyle())
+                                } else {
+                                    Button("Open Library") {
+                                        finishOnboarding()
+                                    }
+                                    .buttonStyle(SecondaryPillButtonStyle())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Spacer()
         }
         .task {
@@ -65,18 +142,68 @@ struct ImportProgressView: View {
 
     @MainActor
     private func runImports() async {
+        guard !isImporting else { return }
+        isImporting = true
+        defer { isImporting = false }
+
+        TelemetryService.track(
+            "onboarding_import_started",
+            metadata: [
+                "selected_genres": "\(selectedGenres.count)",
+                "selected_podcasts": "\(podcasts.count)"
+            ],
+            in: modelContext
+        )
+
+        await importPodcasts(podcasts)
+
+        AppSettings.preferredGenres = Array(selectedGenres).sorted { $0.title < $1.title }
+        try? TasteProfileService.refresh(in: modelContext)
+        let recommendation = bestRecommendationCandidate()
+        recommendedEpisode = recommendation?.episode ?? fallbackRecommendationEpisode()
+        recommendedExplanation = recommendation?.explanation ?? recommendedEpisode.map { "A strong first listen from \($0.podcast.title)." }
+
+        TelemetryService.track(
+            "onboarding_import_completed",
+            metadata: [
+                "successful": "\(successfulImportCount)",
+                "failed": "\(failedPodcasts.count)"
+            ],
+            in: modelContext
+        )
+
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            isComplete = true
+        }
+    }
+
+    @MainActor
+    private func retryFailedImports() async {
+        let failures = failedPodcasts
+        guard !failures.isEmpty else { return }
+        await importPodcasts(failures)
+        try? TasteProfileService.refresh(in: modelContext)
+        TelemetryService.track(
+            "onboarding_import_retry_completed",
+            metadata: [
+                "remaining_failed": "\(failedPodcasts.count)",
+                "successful": "\(successfulImportCount)"
+            ],
+            in: modelContext
+        )
+    }
+
+    @MainActor
+    private func importPodcasts(_ podcasts: [PodcastSearchResult]) async {
         for podcast in podcasts {
             statuses[podcast.feedURL] = .importing
+            errorMessages[podcast.feedURL] = nil
 
             do {
-                // Wrap each import in a timeout so one slow feed can't block everything
-                // Limit to 15 most recent episodes per podcast during onboarding
-                // (full backfill happens on subsequent syncs)
                 let imported = try await withThrowingTimeout(seconds: 45) {
                     try await syncService.importPodcast(from: podcast, into: modelContext, episodeLimit: 15)
                 }
 
-                // Seed taste: like the most recent episode
                 if let newestEpisode = imported.episodes
                     .sorted(by: { $0.pubDate > $1.pubDate })
                     .first {
@@ -85,29 +212,84 @@ struct ImportProgressView: View {
                     try? modelContext.save()
                 }
 
+                TelemetryService.track(
+                    "subscription_imported",
+                    metadata: ["podcast": podcast.title, "source": "onboarding"],
+                    in: modelContext
+                )
+
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     statuses[podcast.feedURL] = .done
                 }
             } catch {
+                let message = error is CancellationError
+                    ? "This feed took too long to respond."
+                    : error.localizedDescription
+                errorMessages[podcast.feedURL] = message
+                TelemetryService.track(
+                    "subscription_import_failed",
+                    metadata: ["podcast": podcast.title, "source": "onboarding", "error": message],
+                    in: modelContext
+                )
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     statuses[podcast.feedURL] = .failed
                 }
             }
         }
+    }
 
-        // Persist genre preferences
-        let genreStrings = selectedGenres.map(\.rawValue)
-        UserDefaults.standard.set(genreStrings, forKey: "offscript.preferredGenres")
+    private var failedPodcasts: [PodcastSearchResult] {
+        podcasts.filter { statuses[$0.feedURL] == .failed }
+    }
 
-        // Brief pause to show completion state
-        try? await Task.sleep(for: .seconds(1.2))
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-            isComplete = true
-        }
+    private var successfulImportCount: Int {
+        statuses.values.filter { $0 == .done }.count
+    }
 
-        // Auto-advance after a beat — notify parent to set hasSeenOnboarding
-        try? await Task.sleep(for: .seconds(1.5))
+    private var titleText: String {
+        if !isComplete { return "Building your feed..." }
+        return failedPodcasts.isEmpty ? "Your feed is ready" : "Almost there"
+    }
+
+    private var subtitleText: String {
+        if !isComplete { return "Fetching episodes and learning your taste..." }
+        if failedPodcasts.isEmpty { return "Head in — your recommendations are waiting." }
+        return "Most of your picks made it in. Retry the feeds that stalled, or keep going and fix them later."
+    }
+
+    private func finishOnboarding() {
+        AppSettings.hasSeenOnboarding = true
         onComplete()
+    }
+
+    private func playRecommendationAndFinish() {
+        guard let recommendedEpisode else {
+            finishOnboarding()
+            return
+        }
+        TelemetryService.track(
+            "onboarding_recommendation_started",
+            metadata: ["episode": recommendedEpisode.title, "podcast": recommendedEpisode.podcast.title],
+            in: modelContext
+        )
+        PlaybackController.shared.play(recommendedEpisode, in: modelContext)
+        finishOnboarding()
+    }
+
+    private func bestRecommendationCandidate() -> ScoredEpisode? {
+        try? recommendationService.homeSections(context: modelContext, limit: 3).first?.scoredEpisodes.first
+    }
+
+    private func fallbackRecommendationEpisode() -> Episode? {
+        let importedShows = (try? modelContext.fetch(FetchDescriptor<Podcast>()))?
+            .filter { podcast in
+                podcasts.contains { $0.feedURL == podcast.feedURL }
+            } ?? []
+
+        return importedShows
+            .flatMap(\.episodes)
+            .sorted { $0.pubDate > $1.pubDate }
+            .first
     }
 
     private func withThrowingTimeout<T>(seconds: Double, operation: @escaping () async throws -> T) async throws -> T {
@@ -123,6 +305,46 @@ struct ImportProgressView: View {
             group.cancelAll()
             return result
         }
+    }
+}
+
+private struct FirstRecommendationCard: View {
+    let episode: Episode
+    let explanation: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Start here")
+                .font(.headline)
+                .foregroundStyle(Color.offscriptTextPrimary)
+
+            HStack(spacing: 12) {
+                OffScriptArtworkView(
+                    url: episode.artworkURL ?? episode.podcast.artworkURL,
+                    cornerRadius: OffScriptTheme.Radius.small
+                )
+                .frame(width: 64, height: 64)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    OffScriptExplanationTag(text: explanation)
+
+                    Text(episode.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .lineLimit(2)
+
+                    Text(episode.podcast.title)
+                        .font(.offscriptMeta)
+                        .foregroundStyle(Color.offscriptTextMuted)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .offscriptUtilitySurface()
     }
 }
 
