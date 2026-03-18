@@ -581,12 +581,6 @@ private struct SearchResultCard: View {
                 .buttonStyle(PrimaryPillButtonStyle())
                 .disabled(isImporting || isAdded)
 
-                if let host = result.websiteURL {
-                    Link(destination: host) {
-                        Label("Open", systemImage: "arrow.up.right")
-                    }
-                    .buttonStyle(SecondaryPillButtonStyle())
-                }
             }
 
             if isAdded {
@@ -799,12 +793,6 @@ private struct SearchResultDetailView: View {
                         .buttonStyle(PrimaryPillButtonStyle())
                         .disabled(isAdded || isImporting)
 
-                        if let websiteURL = result.websiteURL {
-                            Link(destination: websiteURL) {
-                                Label("Open Website", systemImage: "arrow.up.right")
-                            }
-                            .buttonStyle(SecondaryPillButtonStyle())
-                        }
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
                 }
