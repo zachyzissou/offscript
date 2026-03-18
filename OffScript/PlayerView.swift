@@ -7,6 +7,8 @@ struct PlayerView: View {
     @ObservedObject private var player = PlaybackController.shared
     @Query private var queueItems: [QueueItem]
 
+    @State private var artworkAppeared = false
+
     private var orderedQueueItems: [QueueItem] {
         queueItems.sorted { lhs, rhs in
             if lhs.position == rhs.position {
@@ -31,6 +33,9 @@ struct PlayerView: View {
                                     cornerRadius: OffScriptTheme.Radius.large
                                 )
                                 .frame(width: artworkSize, height: artworkSize)
+                                .scaleEffect(artworkAppeared ? 1.0 : 0.35)
+                                .opacity(artworkAppeared ? 1.0 : 0.0)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.78), value: artworkAppeared)
 
                                 VStack(spacing: 8) {
                                     Text(episode.title)
@@ -155,15 +160,29 @@ struct PlayerView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    Button("Done") {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
                         dismiss()
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(Color.offscriptTextSecondary)
+                            .frame(width: 36, height: 36)
+                            .background(Color.white.opacity(0.08))
+                            .clipShape(Circle())
                     }
+                    .accessibilityLabel("Close player")
                 }
             }
         }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
+        .onAppear {
+            withAnimation {
+                artworkAppeared = true
+            }
+        }
+        .onDisappear {
+            artworkAppeared = false
+        }
     }
 
     private var progressValue: Double {

@@ -74,7 +74,7 @@ struct ContentView: View {
                         }
                     }
                     .animation(.spring(response: 0.35, dampingFraction: 0.86), value: player.currentEpisode != nil)
-                    .sheet(isPresented: $player.isPlayerPresented) {
+                    .fullScreenCover(isPresented: $player.isPlayerPresented) {
                         PlayerView()
                     }
                     .sheet(isPresented: $isSettingsPresented) {
