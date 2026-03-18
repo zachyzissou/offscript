@@ -20,15 +20,23 @@ struct EpisodeNLP {
 
 final class TopicExtractionService {
     #if canImport(FoundationModels)
-    private let session: LanguageModelSession? = LanguageModelSession(
-        instructions: """
-        You analyze podcast episode titles and descriptions.
-        Return concise, useful tags and entities. Avoid duplicates and junk.
-        Keep output stable and deterministic.
-        """
-    )
-    #else
-    private let session: Any? = nil
+    private var cachedSession: LanguageModelSession?
+
+    private func getSession() -> LanguageModelSession? {
+        let model = SystemLanguageModel.default
+        guard model.isAvailable else { return nil }
+
+        if let cachedSession { return cachedSession }
+
+        let session = LanguageModelSession(
+            instructions: """
+            You analyze podcast episode titles and descriptions.
+            Return concise, useful tags and entities. Avoid duplicates and junk.
+            Keep output stable and deterministic.
+            """
+        )
+        return session
+    }
     #endif
 
     func enrich(episode: Episode, in context: ModelContext) async throws {
@@ -55,7 +63,7 @@ final class TopicExtractionService {
         var summary: String? = nil
 
         #if canImport(FoundationModels)
-        if let session {
+        if let session = getSession() {
             do {
                 let response = try await session.respond(
                     to: "Extract tags, entities, and a summary:\n\(baseText)",
