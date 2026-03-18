@@ -238,7 +238,7 @@ final class PlaybackController: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            MainActor.assumeIsolated {
+            Task { @MainActor [weak self] in
                 self?.handleInterruption(notification)
             }
         }
@@ -248,7 +248,7 @@ final class PlaybackController: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            MainActor.assumeIsolated {
+            Task { @MainActor [weak self] in
                 self?.handleRouteChange(notification)
             }
         }
