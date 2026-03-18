@@ -27,6 +27,18 @@ The engine is fully wired — scoring, taste profiles, topic extraction, prefere
 - [ ] **0.5.6 — Genre boost should be proportional**: Flat +0.06 regardless of overlap depth. One matching genre = three matching genres.
 - [ ] **0.5.7 — Remove dead EpisodeProfile fields**: `estimatedListeningContext`, `freshnessBucket`, `confidenceScore`, and `summary` are written but never read by scoring. Either use them or remove them.
 
+## Phase 0.75: UI Bugs Found in Simulator Walkthrough
+
+Bugs discovered by running the app in the iPhone 17 Pro simulator and inspecting every screen:
+
+- [x] **0.75.1 — Raw HTML in episode summaries**: `<p>` tags showing in "About this episode" text. **FIXED** — added `String.strippingHTML` extension.
+- [x] **0.75.2 — Podcast detail vertical text**: Long titles rendered character-by-character in narrow column next to artwork. **FIXED** — moved title below artwork at full width.
+- [x] **0.75.3 — "Download" button text wrapping**: "Down-load" split across two lines in pill buttons. **FIXED** — added `lineLimit(1)` to both pill button styles.
+- [x] **0.75.4 — Episode title dominating viewport**: Long episode titles (e.g., 20VC) pushed all other content below the fold. **FIXED** — moved title below artwork HStack with `lineLimit(4)`.
+- [x] **0.75.5 — Preview episode rows not tappable**: Episode rows in SearchResultDetailView were display-only. **FIXED** — now tap to navigate (if added) or add to library.
+- [ ] **0.75.6 — Search detail sheet artwork clipping**: Podcast artwork cut off at top of the sheet modal.
+- [ ] **0.75.7 — MiniPlayer tap target too small/overlapping tab bar**: MiniPlayer overlay difficult to tap — coordinates overlap with tab bar. May need larger hit area or adjusted positioning.
+
 ## Phase 1: TestFlight-Ready (Internal testing)
 
 - [ ] **1.1 — Playback speed persistence**: `playbackRate` resets to 1.0x on restart. Persist via `@AppStorage` or SwiftData.
