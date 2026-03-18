@@ -15,41 +15,46 @@ struct ContentView: View {
         Group {
             if hasSeenOnboarding {
                 VStack(spacing: 0) {
-                    TabView(selection: $selectedTab) {
+                    // Content area
+                    ZStack {
                         NavigationStack {
                             HomeView(onOpenSettings: { isSettingsPresented = true })
                         }
-                        .tag(0)
-                        .tabItem { Label("Home", systemImage: "waveform.path.ecg") }
+                        .opacity(selectedTab == 0 ? 1 : 0)
+                        .zIndex(selectedTab == 0 ? 1 : 0)
 
                         NavigationStack {
                             LibraryView(onOpenSettings: { isSettingsPresented = true })
                         }
-                        .tag(1)
-                        .tabItem { Label("Library", systemImage: "books.vertical") }
+                        .opacity(selectedTab == 1 ? 1 : 0)
+                        .zIndex(selectedTab == 1 ? 1 : 0)
 
                         NavigationStack {
                             QueueView()
                         }
-                        .tag(2)
-                        .tabItem { Label("Queue", systemImage: "text.badge.plus") }
-                        .badge(queueItems.count > 0 ? queueItems.count : 0)
+                        .opacity(selectedTab == 2 ? 1 : 0)
+                        .zIndex(selectedTab == 2 ? 1 : 0)
 
                         NavigationStack {
                             SearchView()
                         }
-                        .tag(3)
-                        .tabItem { Label("Search", systemImage: "magnifyingglass") }
+                        .opacity(selectedTab == 3 ? 1 : 0)
+                        .zIndex(selectedTab == 3 ? 1 : 0)
                     }
-                    .tint(Color.offscriptAccent)
 
-                    // MiniPlayer docked below the tab bar
+                    // Custom tab bar
+                    OffScriptTabBar(
+                        selectedTab: $selectedTab,
+                        queueCount: queueItems.count
+                    )
+
+                    // MiniPlayer docked at very bottom, extending into safe area
                     if player.currentEpisode != nil {
                         VStack(spacing: 0) {
                             MiniPlayer()
-                            // Fill through the home indicator safe area
+                            // Extend background color through the home indicator area
                             Color.offscriptCardRaised.opacity(0.98)
-                                .frame(height: 34)
+                                .frame(height: 34) // home indicator safe area
                         }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
@@ -152,6 +157,62 @@ private extension ContentView {
     }
 }
 #endif
+
+private struct OffScriptTabBar: View {
+    @Binding var selectedTab: Int
+    let queueCount: Int
+
+    private let tabs: [(icon: String, label: String, tag: Int)] = [
+        ("waveform.path.ecg", "Home", 0),
+        ("books.vertical", "Library", 1),
+        ("text.badge.plus", "Queue", 2),
+        ("magnifyingglass", "Search", 3)
+    ]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(tabs, id: \.tag) { tab in
+                Button {
+                    selectedTab = tab.tag
+                } label: {
+                    VStack(spacing: 4) {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 18, weight: .medium))
+
+                            if tab.tag == 2 && queueCount > 0 {
+                                Text("\(queueCount)")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(Color.offscriptAccent)
+                                    .clipShape(Capsule())
+                                    .offset(x: 10, y: -6)
+                            }
+                        }
+
+                        Text(tab.label)
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundStyle(selectedTab == tab.tag ? Color.offscriptAccent : Color.offscriptTextMuted)
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tab.label)
+            }
+        }
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+        .background(.regularMaterial)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.offscriptHairline)
+                .frame(height: 0.5)
+        }
+        .environment(\.colorScheme, .dark)
+    }
+}
 
 #Preview {
     ContentView()
