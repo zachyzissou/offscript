@@ -645,6 +645,7 @@ private struct FeaturedResultsSection: View {
 struct SearchResultDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @ObservedObject private var player = PlaybackController.shared
 
     let result: PodcastSearchResult
     let isAdded: Bool
@@ -760,51 +761,17 @@ struct SearchResultDetailView: View {
                         .padding(.horizontal, OffScriptTheme.pagePadding)
                     } else if let preview, !preview.latestEpisodes.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("Latest episodes")
+                            Text("Listen before you subscribe")
                                 .font(.offscriptSectionTitle)
                                 .foregroundStyle(Color.offscriptTextPrimary)
 
-                            ForEach(preview.latestEpisodes.prefix(4)) { episode in
-                                Button {
-                                    if isAdded {
-                                        dismiss()
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                            onNavigateToShow?()
-                                        }
-                                    } else {
-                                        onAdd()
-                                    }
-                                } label: {
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        HStack {
-                                            Text(episode.title)
-                                                .font(.offscriptBody.weight(.semibold))
-                                                .foregroundStyle(Color.offscriptTextPrimary)
-                                                .lineLimit(2)
-                                            Spacer()
-                                            if let duration = episode.duration {
-                                                Text(EpisodeDurationFormatter.short(duration))
-                                                    .font(.offscriptMeta)
-                                                    .foregroundStyle(Color.offscriptTextMuted)
-                                            }
-                                        }
-
-                                        if let pubDate = episode.pubDate {
-                                            Text(pubDate.formatted(date: .abbreviated, time: .omitted))
-                                                .font(.offscriptMeta)
-                                                .foregroundStyle(Color.offscriptTextMuted)
-                                        }
-
-                                        if !isAdded {
-                                            Text("Tap to add show to library")
-                                                .font(.offscriptMeta)
-                                                .foregroundStyle(Color.offscriptAccent)
-                                        }
-                                    }
-                                    .padding(14)
-                                    .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
-                                }
-                                .buttonStyle(.plain)
+                            ForEach(preview.latestEpisodes.prefix(5)) { episode in
+                                PreviewEpisodeRow(
+                                    episode: episode,
+                                    podcastTitle: result.title,
+                                    artworkURL: result.artworkURL,
+                                    isCurrentlyPreviewing: player.isPreviewMode && player.previewAudioURL == episode.audioURL
+                                )
                             }
                         }
                         .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -841,6 +808,12 @@ struct SearchResultDetailView: View {
             }
             .task {
                 await loadPreview()
+            }
+            .onDisappear {
+                // Stop any preview playback when the sheet is dismissed
+                if player.isPreviewMode {
+                    player.stopPreview()
+                }
             }
         }
     }
@@ -939,5 +912,82 @@ private struct SearchImportSuccessCard: View {
         }
         .padding(18)
         .offscriptSurface(radius: OffScriptTheme.Radius.medium, prominent: true)
+    }
+}
+
+// MARK: - Preview Episode Row
+
+private struct PreviewEpisodeRow: View {
+    let episode: PodcastPreviewEpisode
+    let podcastTitle: String
+    let artworkURL: URL?
+    let isCurrentlyPreviewing: Bool
+
+    private let player = PlaybackController.shared
+
+    var body: some View {
+        Button {
+            if isCurrentlyPreviewing {
+                player.togglePlayPause()
+            } else {
+                player.playPreview(
+                    title: episode.title,
+                    podcastTitle: podcastTitle,
+                    audioURL: episode.audioURL,
+                    artworkURL: artworkURL
+                )
+            }
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(isCurrentlyPreviewing ? Color.offscriptAccent : Color.white.opacity(0.08))
+                        .frame(width: 40, height: 40)
+
+                    Image(systemName: isCurrentlyPreviewing && player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(isCurrentlyPreviewing ? .black : Color.offscriptAccent)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(episode.title)
+                        .font(.offscriptBody.weight(.semibold))
+                        .foregroundStyle(isCurrentlyPreviewing ? Color.offscriptAccent : Color.offscriptTextPrimary)
+                        .lineLimit(2)
+
+                    HStack(spacing: 6) {
+                        if let pubDate = episode.pubDate {
+                            Text(pubDate.formatted(date: .abbreviated, time: .omitted))
+                                .font(.offscriptMeta)
+                                .foregroundStyle(Color.offscriptTextMuted)
+                        }
+                        if let duration = episode.duration {
+                            Text("·")
+                                .foregroundStyle(Color.offscriptTextMuted)
+                            Text(EpisodeDurationFormatter.short(duration))
+                                .font(.offscriptMeta)
+                                .foregroundStyle(Color.offscriptTextMuted)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                if isCurrentlyPreviewing {
+                    HStack(spacing: 2) {
+                        ForEach(0..<3, id: \.self) { i in
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(Color.offscriptAccent)
+                                .frame(width: 3, height: player.isPlaying ? CGFloat.random(in: 8...16) : 6)
+                                .animation(.easeInOut(duration: 0.4).repeatForever().delay(Double(i) * 0.15), value: player.isPlaying)
+                        }
+                    }
+                    .frame(width: 16)
+                }
+            }
+            .padding(12)
+            .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
+        }
+        .buttonStyle(.plain)
     }
 }

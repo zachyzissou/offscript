@@ -31,6 +31,13 @@ final class PlaybackController: ObservableObject {
     @Published var isPlayerPresented = false
     @Published private(set) var sleepTimerEndDate: Date?
 
+    // Preview playback state — streams without persisting to SwiftData
+    @Published private(set) var previewEpisodeTitle: String?
+    @Published private(set) var previewPodcastTitle: String?
+    @Published private(set) var previewArtworkURL: URL?
+    @Published private(set) var previewAudioURL: URL?
+    var isPreviewMode: Bool { previewAudioURL != nil }
+
     /// Time state is published via PlaybackTimePublisher so that only
     /// PlayerView and MiniPlayer re-render every second instead of
     /// the entire view hierarchy rooted at ContentView.
@@ -112,6 +119,47 @@ final class PlaybackController: ObservableObject {
             in: modelContext
         )
         updateNowPlaying(episode: episode)
+    }
+
+    /// Stream an episode preview without subscribing or persisting to SwiftData.
+    func playPreview(title: String, podcastTitle: String, audioURL: URL, artworkURL: URL?) {
+        // If currently playing a library episode, pause it first
+        if currentEpisode != nil && !isPreviewMode {
+            player.pause()
+        }
+
+        previewEpisodeTitle = title
+        previewPodcastTitle = podcastTitle
+        previewAudioURL = audioURL
+        previewArtworkURL = artworkURL
+
+        let item = AVPlayerItem(url: audioURL)
+        player.replaceCurrentItem(with: item)
+        player.play()
+        player.rate = playbackRate
+        isPlaying = true
+    }
+
+    /// Stop preview and optionally resume the library episode that was playing.
+    func stopPreview() {
+        guard isPreviewMode else { return }
+        player.pause()
+
+        previewEpisodeTitle = nil
+        previewPodcastTitle = nil
+        previewAudioURL = nil
+        previewArtworkURL = nil
+
+        // Resume library episode if one was loaded
+        if let episode = currentEpisode {
+            let item = AVPlayerItem(url: DownloadService.shared.localURL(for: episode) ?? episode.audioURL)
+            player.replaceCurrentItem(with: item)
+            let time = CMTime(seconds: episode.playedPosition, preferredTimescale: 600)
+            player.seek(to: time)
+            isPlaying = false
+        } else {
+            isPlaying = false
+        }
     }
 
     func togglePlayPause() {

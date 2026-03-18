@@ -7,6 +7,8 @@ struct PodcastPreviewEpisode: Identifiable, Hashable {
     let pubDate: Date?
     let duration: TimeInterval?
     let summary: String?
+    let audioURL: URL
+    let artworkURL: URL?
 
     init(item: ParsedFeedItem) {
         self.id = item.guid ?? item.audioURL.absoluteString
@@ -14,6 +16,8 @@ struct PodcastPreviewEpisode: Identifiable, Hashable {
         self.pubDate = item.pubDate
         self.duration = item.duration
         self.summary = item.summary
+        self.audioURL = item.audioURL
+        self.artworkURL = item.artworkURL
     }
 }
 
