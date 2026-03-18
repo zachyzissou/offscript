@@ -71,7 +71,7 @@ struct PodcastSearchService {
                 author: item.artistName,
                 feedURL: feedURL,
                 artworkURL: item.artworkURL,
-                websiteURL: item.collectionViewURL,
+                websiteURL: nil, // collectionViewURL is an Apple Podcasts deep link, not a website
                 summary: item.primaryGenreName
             )
         }
