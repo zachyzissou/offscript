@@ -67,7 +67,7 @@ enum BackgroundFeedRefresh {
                 let retryDelay = min(pow(2.0, Double(failureCount)) * 60, 60 * 60 * 6)
                 podcast.nextRetryAt = Date().addingTimeInterval(retryDelay)
                 try? context.save()
-                logger.warning("Background refresh: failed to sync \(podcast.title ?? "unknown", privacy: .public): \(error.localizedDescription, privacy: .public)")
+                logger.warning("Background refresh: failed to sync \(podcast.title, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
 

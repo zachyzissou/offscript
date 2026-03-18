@@ -93,10 +93,11 @@ extension Color {
 }
 
 extension Font {
-    static let offscriptHero = Font.system(.largeTitle, design: .serif, weight: .bold)
-    static let offscriptDisplay = Font.system(.title, design: .serif, weight: .bold)
+    // Playfair Display for editorial headlines — high-contrast serif with character
+    static let offscriptHero = Font.custom("PlayfairDisplay-Bold", size: 32, relativeTo: .largeTitle)
+    static let offscriptDisplay = Font.custom("PlayfairDisplay-Bold", size: 24, relativeTo: .title)
     static let offscriptUtilityTitle = Font.system(.title2, design: .default, weight: .bold)
-    static let offscriptSectionTitle = Font.system(.title3, design: .serif, weight: .semibold)
+    static let offscriptSectionTitle = Font.custom("PlayfairDisplay-SemiBold", size: 20, relativeTo: .title3)
     static let offscriptCardTitle = Font.system(.headline, design: .default, weight: .semibold)
     static let offscriptBody = Font.system(.callout, design: .default)
     static let offscriptMeta = Font.system(.caption, design: .monospaced)
