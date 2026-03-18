@@ -577,17 +577,14 @@ private struct PodcastDetailHeader: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top, spacing: 18) {
                 OffScriptArtworkView(url: podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.large)
-                    .frame(width: 122, height: 122)
+                    .frame(width: 96, height: 96)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(podcast.title)
-                        .font(.offscriptDisplay)
-                        .foregroundStyle(Color.offscriptTextPrimary)
-
+                VStack(alignment: .leading, spacing: 8) {
                     if let author = podcast.author {
                         Text(author)
-                            .font(.headline)
-                            .foregroundStyle(Color.offscriptTextSecondary)
+                            .font(.offscriptMeta)
+                            .foregroundStyle(Color.offscriptTextMuted)
+                            .lineLimit(1)
                     }
 
                     HStack(spacing: 8) {
@@ -599,10 +596,16 @@ private struct PodcastDetailHeader: View {
                 }
             }
 
+            Text(podcast.title)
+                .font(.offscriptDisplay)
+                .foregroundStyle(Color.offscriptTextPrimary)
+                .lineLimit(3)
+
             if let summary = podcast.summary {
                 Text(summary.strippingHTML)
                     .font(.offscriptBody)
                     .foregroundStyle(Color.offscriptTextSecondary)
+                    .lineLimit(4)
             }
 
             if podcast.isSubscribed {
