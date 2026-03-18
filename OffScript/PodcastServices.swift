@@ -80,7 +80,33 @@ struct PodcastSearchService {
 
 enum TopPodcastsService {
     static func fetchTop(genre: Genre, limit: Int = 10) async -> [PodcastSearchResult] {
-        let urlString = "https://rss.applemarketingtools.com/api/v2/us/podcasts/top/\(limit)/genre=\(genre.appleGenreID)/json"
+        // Primary: iTunes Search API (reliable, always available)
+        let searchQuery = genre.title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? genre.title
+        let itunesURL = URL(string: "https://itunes.apple.com/search?term=\(searchQuery)+podcast&media=podcast&entity=podcast&genreId=\(genre.appleGenreID)&limit=\(limit)")
+
+        if let url = itunesURL {
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                let response = try JSONDecoder().decode(ItunesSearchResponse.self, from: data)
+                let results = response.results.compactMap { item -> PodcastSearchResult? in
+                    guard let feedURL = item.feedURL else { return nil }
+                    return PodcastSearchResult(
+                        title: item.collectionName,
+                        author: item.artistName,
+                        feedURL: feedURL,
+                        artworkURL: item.artworkURL,
+                        websiteURL: nil,
+                        summary: item.primaryGenreName
+                    )
+                }
+                if !results.isEmpty { return results }
+            } catch {
+                // Fall through to RSS API
+            }
+        }
+
+        // Fallback: Apple RSS Feed Generator (may be deprecated)
+        let urlString = "https://rss.marketingtools.apple.com/api/v2/us/podcasts/top/\(limit)/genre=\(genre.appleGenreID)/json"
         guard let url = URL(string: urlString) else { return [] }
 
         do {
