@@ -15,32 +15,30 @@ struct ContentView: View {
         Group {
             if hasSeenOnboarding {
                 VStack(spacing: 0) {
-                    // Content area
-                    ZStack {
-                        NavigationStack {
-                            HomeView(onOpenSettings: { isSettingsPresented = true })
+                    // Content area — only the active tab is mounted
+                    Group {
+                        switch selectedTab {
+                        case 0:
+                            NavigationStack {
+                                HomeView(onOpenSettings: { isSettingsPresented = true })
+                            }
+                        case 1:
+                            NavigationStack {
+                                LibraryView(onOpenSettings: { isSettingsPresented = true })
+                            }
+                        case 2:
+                            NavigationStack {
+                                QueueView()
+                            }
+                        case 3:
+                            NavigationStack {
+                                SearchView()
+                            }
+                        default:
+                            EmptyView()
                         }
-                        .opacity(selectedTab == 0 ? 1 : 0)
-                        .zIndex(selectedTab == 0 ? 1 : 0)
-
-                        NavigationStack {
-                            LibraryView(onOpenSettings: { isSettingsPresented = true })
-                        }
-                        .opacity(selectedTab == 1 ? 1 : 0)
-                        .zIndex(selectedTab == 1 ? 1 : 0)
-
-                        NavigationStack {
-                            QueueView()
-                        }
-                        .opacity(selectedTab == 2 ? 1 : 0)
-                        .zIndex(selectedTab == 2 ? 1 : 0)
-
-                        NavigationStack {
-                            SearchView()
-                        }
-                        .opacity(selectedTab == 3 ? 1 : 0)
-                        .zIndex(selectedTab == 3 ? 1 : 0)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
                     // Custom tab bar
                     OffScriptTabBar(
