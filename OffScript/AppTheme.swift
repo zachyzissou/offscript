@@ -1,5 +1,6 @@
 import SafariServices
 import SwiftUI
+import UIKit
 
 // MARK: - HTML Stripping
 
@@ -79,6 +80,8 @@ extension Color {
     static let offscriptTextMuted = Color.white.opacity(0.52)
     static let offscriptHairline = Color.white.opacity(0.12)
     static let offscriptProgressTrack = Color.white.opacity(0.12)
+    static let offscriptFillSubtle = Color.white.opacity(0.06)
+    static let offscriptFillLight = Color.white.opacity(0.08)
 
     // Warm cream secondary accent — for informational highlights that aren't CTAs
     static let offscriptAccentSecondary = Color(red: 0.92, green: 0.84, blue: 0.68)
@@ -131,47 +134,99 @@ struct OffScriptArtworkPlaceholder: View {
     }
 }
 
+// MARK: - Image Cache
+
+final class ImageCache: @unchecked Sendable {
+    static let shared = ImageCache()
+
+    private let memoryCache: NSCache<NSURL, UIImage> = {
+        let cache = NSCache<NSURL, UIImage>()
+        cache.countLimit = 200
+        cache.totalCostLimit = 50 * 1024 * 1024 // 50 MB memory
+        return cache
+    }()
+
+    private let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.urlCache = URLCache(
+            memoryCapacity: 50 * 1024 * 1024,  // 50 MB memory
+            diskCapacity: 200 * 1024 * 1024     // 200 MB disk
+        )
+        config.requestCachePolicy = .returnCacheDataElseLoad
+        return URLSession(configuration: config)
+    }()
+
+    func image(for url: URL) -> UIImage? {
+        memoryCache.object(forKey: url as NSURL)
+    }
+
+    func loadImage(from url: URL) async -> UIImage? {
+        if let cached = memoryCache.object(forKey: url as NSURL) {
+            return cached
+        }
+
+        guard let (data, _) = try? await session.data(from: url),
+              let image = UIImage(data: data) else {
+            return nil
+        }
+
+        let cost = data.count
+        memoryCache.setObject(image, forKey: url as NSURL, cost: cost)
+        return image
+    }
+}
+
+struct CachedAsyncImage<Content: View, Placeholder: View>: View {
+    let url: URL?
+    @ViewBuilder let content: (Image) -> Content
+    @ViewBuilder let placeholder: () -> Placeholder
+
+    @State private var uiImage: UIImage?
+    @State private var didFail = false
+
+    var body: some View {
+        Group {
+            if let uiImage {
+                content(Image(uiImage: uiImage))
+            } else if didFail {
+                placeholder()
+            } else {
+                placeholder()
+                    .task(id: url) {
+                        guard let url else { didFail = true; return }
+                        if let image = await ImageCache.shared.loadImage(from: url) {
+                            uiImage = image
+                        } else {
+                            didFail = true
+                        }
+                    }
+            }
+        }
+    }
+}
+
 struct OffScriptArtworkView: View {
     let url: URL?
     var cornerRadius: CGFloat = OffScriptTheme.Radius.medium
 
     var body: some View {
         GeometryReader { proxy in
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .clipped()
-                        .overlay(
-                            LinearGradient(
-                                colors: [Color.clear, Color.black.opacity(0.08)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
+            CachedAsyncImage(url: url) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+                    .overlay(
+                        LinearGradient(
+                            colors: [Color.clear, Color.black.opacity(0.08)],
+                            startPoint: .top,
+                            endPoint: .bottom
                         )
-                case .failure:
-                    ZStack {
-                        OffScriptArtworkPlaceholder(cornerRadius: cornerRadius)
-                            .frame(width: proxy.size.width, height: proxy.size.height)
-
-                        VStack(spacing: 4) {
-                            Spacer()
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(Color.offscriptTextMuted.opacity(0.6))
-                        }
-                        .padding(.bottom, 8)
-                    }
-                case .empty:
-                    OffScriptArtworkPlaceholder(cornerRadius: cornerRadius)
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                @unknown default:
-                    OffScriptArtworkPlaceholder(cornerRadius: cornerRadius)
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                }
+                    )
+            } placeholder: {
+                OffScriptArtworkPlaceholder(cornerRadius: cornerRadius)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
@@ -189,7 +244,7 @@ struct OffScriptReasonBadge: View {
             .lineLimit(1)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(Color.white.opacity(0.08))
+            .background(Color.offscriptFillLight)
             .clipShape(Capsule())
             .overlay(
                 Capsule()
@@ -557,29 +612,29 @@ struct SkeletonRailCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color.white.opacity(0.06))
+                .fill(Color.offscriptFillSubtle)
                 .frame(width: 160, height: 160)
 
             VStack(alignment: .leading, spacing: 8) {
                 Capsule()
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptFillSubtle)
                     .frame(width: 70, height: 16)
 
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptFillSubtle)
                     .frame(width: 80, height: 10)
 
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptFillSubtle)
                     .frame(width: 140, height: 14)
 
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptFillSubtle)
                     .frame(width: 100, height: 10)
             }
 
             Capsule()
-                .fill(Color.white.opacity(0.06))
+                .fill(Color.offscriptFillSubtle)
                 .frame(width: 56, height: 32)
         }
         .padding(16)
@@ -597,7 +652,7 @@ struct SkeletonHeroCard: View {
         VStack(alignment: .leading, spacing: 0) {
             // Matches the new full-width artwork hero card layout
             RoundedRectangle(cornerRadius: 0, style: .continuous)
-                .fill(Color.white.opacity(0.06))
+                .fill(Color.offscriptFillSubtle)
                 .frame(height: 200)
                 .clipShape(
                     UnevenRoundedRectangle(
@@ -611,23 +666,23 @@ struct SkeletonHeroCard: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptFillSubtle)
                     .frame(height: 22)
 
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptFillSubtle)
                     .frame(width: 200, height: 22)
 
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptFillSubtle)
                     .frame(width: 140, height: 12)
 
                 HStack(spacing: 10) {
                     Capsule()
-                        .fill(Color.white.opacity(0.06))
+                        .fill(Color.offscriptFillSubtle)
                         .frame(width: 64, height: 36)
                     Capsule()
-                        .fill(Color.white.opacity(0.06))
+                        .fill(Color.offscriptFillSubtle)
                         .frame(width: 72, height: 36)
                 }
             }
@@ -646,11 +701,11 @@ struct SkeletonSearchRow: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptFillSubtle)
                     .frame(width: 200, height: 14)
 
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptFillSubtle)
                     .frame(width: 140, height: 10)
             }
         }

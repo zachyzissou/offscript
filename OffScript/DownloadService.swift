@@ -5,11 +5,23 @@ import SwiftData
 @MainActor
 final class DownloadService: NSObject, ObservableObject {
     static let shared = DownloadService()
+    private static let backgroundSessionIdentifier = "com.offscript.downloads"
     private let maximumConcurrentDownloads = 2
 
     let objectWillChange = ObservableObjectPublisher()
 
-    private var session: URLSession!
+    /// Set by the app delegate when the system wakes the app to handle background URL session events.
+    var backgroundCompletionHandler: (() -> Void)?
+
+    private lazy var session: URLSession = {
+        let configuration = URLSessionConfiguration.background(withIdentifier: Self.backgroundSessionIdentifier)
+        configuration.isDiscretionary = false
+        configuration.sessionSendsLaunchEvents = true
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForRequest = 60
+        configuration.timeoutIntervalForResource = 60 * 60
+        return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+    }()
     private var modelContext: ModelContext?
     private var taskToEpisodeID: [Int: UUID] = [:]
     private var episodeIDToTask: [UUID: URLSessionDownloadTask] = [:]
@@ -17,11 +29,8 @@ final class DownloadService: NSObject, ObservableObject {
 
     private override init() {
         super.init()
-        let configuration = URLSessionConfiguration.default
-        configuration.waitsForConnectivity = true
-        configuration.timeoutIntervalForRequest = 60
-        configuration.timeoutIntervalForResource = 60 * 60
-        session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        // Access session lazily on first use; just trigger it here to reconnect background tasks.
+        _ = session
     }
 
     func configure(context: ModelContext) {
@@ -344,6 +353,13 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
                 in: self.modelContext
             )
             self.resumeQueuedDownloadsIfNeeded()
+        }
+    }
+
+    nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        Task { @MainActor in
+            self.backgroundCompletionHandler?()
+            self.backgroundCompletionHandler = nil
         }
     }
 }

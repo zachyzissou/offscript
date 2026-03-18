@@ -11,6 +11,7 @@ struct LibraryView: View {
     ) private var episodes: [Episode]
     @State private var showDownloadedOnly = AppSettings.libraryShowDownloadedOnly
     @State private var sortMode = AppSettings.LibrarySortMode.newest
+    @State private var syncError: String?
     let onOpenSettings: () -> Void
 
     private var subscribedPodcasts: [Podcast] {
@@ -153,6 +154,21 @@ struct LibraryView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .refreshable { await syncSubscriptions() }
+        .overlay(alignment: .top) {
+            if let syncError {
+                Text(syncError)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.offscriptDestructive.opacity(0.92))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: syncError != nil)
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 Button(action: onOpenSettings) {
@@ -189,7 +205,21 @@ struct LibraryView: View {
 
     @MainActor
     private func syncSubscriptions() async {
+        syncError = nil
         await SyncCoordinator.shared.refreshSubscriptions(subscribedPodcasts, force: true)
+
+        // Check for any sync failures after refresh completes
+        let failedPodcasts = subscribedPodcasts.filter { $0.syncStatus == "failed" }
+        if !failedPodcasts.isEmpty {
+            let names = failedPodcasts.prefix(2).map(\.title).joined(separator: ", ")
+            let suffix = failedPodcasts.count > 2 ? " and \(failedPodcasts.count - 2) more" : ""
+            syncError = "Sync failed for \(names)\(suffix)"
+
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                syncError = nil
+            }
+        }
     }
 
     private func comparePodcasts(_ lhs: Podcast, _ rhs: Podcast) -> Bool {

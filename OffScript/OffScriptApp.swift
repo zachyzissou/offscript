@@ -11,8 +11,21 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+final class OffScriptAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        Task { @MainActor in
+            DownloadService.shared.backgroundCompletionHandler = completionHandler
+        }
+    }
+}
+
 @main
 struct OffScriptApp: App {
+    @UIApplicationDelegateAdaptor(OffScriptAppDelegate.self) private var appDelegate
     private static let logger = Logger(subsystem: "OffScript", category: "SwiftData")
 
     init() {

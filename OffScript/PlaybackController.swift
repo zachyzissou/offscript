@@ -16,7 +16,7 @@ final class PlaybackController: ObservableObject {
 
     @Published private(set) var currentEpisode: Episode?
     @Published private(set) var isPlaying = false
-    @Published var playbackRate: Float = 1.0
+    @Published var playbackRate: Float = UserDefaults.standard.float(forKey: "offscript.playbackRate").nonZeroOrDefault(1.0)
     @Published private(set) var currentTime: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
     @Published var isPlayerPresented = false
@@ -46,6 +46,7 @@ final class PlaybackController: ObservableObject {
         modelContext = context
         DownloadService.shared.configure(context: context)
         SyncCoordinator.shared.configure(context: context)
+        restoreLastSessionIfNeeded(context: context)
     }
 
     func play(_ episode: Episode, in context: ModelContext? = nil, origin: StartOrigin = .manual) {
@@ -56,6 +57,7 @@ final class PlaybackController: ObservableObject {
         recordExitEventIfNeeded(replacingWith: episode)
 
         currentEpisode = episode
+        UserDefaults.standard.set(episode.audioURL.absoluteString, forKey: "offscript.lastEpisodeAudioURL")
         let playableURL = DownloadService.shared.localURL(for: episode) ?? episode.audioURL
         let item = AVPlayerItem(url: playableURL)
         player.replaceCurrentItem(with: item)
@@ -131,6 +133,7 @@ final class PlaybackController: ObservableObject {
 
     func setPlaybackRate(_ rate: Float) {
         playbackRate = rate
+        UserDefaults.standard.set(rate, forKey: "offscript.playbackRate")
         if isPlaying {
             player.rate = rate
         }
@@ -174,6 +177,7 @@ final class PlaybackController: ObservableObject {
         currentTime = episode.playedPosition
         duration = max(duration, episode.playedPosition)
         recordPlaybackEvent(kind: .completed, episode: episode, position: currentTime)
+        UserDefaults.standard.removeObject(forKey: "offscript.lastEpisodeAudioURL")
         try? modelContext?.save()
         TelemetryService.track(
             "episode_completed",
@@ -449,6 +453,23 @@ final class PlaybackController: ObservableObject {
         }
     }
 
+    private func restoreLastSessionIfNeeded(context: ModelContext) {
+        guard currentEpisode == nil else { return }
+        guard let savedURL = UserDefaults.standard.string(forKey: "offscript.lastEpisodeAudioURL"),
+              let audioURL = URL(string: savedURL) else { return }
+
+        let descriptor = FetchDescriptor<Episode>()
+        guard let episodes = try? context.fetch(descriptor) else { return }
+        guard let episode = episodes.first(where: { $0.audioURL.absoluteString == audioURL.absoluteString }) else { return }
+
+        // Restore episode in MiniPlayer without auto-playing
+        currentEpisode = episode
+        currentTime = episode.playedPosition
+        duration = episode.duration ?? 0
+        isPlaying = false
+        updateNowPlaying(episode: episode)
+    }
+
     private func handleRouteChange(reasonValue: UInt?) {
         guard let reasonValue,
               let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
@@ -469,5 +490,11 @@ final class PlaybackController: ObservableObject {
         default:
             break
         }
+    }
+}
+
+private extension Float {
+    func nonZeroOrDefault(_ defaultValue: Float) -> Float {
+        self == 0 ? defaultValue : self
     }
 }
