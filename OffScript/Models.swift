@@ -322,9 +322,6 @@ final class EpisodeProfile {
     private var tagsStorage: String = ""
     private var entitiesStorage: String = ""
     var summary: String?
-    var confidenceScore: Double = 0.0
-    var estimatedListeningContext: String?
-    var freshnessBucket: String?
 
     @Relationship(deleteRule: .noAction)
     var episode: Episode?

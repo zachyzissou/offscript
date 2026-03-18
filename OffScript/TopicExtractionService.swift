@@ -75,9 +75,6 @@ final class TopicExtractionService {
         profile.tags = tags
         profile.entities = entities
         if summary != nil { profile.summary = summary }
-        profile.confidenceScore = summary == nil ? 0.45 : 0.8
-        profile.freshnessBucket = freshnessBucket(for: episode.pubDate)
-        profile.estimatedListeningContext = listeningContext(for: episode.duration)
 
         if existing == nil { context.insert(profile) }
     }
@@ -85,6 +82,17 @@ final class TopicExtractionService {
     static func heuristicTags(from text: String) -> [String] {
         heuristicTagsAndEntities(from: text).0
     }
+
+    private static let stopwords: Set<String> = [
+        "episode", "show", "time", "way", "people", "thing", "year", "day",
+        "week", "world", "part", "number", "point", "place", "case", "group",
+        "problem", "fact", "lot", "kind", "stuff", "something", "anything",
+        "everything", "nothing", "someone", "everyone", "title", "description",
+        "question", "answer", "idea", "end", "start", "bit", "sort", "couple",
+        "today", "tonight", "tomorrow", "yesterday", "morning", "afternoon",
+        "evening", "life", "man", "woman", "guy", "hand", "head", "side",
+        "room", "home", "word", "line", "example", "area", "moment", "reason"
+    ]
 
     static func heuristicTagsAndEntities(from text: String) -> ([String], [String]) {
         var tagCounts: [String: Int] = [:]
@@ -106,7 +114,9 @@ final class TopicExtractionService {
         tagger.enumerateTags(in: range, unit: .word, scheme: .lexicalClass, options: options) { tag, tokenRange in
             if tag == .noun {
                 let token = String(text[tokenRange]).lowercased()
-                if token.count > 2 { tagCounts[token, default: 0] += 1 }
+                if token.count > 2, !stopwords.contains(token) {
+                    tagCounts[token, default: 0] += 1
+                }
             }
             return true
         }
@@ -115,21 +125,4 @@ final class TopicExtractionService {
         return (tags, Array(entities))
     }
 
-    private func freshnessBucket(for date: Date) -> String {
-        let days = Calendar.current.dateComponents([.day], from: date, to: .now).day ?? 0
-        switch days {
-        case ..<3: return "fresh"
-        case ..<14: return "recent"
-        default: return "catalog"
-        }
-    }
-
-    private func listeningContext(for duration: TimeInterval?) -> String {
-        guard let duration else { return "anytime" }
-        switch duration / 60 {
-        case ..<20: return "quick"
-        case ..<45: return "commute"
-        default: return "deep-focus"
-        }
-    }
 }
