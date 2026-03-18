@@ -73,9 +73,9 @@ actor DiscoveryService {
             queries.append(first)
         }
 
-        // Query from preferred genres
+        // Query from ALL preferred genres, not just the first
         let genres = profile.preferredGenres
-        if let genre = genres.first {
+        for genre in genres.prefix(3) {
             queries.append("\(genre) podcast")
         }
 
@@ -89,8 +89,8 @@ actor DiscoveryService {
             queries.append("podcasts like \(favoriteShow)")
         }
 
-        // Cap at 4 queries
-        return Array(queries.prefix(4))
+        // Cap at 6 queries to cover more genre diversity
+        return Array(queries.prefix(6))
     }
 
     // MARK: - Scoring
