@@ -152,6 +152,8 @@ struct PlayerView: View {
                                         Label(String(format: "%.2gx", player.playbackRate), systemImage: "speedometer")
                                     }
                                     .buttonStyle(SecondaryPillButtonStyle())
+                                    .accessibilityLabel("Playback speed, currently \(String(format: "%.2gx", player.playbackRate))")
+                                    .accessibilityHint("Opens menu to change playback speed")
 
                                     Menu {
                                         Button("Play Next") {
@@ -166,11 +168,15 @@ struct PlayerView: View {
                                     }
                                     .buttonStyle(SecondaryPillButtonStyle())
                                     .disabled(episode.isQueued)
+                                    .accessibilityLabel(episode.isQueued ? "Episode already in queue" : "Add to queue")
+                                    .accessibilityHint(episode.isQueued ? "" : "Opens menu to add this episode to the queue")
 
                                     Button("Mark Played") {
                                         player.completeCurrentEpisode(shouldAutoAdvance: false)
                                     }
                                     .buttonStyle(PrimaryPillButtonStyle())
+                                    .accessibilityLabel("Mark episode as played")
+                                    .accessibilityHint("Marks this episode complete without auto-advancing")
                                 }
 
                                 HStack(spacing: 10) {
@@ -185,14 +191,20 @@ struct PlayerView: View {
                                         Label("Sleep", systemImage: "moon.zzz.fill")
                                     }
                                     .buttonStyle(SecondaryPillButtonStyle())
+                                    .accessibilityLabel(player.sleepTimerEndDate != nil ? "Sleep timer active" : "Sleep timer")
+                                    .accessibilityHint("Opens menu to set or cancel a sleep timer")
 
                                     AirPlayRouteButton()
                                         .frame(width: 52, height: 40)
+                                        .accessibilityLabel("AirPlay")
+                                        .accessibilityHint("Select audio output device")
 
                                     ShareLink(item: episode.audioURL) {
                                         Label("Share", systemImage: "square.and.arrow.up")
                                     }
                                     .buttonStyle(SecondaryPillButtonStyle())
+                                    .accessibilityLabel("Share episode")
+                                    .accessibilityHint("Opens the share sheet for this episode's audio")
 
                                     DownloadButton(episode: episode)
                                 }
@@ -535,6 +547,8 @@ private struct PlayerTranscriptSection: View {
                         .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Open \(transcript.displayTitle) transcript")
+                    .accessibilityHint("Opens transcript in browser")
                 }
             }
         }
