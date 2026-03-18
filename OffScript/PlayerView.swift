@@ -71,14 +71,14 @@ struct PlayerView: View {
                                 }
 
                                 VStack(alignment: .leading, spacing: 16) {
-                                    Slider(
+                                    OffScriptScrubber(
                                         value: Binding(
                                             get: { player.currentTime },
-                                            set: { player.seek(to: $0) }
+                                            set: { _ in }
                                         ),
-                                        in: 0...max(player.duration, 1)
+                                        duration: player.duration,
+                                        onSeek: { player.seek(to: $0) }
                                     )
-                                    .tint(Color.offscriptAccent)
 
                                     HStack {
                                         Text(time(player.currentTime))

@@ -383,6 +383,89 @@ struct OffScriptProgressBar: View {
     }
 }
 
+struct OffScriptScrubber: View {
+    @Binding var value: TimeInterval
+    let duration: TimeInterval
+    var onSeek: ((TimeInterval) -> Void)? = nil
+
+    @State private var isScrubbing = false
+    @State private var scrubValue: Double = 0
+
+    private let trackHeight: CGFloat = 6
+    private let activeTrackHeight: CGFloat = 10
+    private let thumbSize: CGFloat = 16
+
+    private var safeDuration: TimeInterval { max(duration, 1) }
+
+    private var displayFraction: Double {
+        let t = isScrubbing ? scrubValue : value
+        return min(max(t / safeDuration, 0), 1)
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let height = isScrubbing ? activeTrackHeight : trackHeight
+            let trackWidth = proxy.size.width
+
+            ZStack(alignment: .leading) {
+                // Background track
+                Capsule()
+                    .fill(Color.offscriptProgressTrack)
+                    .frame(height: height)
+
+                // Filled progress
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [.offscriptAccent, Color.offscriptAccent.opacity(0.75)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(trackWidth * displayFraction, height), height: height)
+
+                // Thumb
+                Circle()
+                    .fill(Color.offscriptAccent)
+                    .frame(width: thumbSize, height: thumbSize)
+                    .shadow(color: Color.offscriptAccent.opacity(0.35), radius: 4, y: 2)
+                    .scaleEffect(isScrubbing ? 1.15 : 1)
+                    .offset(x: thumbOffset(trackWidth: trackWidth))
+            }
+            .frame(height: max(thumbSize, activeTrackHeight))
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        if !isScrubbing {
+                            isScrubbing = true
+                            scrubValue = value
+                        }
+                        let fraction = min(max(gesture.location.x / trackWidth, 0), 1)
+                        scrubValue = fraction * safeDuration
+                    }
+                    .onEnded { gesture in
+                        let fraction = min(max(gesture.location.x / trackWidth, 0), 1)
+                        let finalValue = fraction * safeDuration
+                        value = finalValue
+                        onSeek?(finalValue)
+                        isScrubbing = false
+                    }
+            )
+            .animation(.easeOut(duration: 0.15), value: isScrubbing)
+        }
+        .frame(height: max(thumbSize, activeTrackHeight))
+        .accessibilityElement()
+        .accessibilityValue("\(Int(displayFraction * 100)) percent")
+        .accessibilityLabel("Playback position")
+    }
+
+    private func thumbOffset(trackWidth: CGFloat) -> CGFloat {
+        let usable = trackWidth - thumbSize
+        return usable * displayFraction
+    }
+}
+
 struct OffScriptSurfaceModifier: ViewModifier {
     var radius: CGFloat = OffScriptTheme.Radius.medium
     var prominent: Bool = false
