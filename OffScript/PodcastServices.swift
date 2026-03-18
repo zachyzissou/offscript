@@ -2,6 +2,48 @@ import Foundation
 import OSLog
 import SwiftData
 
+// MARK: - Network Configuration
+
+enum NetworkConfig {
+    /// Standard timeout for API calls (search, lookup, genre charts)
+    static let apiTimeout: TimeInterval = 30
+
+    /// Timeout for RSS feed fetching (feeds can be slow)
+    static let feedTimeout: TimeInterval = 45
+
+    /// Timeout for chapter/metadata fetching
+    static let metadataTimeout: TimeInterval = 20
+
+    /// Shared URLSession with sensible defaults
+    static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = apiTimeout
+        config.waitsForConnectivity = true
+        config.allowsConstrainedNetworkAccess = true
+        return URLSession(configuration: config)
+    }()
+
+    /// Retry a network operation up to `maxAttempts` times with exponential backoff
+    static func withRetry<T>(
+        maxAttempts: Int = 2,
+        initialDelay: TimeInterval = 1.0,
+        operation: () async throws -> T
+    ) async throws -> T {
+        var lastError: Error?
+        for attempt in 0..<maxAttempts {
+            do {
+                return try await operation()
+            } catch {
+                lastError = error
+                if attempt < maxAttempts - 1 {
+                    try? await Task.sleep(for: .seconds(initialDelay * pow(2.0, Double(attempt))))
+                }
+            }
+        }
+        throw lastError!
+    }
+}
+
 protocol PodcastSearchProviding {
     func search(query: String) async throws -> [PodcastSearchResult]
 }
@@ -27,7 +69,11 @@ struct PodcastSearchService: PodcastSearchProviding {
         ]
 
         guard let url = components?.url else { return [] }
-        let (data, _) = try await URLSession.shared.data(from: url)
+        var request = URLRequest(url: url)
+        request.timeoutInterval = NetworkConfig.apiTimeout
+        let (data, _) = try await NetworkConfig.withRetry {
+            try await NetworkConfig.session.data(for: request)
+        }
         let response = try JSONDecoder().decode(ItunesSearchResponse.self, from: data)
         return response.results.compactMap { item in
             guard let feedURL = item.feedURL else { return nil }
@@ -87,7 +133,7 @@ final class FeedSyncService: FeedSyncProviding {
     func sync(podcast: Podcast, in context: ModelContext) async throws {
         podcast.syncStatus = "syncing"
         var request = URLRequest(url: podcast.feedURL)
-        request.timeoutInterval = 20
+        request.timeoutInterval = NetworkConfig.feedTimeout
         if let eTag = podcast.feedETag {
             request.setValue(eTag, forHTTPHeaderField: "If-None-Match")
         }
@@ -96,7 +142,9 @@ final class FeedSyncService: FeedSyncProviding {
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await NetworkConfig.withRetry {
+                try await NetworkConfig.session.data(for: request)
+            }
             guard let httpResponse = response as? HTTPURLResponse else {
                 logger.error("Sync failed for '\(podcast.title, privacy: .public)': response is not HTTP — URL: \(podcast.feedURL.absoluteString, privacy: .public)")
                 podcast.syncStatus = "failed"
