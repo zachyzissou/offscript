@@ -14,57 +14,68 @@ struct ContentView: View {
     var body: some View {
         Group {
             if hasSeenOnboarding {
-                TabView(selection: $selectedTab) {
-                    NavigationStack {
-                        HomeView(onOpenSettings: { isSettingsPresented = true })
-                    }
-                    .tag(0)
-                    .tabItem {
-                        Label("Home", systemImage: "waveform.path.ecg")
-                    }
+                GeometryReader { proxy in
+                    let bottomSafeArea = proxy.safeAreaInsets.bottom
+                    let tabBarHeight: CGFloat = 49
+                    let miniPlayerOffset = bottomSafeArea + tabBarHeight + 6
 
-                    NavigationStack {
-                        LibraryView(onOpenSettings: { isSettingsPresented = true })
-                    }
-                    .tag(1)
-                    .tabItem {
-                        Label("Library", systemImage: "books.vertical")
-                    }
+                    TabView(selection: $selectedTab) {
+                        NavigationStack {
+                            HomeView(onOpenSettings: { isSettingsPresented = true })
+                        }
+                        .tag(0)
+                        .tabItem {
+                            Label("Home", systemImage: "waveform.path.ecg")
+                        }
 
-                    NavigationStack {
-                        QueueView()
-                    }
-                    .tag(2)
-                    .tabItem {
-                        Label("Queue", systemImage: "text.badge.plus")
-                    }
-                    .badge(queueItems.count > 0 ? queueItems.count : 0)
+                        NavigationStack {
+                            LibraryView(onOpenSettings: { isSettingsPresented = true })
+                        }
+                        .tag(1)
+                        .tabItem {
+                            Label("Library", systemImage: "books.vertical")
+                        }
 
-                    NavigationStack {
-                        SearchView()
+                        NavigationStack {
+                            QueueView()
+                        }
+                        .tag(2)
+                        .tabItem {
+                            Label("Queue", systemImage: "text.badge.plus")
+                        }
+                        .badge(queueItems.count > 0 ? queueItems.count : 0)
+
+                        NavigationStack {
+                            SearchView()
+                        }
+                        .tag(3)
+                        .tabItem {
+                            Label("Search", systemImage: "magnifyingglass")
+                        }
                     }
-                    .tag(3)
-                    .tabItem {
-                        Label("Search", systemImage: "magnifyingglass")
+                    .tint(Color.offscriptAccent)
+                    .toolbarBackground(Color.offscriptCardUtility.opacity(0.98), for: .tabBar)
+                    .toolbarBackground(.visible, for: .tabBar)
+                    .toolbarColorScheme(.dark, for: .tabBar)
+                    .safeAreaInset(edge: .bottom) {
+                        if player.currentEpisode != nil {
+                            Color.clear.frame(height: 72)
+                        }
                     }
-                }
-                .tint(Color.offscriptAccent)
-                .toolbarBackground(Color.offscriptCardUtility.opacity(0.98), for: .tabBar)
-                .toolbarBackground(.visible, for: .tabBar)
-                .toolbarColorScheme(.dark, for: .tabBar)
-                .safeAreaInset(edge: .bottom) {
-                    if player.currentEpisode != nil {
-                        MiniPlayer()
-                            .padding(.bottom, 4)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .overlay(alignment: .bottom) {
+                        if player.currentEpisode != nil {
+                            MiniPlayer()
+                                .padding(.bottom, miniPlayerOffset)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
                     }
-                }
-                .animation(.spring(response: 0.35, dampingFraction: 0.86), value: player.currentEpisode != nil)
-                .sheet(isPresented: $player.isPlayerPresented) {
-                    PlayerView()
-                }
-                .sheet(isPresented: $isSettingsPresented) {
-                    SettingsView()
+                    .animation(.spring(response: 0.35, dampingFraction: 0.86), value: player.currentEpisode != nil)
+                    .sheet(isPresented: $player.isPlayerPresented) {
+                        PlayerView()
+                    }
+                    .sheet(isPresented: $isSettingsPresented) {
+                        SettingsView()
+                    }
                 }
             } else {
                 OnboardingFlowView {
