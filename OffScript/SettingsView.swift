@@ -77,7 +77,7 @@ struct SettingsView: View {
                                         .foregroundStyle(Color.offscriptAccent)
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text("Signed in as \(appleUserName.isEmpty ? "Apple ID User" : appleUserName)")
-                                            .font(.headline)
+                                            .font(.offscriptCardTitle)
                                             .foregroundStyle(Color.offscriptTextPrimary)
                                         Text("iCloud syncs automatically when connected.")
                                             .font(.offscriptMeta)
@@ -93,7 +93,7 @@ struct SettingsView: View {
                                 }
                                 .foregroundStyle(Color.red.opacity(0.85))
                             }
-                            .padding(18)
+                            .padding(16)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .offscriptUtilitySurface()
                         } else {
@@ -109,7 +109,7 @@ struct SettingsView: View {
                                 }
                                 .signInWithAppleButtonStyle(.white)
                                 .frame(height: 50)
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous))
 
                                 if let signInMessage {
                                     Text(signInMessage)
@@ -118,7 +118,7 @@ struct SettingsView: View {
                                         .transition(.opacity)
                                 }
                             }
-                            .padding(18)
+                            .padding(16)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .offscriptUtilitySurface()
                         }
@@ -134,7 +134,7 @@ struct SettingsView: View {
                         Text("OffScript currently runs as a local-first prototype with RSS-backed subscriptions and on-device recommendation logic.")
                             .font(.offscriptBody)
                             .foregroundStyle(Color.offscriptTextSecondary)
-                            .padding(18)
+                            .padding(16)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .offscriptUtilitySurface()
                     }
@@ -218,7 +218,7 @@ struct SettingsView: View {
         Toggle(isOn: isOn) {
             VStack(alignment: .leading, spacing: 5) {
                 Text(title)
-                    .font(.headline)
+                    .font(.offscriptCardTitle)
                     .foregroundStyle(Color.offscriptTextPrimary)
                 Text(detail)
                     .font(.offscriptBody)
@@ -227,7 +227,7 @@ struct SettingsView: View {
             }
         }
         .tint(Color.offscriptAccent)
-        .padding(18)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .offscriptUtilitySurface()
     }

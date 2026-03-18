@@ -288,7 +288,7 @@ private struct LibraryEpisodeCard: View {
                     HStack(alignment: .top, spacing: 14) {
                         OffScriptArtworkView(
                             url: episode.artworkURL ?? episode.podcast.artworkURL,
-                            cornerRadius: 18
+                            cornerRadius: OffScriptTheme.Radius.small
                         )
                         .frame(width: 90, height: 90)
 
@@ -317,10 +317,16 @@ private struct LibraryEpisodeCard: View {
                     }
                     .buttonStyle(PrimaryPillButtonStyle())
 
-                    Button(episode.isQueued ? "Queued" : "Queue") {
+                    Button {
                         do { try QueueService.add(episode, in: modelContext) } catch { libraryLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
+                    } label: {
+                        Image(systemName: episode.isQueued ? "checkmark" : "plus")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.offscriptTextPrimary)
+                            .frame(width: 36, height: 36)
+                            .background(Color.offscriptSurfaceLight)
+                            .clipShape(Circle())
                     }
-                    .buttonStyle(SecondaryPillButtonStyle())
                     .disabled(episode.isQueued)
                 }
             }
@@ -378,7 +384,7 @@ private struct PodcastShelfCard: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(Color.offscriptTextMuted)
         }
-        .padding(18)
+        .padding(16)
         .offscriptSurface()
     }
 }
@@ -403,7 +409,7 @@ private struct PodcastDetailHeader: View {
 
                     if let author = podcast.author {
                         Text(author)
-                            .font(.headline)
+                            .font(.offscriptCardTitle)
                             .foregroundStyle(Color.offscriptTextSecondary)
                     }
 
@@ -484,7 +490,7 @@ private struct PodcastEpisodeCard: View {
             } label: {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(episode.title)
-                        .font(.headline)
+                        .font(.offscriptCardTitle)
                         .foregroundStyle(Color.offscriptTextPrimary)
                         .multilineTextAlignment(.leading)
 
@@ -514,14 +520,20 @@ private struct PodcastEpisodeCard: View {
                 }
                 .buttonStyle(PrimaryPillButtonStyle())
 
-                Button(episode.isQueued ? "Queued" : "Queue") {
+                Button {
                     do { try QueueService.add(episode, in: modelContext) } catch { libraryLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
+                } label: {
+                    Image(systemName: episode.isQueued ? "checkmark" : "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .frame(width: 36, height: 36)
+                        .background(Color.offscriptSurfaceLight)
+                        .clipShape(Circle())
                 }
-                .buttonStyle(SecondaryPillButtonStyle())
                 .disabled(episode.isQueued)
             }
         }
-        .padding(18)
+        .padding(16)
         .offscriptSurface()
     }
 
@@ -567,7 +579,7 @@ private struct FilterChipStyle: ButtonStyle {
             .foregroundStyle(isSelected ? Color.black : Color.offscriptTextPrimary)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .background(isSelected ? Color.offscriptAccent : Color.white.opacity(configuration.isPressed ? 0.12 : 0.08))
+            .background(isSelected ? Color.offscriptAccent : (configuration.isPressed ? Color.offscriptSurfaceMedium : Color.offscriptSurfaceLight))
             .clipShape(Capsule())
             .overlay(
                 Capsule()

@@ -38,6 +38,13 @@ extension Color {
     // Destructive — desaturated coral that belongs in the warm palette
     static let offscriptDestructive = Color(red: 0.88, green: 0.36, blue: 0.32)
     static let offscriptDestructiveSoft = Color(red: 0.88, green: 0.36, blue: 0.32).opacity(0.16)
+
+    // Surface tints — replace inline Color.white.opacity(...) literals
+    static let offscriptSurfaceFaint = Color.white.opacity(0.04)
+    static let offscriptSurfaceSubtle = Color.white.opacity(0.05)
+    static let offscriptSurfaceThin = Color.white.opacity(0.06)
+    static let offscriptSurfaceLight = Color.white.opacity(0.08)
+    static let offscriptSurfaceMedium = Color.white.opacity(0.12)
 }
 
 extension Font {
@@ -69,7 +76,7 @@ struct OffScriptArtworkPlaceholder: View {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [.offscriptAccentSoft, Color.white.opacity(0.06)],
+                        colors: [.offscriptAccentSoft, Color.offscriptSurfaceThin],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -120,7 +127,7 @@ struct OffScriptReasonBadge: View {
             .foregroundStyle(Color.offscriptTextPrimary)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(Color.white.opacity(0.08))
+            .background(Color.offscriptSurfaceLight)
             .clipShape(Capsule())
             .overlay(
                 Capsule()
@@ -361,7 +368,7 @@ struct SecondaryPillButtonStyle: ButtonStyle {
             .foregroundStyle(Color.offscriptTextPrimary)
             .padding(.horizontal, 16)
             .padding(.vertical, 11)
-            .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.08))
+            .background(configuration.isPressed ? Color.offscriptSurfaceMedium : Color.offscriptSurfaceLight)
             .clipShape(Capsule())
             .overlay(
                 Capsule()
@@ -384,7 +391,7 @@ struct ShimmerModifier: ViewModifier {
                     LinearGradient(
                         stops: [
                             .init(color: .clear, location: max(phase - 0.3, 0)),
-                            .init(color: Color.white.opacity(0.08), location: phase),
+                            .init(color: Color.offscriptSurfaceLight, location: phase),
                             .init(color: .clear, location: min(phase + 0.3, 1))
                         ],
                         startPoint: .leading,
@@ -481,30 +488,30 @@ extension View {
 struct SkeletonRailCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color.white.opacity(0.06))
+            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous)
+                .fill(Color.offscriptSurfaceThin)
                 .frame(width: 160, height: 160)
 
             VStack(alignment: .leading, spacing: 8) {
                 Capsule()
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptSurfaceThin)
                     .frame(width: 70, height: 16)
 
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptSurfaceThin)
                     .frame(width: 80, height: 10)
 
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptSurfaceThin)
                     .frame(width: 140, height: 14)
 
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptSurfaceThin)
                     .frame(width: 100, height: 10)
             }
 
             Capsule()
-                .fill(Color.white.opacity(0.06))
+                .fill(Color.offscriptSurfaceThin)
                 .frame(width: 56, height: 32)
         }
         .padding(16)
@@ -522,7 +529,7 @@ struct SkeletonHeroCard: View {
         VStack(alignment: .leading, spacing: 0) {
             // Matches the new full-width artwork hero card layout
             RoundedRectangle(cornerRadius: 0, style: .continuous)
-                .fill(Color.white.opacity(0.06))
+                .fill(Color.offscriptSurfaceThin)
                 .frame(height: 200)
                 .clipShape(
                     UnevenRoundedRectangle(
@@ -536,23 +543,23 @@ struct SkeletonHeroCard: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptSurfaceThin)
                     .frame(height: 22)
 
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptSurfaceThin)
                     .frame(width: 200, height: 22)
 
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptSurfaceThin)
                     .frame(width: 140, height: 12)
 
                 HStack(spacing: 10) {
                     Capsule()
-                        .fill(Color.white.opacity(0.06))
+                        .fill(Color.offscriptSurfaceThin)
                         .frame(width: 64, height: 36)
                     Capsule()
-                        .fill(Color.white.opacity(0.06))
+                        .fill(Color.offscriptSurfaceThin)
                         .frame(width: 72, height: 36)
                 }
             }
@@ -571,11 +578,11 @@ struct SkeletonSearchRow: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptSurfaceThin)
                     .frame(width: 200, height: 14)
 
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptSurfaceThin)
                     .frame(width: 140, height: 10)
             }
         }

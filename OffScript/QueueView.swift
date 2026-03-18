@@ -161,7 +161,7 @@ private struct QueueLeadCard: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(item.episode.podcast.title)
-                        .font(.headline)
+                        .font(.offscriptCardTitle)
                         .foregroundStyle(Color.offscriptTextSecondary)
 
                     if let duration = item.episode.duration {
@@ -178,7 +178,7 @@ private struct QueueLeadCard: View {
             }
 
             HStack(spacing: 10) {
-                Button("Play from Top") {
+                Button("Play") {
                     PlaybackController.shared.play(item.episode, in: modelContext)
                 }
                 .buttonStyle(PrimaryPillButtonStyle())
@@ -192,7 +192,7 @@ private struct QueueLeadCard: View {
                 .buttonStyle(SecondaryPillButtonStyle())
             }
         }
-        .padding(22)
+        .padding(20)
         .offscriptSurface(radius: OffScriptTheme.Radius.large, prominent: true)
     }
 }
@@ -210,7 +210,7 @@ private struct QueueItemCard: View {
                 .font(.headline.weight(.bold))
                 .foregroundStyle(Color.offscriptTextPrimary)
                 .frame(width: 34, height: 34)
-                .background(Color.white.opacity(0.08))
+                .background(Color.offscriptSurfaceLight)
                 .clipShape(Circle())
                 .overlay(
                     Circle().stroke(Color.offscriptHairline, lineWidth: 1)
@@ -221,7 +221,7 @@ private struct QueueItemCard: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.episode.title)
-                    .font(.headline)
+                    .font(.offscriptCardTitle)
                     .foregroundStyle(Color.offscriptTextPrimary)
                     .lineLimit(2)
 
@@ -259,7 +259,7 @@ private struct QueueItemCard: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.offscriptTextMuted)
                         .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.06))
+                        .background(Color.offscriptSurfaceThin)
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)

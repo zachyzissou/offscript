@@ -60,24 +60,24 @@ struct SearchView: View {
                         ForEach(0..<3, id: \.self) { _ in
                             HStack(spacing: 16) {
                                 RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                                    .fill(Color.white.opacity(0.06))
+                                    .fill(Color.offscriptSurfaceThin)
                                     .frame(width: 76, height: 76)
 
                                 VStack(alignment: .leading, spacing: 8) {
                                     Capsule()
-                                        .fill(Color.white.opacity(0.06))
+                                        .fill(Color.offscriptSurfaceThin)
                                         .frame(width: 80, height: 14)
                                     RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.white.opacity(0.06))
+                                        .fill(Color.offscriptSurfaceThin)
                                         .frame(width: 160, height: 16)
                                     RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.white.opacity(0.06))
+                                        .fill(Color.offscriptSurfaceThin)
                                         .frame(width: 110, height: 12)
                                 }
 
                                 Spacer()
                             }
-                            .padding(18)
+                            .padding(16)
                             .offscriptUtilitySurface()
                         }
                     }
@@ -209,7 +209,7 @@ private struct SearchPromptCard: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Good starting point")
-                    .font(.headline)
+                    .font(.offscriptCardTitle)
                     .foregroundStyle(Color.offscriptTextPrimary)
 
                 Text("Search for three strong inputs: a favorite show, a reliable host, and one topic you want more of.")
@@ -218,7 +218,7 @@ private struct SearchPromptCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(18)
+        .padding(16)
         .offscriptSurface(radius: OffScriptTheme.Radius.medium, prominent: true)
     }
 }
@@ -374,7 +374,7 @@ private struct SearchResultCard: View {
                     .foregroundStyle(Color.offscriptTextMuted)
             }
         }
-        .padding(18)
+        .padding(16)
         .offscriptUtilitySurface()
     }
 }

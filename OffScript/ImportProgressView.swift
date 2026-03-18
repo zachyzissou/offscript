@@ -40,7 +40,7 @@ struct ImportProgressView: View {
                 }
 
                 Text(isComplete ? "Your feed is ready" : "Building your feed...")
-                    .font(.system(.title2, design: .serif, weight: .bold))
+                    .font(.offscriptDisplay)
                     .foregroundStyle(Color.offscriptTextPrimary)
 
                 Text(isComplete ? "Head in — your recommendations are waiting." : "Fetching episodes and learning your taste...")
@@ -139,7 +139,7 @@ private struct ImportRow: View {
                 switch status {
                 case .pending:
                     Circle()
-                        .fill(Color.white.opacity(0.08))
+                        .fill(Color.offscriptSurfaceLight)
                         .frame(width: 24, height: 24)
                 case .importing:
                     ProgressView()
@@ -157,8 +157,8 @@ private struct ImportRow: View {
             }
             .frame(width: 24, height: 24)
         }
-        .padding(14)
-        .background(Color.white.opacity(0.04))
+        .padding(12)
+        .background(Color.offscriptSurfaceFaint)
         .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous))
     }
 }

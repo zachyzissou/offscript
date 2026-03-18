@@ -48,7 +48,7 @@ struct PlayerView: View {
                                         .fixedSize(horizontal: false, vertical: true)
 
                                     Text(episode.podcast.title)
-                                        .font(.headline)
+                                        .font(.offscriptCardTitle)
                                         .foregroundStyle(Color.offscriptTextSecondary)
 
                                     HStack(spacing: 10) {
@@ -171,7 +171,7 @@ struct PlayerView: View {
                             .font(.body.weight(.semibold))
                             .foregroundStyle(Color.offscriptTextSecondary)
                             .frame(width: 36, height: 36)
-                            .background(Color.white.opacity(0.08))
+                            .background(Color.offscriptSurfaceLight)
                             .clipShape(Circle())
                     }
                     .accessibilityLabel("Close player")
@@ -224,7 +224,7 @@ private struct PlayerCircleButton: View {
                 .font(.system(size: isPrimary ? 28 : 22, weight: .semibold))
                 .foregroundStyle(isPrimary ? Color.black : Color.offscriptTextPrimary)
                 .frame(width: size, height: size)
-                .background(isPrimary ? Color.offscriptAccent : Color.white.opacity(0.08))
+                .background(isPrimary ? Color.offscriptAccent : Color.offscriptSurfaceLight)
                 .clipShape(Circle())
                 .overlay(
                     Circle()
@@ -265,7 +265,7 @@ private struct PlayerUpNextStrip: View {
                 }
 
                 Text(item.episode.title)
-                    .font(.headline)
+                    .font(.offscriptCardTitle)
                     .foregroundStyle(Color.offscriptTextPrimary)
                     .lineLimit(2)
 
@@ -277,7 +277,7 @@ private struct PlayerUpNextStrip: View {
 
             Spacer()
         }
-        .padding(18)
+        .padding(16)
         .offscriptSurface()
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Up next: \(item.episode.title) from \(item.episode.podcast.title)")
@@ -306,7 +306,7 @@ private struct PlayerWhatsNextSection: View {
                         PlayerSuggestionRow(scored: scored)
                     }
                 }
-                .padding(18)
+                .padding(16)
                 .offscriptSurface()
             }
         }
@@ -347,7 +347,7 @@ private struct PlayerSuggestionRow: View {
                 OffScriptExplanationTag(text: scored.explanation)
 
                 Text(scored.episode.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.offscriptCardTitle)
                     .foregroundStyle(Color.offscriptTextPrimary)
                     .lineLimit(1)
 

@@ -31,7 +31,7 @@ struct OnboardingView: View {
                         // App identity
                         VStack(alignment: .leading, spacing: 18) {
                             Text("OffScript")
-                                .font(.system(size: 46, weight: .bold, design: .serif))
+                                .font(.offscriptHero)
                                 .foregroundStyle(
                                     LinearGradient(
                                         colors: [Color.offscriptTextPrimary, Color.offscriptAccent],
@@ -127,11 +127,11 @@ private struct OnboardingStepIndicator: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.white.opacity(0.08))
+        .background(Color.offscriptSurfaceLight)
         .clipShape(Capsule())
         .overlay(
             Capsule()
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                .stroke(Color.offscriptSurfaceLight, lineWidth: 1)
         )
     }
 }
@@ -148,10 +148,10 @@ private struct OnboardingActionButtonStyle: ButtonStyle {
             .padding(.horizontal, 18)
             .padding(.vertical, 14)
             .background(background(configuration: configuration))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(prominent ? Color.clear : Color.white.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous)
+                    .stroke(prominent ? Color.clear : Color.offscriptSurfaceLight, lineWidth: 1)
             )
             .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.97 : 1.0))
             .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
@@ -162,7 +162,7 @@ private struct OnboardingActionButtonStyle: ButtonStyle {
             return Color.offscriptAccent.opacity(configuration.isPressed ? 0.82 : 1)
         }
 
-        return Color.white.opacity(configuration.isPressed ? 0.12 : 0.08)
+        return configuration.isPressed ? Color.offscriptSurfaceMedium : Color.offscriptSurfaceLight
     }
 }
 
@@ -191,12 +191,12 @@ private struct OnboardingCard: View {
                     .foregroundStyle(Color.offscriptTextSecondary)
             }
         }
-        .padding(18)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(Color.offscriptSurfaceThin)
+        .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
                 .stroke(Color.offscriptHairline, lineWidth: 1)
         )
     }

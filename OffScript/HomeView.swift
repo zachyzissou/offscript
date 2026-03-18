@@ -31,10 +31,10 @@ struct HomeView: View {
                         VStack(alignment: .leading, spacing: 16) {
                             VStack(alignment: .leading, spacing: 6) {
                                 RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.white.opacity(0.06))
+                                    .fill(Color.offscriptSurfaceThin)
                                     .frame(width: 130, height: 16)
                                 RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.white.opacity(0.06))
+                                    .fill(Color.offscriptSurfaceThin)
                                     .frame(width: 200, height: 12)
                             }
                             .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -214,7 +214,7 @@ private struct HeroRecommendationCard: View {
                     EpisodeDetailView(episode: episode)
                 } label: {
                     Text(episode.title)
-                        .font(.system(.title2, design: .serif, weight: .bold))
+                        .font(.offscriptDisplay)
                         .foregroundStyle(Color.offscriptTextPrimary)
                         .multilineTextAlignment(.leading)
                         .lineLimit(3)
@@ -246,7 +246,7 @@ private struct HeroRecommendationCard: View {
                     }
                     .buttonStyle(PrimaryPillButtonStyle())
 
-                    Button(episode.isQueued ? "Queued" : "Queue") {
+                    Button(episode.isQueued ? "Queued" : "Add to Queue") {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                             do { try QueueService.add(episode, in: modelContext) } catch { homeLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
                         }
@@ -266,7 +266,7 @@ private struct HeroRecommendationCard: View {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Color.offscriptTextPrimary)
                             .frame(width: 38, height: 38)
-                            .background(Color.white.opacity(0.05))
+                            .background(Color.offscriptSurfaceSubtle)
                             .clipShape(Circle())
                     }
                     .accessibilityLabel("More actions")
@@ -362,7 +362,7 @@ private struct EpisodeRailCard: View {
                     EpisodeDetailView(episode: episode)
                 } label: {
                     VStack(alignment: .leading, spacing: 12) {
-                        OffScriptArtworkView(url: episode.artworkURL ?? episode.podcast.artworkURL, cornerRadius: 20)
+                        OffScriptArtworkView(url: episode.artworkURL ?? episode.podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.small)
                             .frame(width: 160, height: 160)
                             .padding(.top, 4)
 
@@ -400,7 +400,7 @@ private struct EpisodeRailCard: View {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Color.offscriptTextPrimary)
                             .frame(width: 36, height: 36)
-                            .background(Color.white.opacity(0.08))
+                            .background(Color.offscriptSurfaceLight)
                             .clipShape(Circle())
                     }
                     .disabled(episode.isQueued)
