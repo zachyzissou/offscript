@@ -31,6 +31,40 @@ struct SearchView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
+                // Inline search bar
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(Color.offscriptTextMuted)
+                    TextField("Search podcasts or hosts", text: $query)
+                        .textFieldStyle(.plain)
+                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .onSubmit {
+                            isSearchActive = true
+                            storeRecentSearch(query)
+                        }
+                    if !query.isEmpty {
+                        Button {
+                            query = ""
+                            isSearchActive = false
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(Color.offscriptTextMuted)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.offscriptHairline, lineWidth: 0.5)
+                )
+                .padding(.horizontal, OffScriptTheme.pagePadding)
+
                 if !isSearchActive {
                     SearchHeader()
                 }
@@ -197,7 +231,9 @@ struct SearchView: View {
         .offscriptPageBackground()
         .navigationTitle("Search")
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $query, isPresented: $isSearchActive, prompt: "Search podcasts or hosts")
+        .onChange(of: query) { _, newValue in
+            isSearchActive = !newValue.isEmpty
+        }
         .task(id: query) { await search() }
         .task {
             guard selectedGenre == nil, featuredResults.isEmpty else { return }
