@@ -15,7 +15,21 @@ struct PodcastPickerView: View {
         return selected + rest
     }
 
-    private var canContinue: Bool { selectedFeeds.count >= 3 }
+    private var selectedGenreCount: Int {
+        let selectedPodcasts = allPodcasts.filter { selectedFeeds.contains($0.feedURL) }
+        var genresRepresented = Set<String>()
+        for podcast in selectedPodcasts {
+            for genre in Genre.allCases {
+                let genrePodcasts = mergedPodcasts(for: genre)
+                if genrePodcasts.contains(where: { $0.feedURL == podcast.feedURL }) {
+                    genresRepresented.insert(genre.title)
+                }
+            }
+        }
+        return genresRepresented.count
+    }
+
+    private var canContinue: Bool { selectedFeeds.count >= 3 && selectedGenreCount >= 2 }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -66,9 +80,15 @@ struct PodcastPickerView: View {
                 .opacity(canContinue ? 1.0 : 0.5)
 
                 if !canContinue {
-                    Text("Pick \(max(0, 3 - selectedFeeds.count)) more")
-                        .font(.offscriptMeta)
-                        .foregroundStyle(Color.offscriptTextMuted)
+                    if selectedFeeds.count >= 3 && selectedGenreCount < 2 {
+                        Text("Pick from at least 2 genres for better recommendations")
+                            .font(.offscriptMeta)
+                            .foregroundStyle(Color.offscriptAccent)
+                    } else {
+                        Text("Pick \(max(0, 3 - selectedFeeds.count)) more")
+                            .font(.offscriptMeta)
+                            .foregroundStyle(Color.offscriptTextMuted)
+                    }
                 }
 
                 Button("Back") { onBack() }
