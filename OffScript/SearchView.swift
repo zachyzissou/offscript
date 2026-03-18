@@ -452,7 +452,6 @@ private struct BrowseGenresSection: View {
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
             }
-            .padding(.horizontal, OffScriptTheme.pagePadding)
         }
     }
 }
