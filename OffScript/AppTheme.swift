@@ -10,8 +10,6 @@ struct SafariView: UIViewControllerRepresentable {
         let config = SFSafariViewController.Configuration()
         config.entersReaderIfAvailable = false
         let vc = SFSafariViewController(url: url, configuration: config)
-        vc.preferredBarTintColor = UIColor(Color.offscriptBackground)
-        vc.preferredControlTintColor = UIColor(Color.offscriptAccent)
         return vc
     }
 

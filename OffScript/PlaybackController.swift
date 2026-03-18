@@ -238,8 +238,10 @@ final class PlaybackController: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
+            let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            let optionValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
             Task { @MainActor [weak self] in
-                self?.handleInterruption(notification)
+                self?.handleInterruption(typeValue: typeValue, optionValue: optionValue)
             }
         }
 
@@ -248,8 +250,9 @@ final class PlaybackController: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
+            let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
             Task { @MainActor [weak self] in
-                self?.handleRouteChange(notification)
+                self?.handleRouteChange(reasonValue: reasonValue)
             }
         }
 
@@ -421,9 +424,8 @@ final class PlaybackController: ObservableObject {
         recordPlaybackEvent(kind: kind, episode: episode, position: currentTime)
     }
 
-    private func handleInterruption(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+    private func handleInterruption(typeValue: UInt?, optionValue: UInt?) {
+        guard let typeValue,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
             return
         }
@@ -435,7 +437,7 @@ final class PlaybackController: ObservableObject {
             persistPlaybackProgress(force: true)
             updateNowPlayingPlaybackRate()
         case .ended:
-            if let optionValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt,
+            if let optionValue,
                AVAudioSession.InterruptionOptions(rawValue: optionValue).contains(.shouldResume) {
                 player.play()
                 player.rate = playbackRate
@@ -447,9 +449,8 @@ final class PlaybackController: ObservableObject {
         }
     }
 
-    private func handleRouteChange(_ notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+    private func handleRouteChange(reasonValue: UInt?) {
+        guard let reasonValue,
               let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
             return
         }
