@@ -82,7 +82,7 @@ struct OffScriptApp: App {
         )
     }
 
-    private static var persistentStoreURL: URL {
+    private static let persistentStoreURL: URL = {
         let applicationSupportDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let directory = applicationSupportDirectory.appendingPathComponent("OffScript", isDirectory: true)
 
@@ -91,7 +91,7 @@ struct OffScriptApp: App {
         }
 
         return directory.appendingPathComponent("OffScript.store")
-    }
+    }()
 
     private static func resetPersistentStore() throws {
         let fileManager = FileManager.default
