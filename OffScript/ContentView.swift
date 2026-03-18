@@ -1,5 +1,8 @@
+import OSLog
 import SwiftData
 import SwiftUI
+
+private let appLogger = Logger(subsystem: "com.offscript", category: "App")
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
@@ -93,7 +96,7 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
         .task {
             PlaybackController.shared.configure(context: modelContext)
-            try? await SampleDataSeeder.seedIfNeeded(context: modelContext)
+            do { try await SampleDataSeeder.seedIfNeeded(context: modelContext) } catch { appLogger.error("Failed to seed sample data: \(error.localizedDescription, privacy: .public)") }
             #if DEBUG
             configureDebugSelectedTabIfNeeded()
             configureDebugPlaybackIfNeeded()
@@ -125,7 +128,7 @@ private extension ContentView {
         )
         descriptor.fetchLimit = 4
 
-        guard let episodes = try? modelContext.fetch(descriptor), let leadEpisode = episodes.first else { return }
+        guard let episodes = try? modelContext.fetch(descriptor), let leadEpisode = episodes.first else { return } // debug-only fetch, safe to ignore
 
         for episode in episodes.dropFirst().prefix(2) where !episode.isQueued {
             try? QueueService.add(episode, in: modelContext)

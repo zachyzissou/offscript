@@ -1,5 +1,8 @@
+import OSLog
 import SwiftData
 import SwiftUI
+
+private let playerLogger = Logger(subsystem: "com.offscript", category: "Player")
 
 struct PlayerView: View {
     @Environment(\.dismiss) private var dismiss
@@ -131,7 +134,7 @@ struct PlayerView: View {
 
                                     if !episode.isQueued {
                                         Button("Queue Next") {
-                                            try? QueueService.add(episode, in: modelContext)
+                                            do { try QueueService.add(episode, in: modelContext) } catch { playerLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
                                         }
                                         .buttonStyle(SecondaryPillButtonStyle())
                                     }
@@ -139,7 +142,7 @@ struct PlayerView: View {
                                     Button("Mark Played") {
                                         episode.isPlayed = true
                                         episode.playedPosition = player.duration
-                                        try? modelContext.save()
+                                        do { try modelContext.save() } catch { playerLogger.error("Failed to save mark-played state: \(error.localizedDescription, privacy: .public)") }
                                     }
                                     .buttonStyle(PrimaryPillButtonStyle())
                                 }
@@ -313,14 +316,17 @@ private struct PlayerWhatsNextSection: View {
     @MainActor
     private func loadSuggestions() {
         guard suggestions.isEmpty else { return }
-        if let results = try? recommendationService.playerSuggestions(
-            currentEpisode: currentEpisode,
-            context: modelContext,
-            limit: 3
-        ) {
+        do {
+            let results = try recommendationService.playerSuggestions(
+                currentEpisode: currentEpisode,
+                context: modelContext,
+                limit: 3
+            )
             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                 suggestions = results
             }
+        } catch {
+            playerLogger.error("Failed to load player suggestions: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

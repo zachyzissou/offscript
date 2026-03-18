@@ -1,5 +1,8 @@
+import OSLog
 import SwiftData
 import SwiftUI
+
+private let queueLogger = Logger(subsystem: "com.offscript", category: "Queue")
 
 struct QueueView: View {
     @Environment(\.modelContext) private var modelContext
@@ -59,7 +62,7 @@ struct QueueView: View {
                                 Button("Clear All") {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                         for item in orderedItems {
-                                            try? QueueService.remove(item, in: modelContext)
+                                            do { try QueueService.remove(item, in: modelContext) } catch { queueLogger.error("Failed to remove queue item: \(error.localizedDescription, privacy: .public)") }
                                         }
                                     }
                                 }
@@ -79,14 +82,14 @@ struct QueueView: View {
                         ForEach(Array(orderedItems.enumerated()), id: \.element.id) { index, item in
                             QueueItemCard(item: item, rank: index + 1, onRemove: {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    try? QueueService.remove(item, in: modelContext)
+                                    do { try QueueService.remove(item, in: modelContext) } catch { queueLogger.error("Failed to remove queue item: \(error.localizedDescription, privacy: .public)") }
                                 }
                             })
                                 .contextMenu {
                                     if index > 0 {
                                         Button {
                                             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                                try? QueueService.move(from: IndexSet(integer: index), to: index - 1, in: modelContext)
+                                                do { try QueueService.move(from: IndexSet(integer: index), to: index - 1, in: modelContext) } catch { queueLogger.error("Failed to move queue item: \(error.localizedDescription, privacy: .public)") }
                                             }
                                         } label: {
                                             Label("Move Up", systemImage: "arrow.up")
@@ -95,7 +98,7 @@ struct QueueView: View {
                                     if index < orderedItems.count - 1 {
                                         Button {
                                             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                                try? QueueService.move(from: IndexSet(integer: index), to: index + 2, in: modelContext)
+                                                do { try QueueService.move(from: IndexSet(integer: index), to: index + 2, in: modelContext) } catch { queueLogger.error("Failed to move queue item: \(error.localizedDescription, privacy: .public)") }
                                             }
                                         } label: {
                                             Label("Move Down", systemImage: "arrow.down")
@@ -103,7 +106,7 @@ struct QueueView: View {
                                     }
                                     Button(role: .destructive) {
                                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                            try? QueueService.remove(item, in: modelContext)
+                                            do { try QueueService.remove(item, in: modelContext) } catch { queueLogger.error("Failed to remove queue item: \(error.localizedDescription, privacy: .public)") }
                                         }
                                     } label: {
                                         Label("Remove", systemImage: "trash")
@@ -183,7 +186,7 @@ private struct QueueLeadCard: View {
 
                 Button("Remove") {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        try? QueueService.remove(item, in: modelContext)
+                        do { try QueueService.remove(item, in: modelContext) } catch { queueLogger.error("Failed to remove queue item: \(error.localizedDescription, privacy: .public)") }
                     }
                 }
                 .buttonStyle(SecondaryPillButtonStyle())

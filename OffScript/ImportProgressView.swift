@@ -1,5 +1,8 @@
+import OSLog
 import SwiftData
 import SwiftUI
+
+private let importLogger = Logger(subsystem: "com.offscript", category: "Import")
 
 struct ImportProgressView: View {
     @Environment(\.modelContext) private var modelContext
@@ -77,7 +80,7 @@ struct ImportProgressView: View {
                     .first {
                     let signal = PreferenceSignal(action: .like, episode: newestEpisode)
                     modelContext.insert(signal)
-                    try? modelContext.save()
+                    do { try modelContext.save() } catch { importLogger.error("Failed to save taste seed signal for '\(podcast.title, privacy: .public)': \(error.localizedDescription, privacy: .public)") }
                 }
 
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {

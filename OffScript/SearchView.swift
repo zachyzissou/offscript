@@ -1,5 +1,8 @@
+import OSLog
 import SwiftData
 import SwiftUI
+
+private let searchLogger = Logger(subsystem: "com.offscript", category: "Search")
 
 struct SearchView: View {
     @Environment(\.modelContext) private var modelContext
@@ -151,6 +154,7 @@ struct SearchView: View {
             errorMessage = nil
             storeRecentSearch(trimmed)
         } catch {
+            searchLogger.error("Search failed for query '\(trimmed, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             errorMessage = "Search failed. Check your connection and try again."
         }
     }
@@ -165,6 +169,7 @@ struct SearchView: View {
             errorMessage = nil
             storeRecentSearch(result.title)
         } catch {
+            searchLogger.error("Import failed for ‘\(result.title, privacy: .public)’: \(error.localizedDescription, privacy: .public)")
             errorMessage = "Couldn’t import \(result.title) yet."
         }
     }

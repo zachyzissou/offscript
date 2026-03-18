@@ -1,5 +1,8 @@
+import OSLog
 import SwiftData
 import SwiftUI
+
+private let libraryLogger = Logger(subsystem: "com.offscript", category: "Library")
 
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
@@ -125,7 +128,11 @@ struct LibraryView: View {
     @MainActor
     private func syncSubscriptions() async {
         for podcast in subscribedPodcasts {
-            try? await syncService.sync(podcast: podcast, in: modelContext)
+            do {
+                try await syncService.sync(podcast: podcast, in: modelContext)
+            } catch {
+                libraryLogger.error("Pull-to-refresh sync failed for '\(podcast.title, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 }
@@ -311,7 +318,7 @@ private struct LibraryEpisodeCard: View {
                     .buttonStyle(PrimaryPillButtonStyle())
 
                     Button(episode.isQueued ? "Queued" : "Queue") {
-                        try? QueueService.add(episode, in: modelContext)
+                        do { try QueueService.add(episode, in: modelContext) } catch { libraryLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
                     }
                     .buttonStyle(SecondaryPillButtonStyle())
                     .disabled(episode.isQueued)
@@ -417,7 +424,7 @@ private struct PodcastDetailHeader: View {
                 Button("Unsubscribe") {
                     withAnimation {
                         podcast.isSubscribed = false
-                        try? modelContext.save()
+                        do { try modelContext.save() } catch { libraryLogger.error("Failed to save unsubscribe: \(error.localizedDescription, privacy: .public)") }
                     }
                 }
                 .font(.subheadline.weight(.semibold))
@@ -475,7 +482,7 @@ private struct PodcastEpisodeCard: View {
                 .buttonStyle(PrimaryPillButtonStyle())
 
                 Button(episode.isQueued ? "Queued" : "Queue") {
-                    try? QueueService.add(episode, in: modelContext)
+                    do { try QueueService.add(episode, in: modelContext) } catch { libraryLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
                 }
                 .buttonStyle(SecondaryPillButtonStyle())
                 .disabled(episode.isQueued)

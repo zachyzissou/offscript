@@ -1,5 +1,8 @@
+import OSLog
 import SwiftData
 import SwiftUI
+
+private let homeLogger = Logger(subsystem: "com.offscript", category: "Home")
 
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
@@ -245,7 +248,7 @@ private struct HeroRecommendationCard: View {
 
                     Button(episode.isQueued ? "Queued" : "Queue") {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            try? QueueService.add(episode, in: modelContext)
+                            do { try QueueService.add(episode, in: modelContext) } catch { homeLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
                         }
                     }
                     .buttonStyle(SecondaryPillButtonStyle())
@@ -310,7 +313,7 @@ private struct HeroRecommendationCard: View {
 
     private func register(_ action: PreferenceSignal.Action) {
         modelContext.insert(PreferenceSignal(action: action, episode: episode))
-        try? modelContext.save()
+        do { try modelContext.save() } catch { homeLogger.error("Failed to save preference signal: \(error.localizedDescription, privacy: .public)") }
     }
 }
 
@@ -391,7 +394,7 @@ private struct EpisodeRailCard: View {
                     .buttonStyle(PrimaryPillButtonStyle())
 
                     Button {
-                        try? QueueService.add(episode, in: modelContext)
+                        do { try QueueService.add(episode, in: modelContext) } catch { homeLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
                     } label: {
                         Image(systemName: episode.isQueued ? "checkmark" : "plus")
                             .font(.subheadline.weight(.semibold))

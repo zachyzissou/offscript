@@ -1,6 +1,7 @@
 import Foundation
-import SwiftData
 import NaturalLanguage
+import OSLog
+import SwiftData
 
 #if canImport(FoundationModels)
 import FoundationModels
@@ -19,6 +20,7 @@ struct EpisodeNLP {
 #endif
 
 final class TopicExtractionService {
+    private let logger = Logger(subsystem: "com.offscript", category: "TopicExtraction")
     #if canImport(FoundationModels)
     private let session: LanguageModelSession? = LanguageModelSession(
         instructions: """
@@ -58,7 +60,7 @@ final class TopicExtractionService {
                 entities = response.content.entities
                 summary = response.content.summary
             } catch {
-                // Fall back to heuristics on failure
+                logger.warning("FoundationModels extraction failed for episode \(episode.title, privacy: .public), falling back to heuristics: \(error.localizedDescription, privacy: .public)")
                 (tags, entities) = Self.heuristicTagsAndEntities(from: baseText)
             }
         } else {

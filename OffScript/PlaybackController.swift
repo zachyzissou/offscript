@@ -1,12 +1,14 @@
 import AVFoundation
 import Combine
 import MediaPlayer
+import OSLog
 import SwiftData
 import SwiftUI
 
 @MainActor
 final class PlaybackController: ObservableObject {
     static let shared = PlaybackController()
+    private let logger = Logger(subsystem: "com.offscript", category: "Playback")
 
     @Published private(set) var currentEpisode: Episode?
     @Published private(set) var isPlaying = false
@@ -90,7 +92,14 @@ final class PlaybackController: ObservableObject {
 
     func skipToNextInQueue() {
         guard let context = modelContext else { return }
-        guard let nextEpisode = try? QueueService.popNextEpisode(in: context) else { return }
+        let nextEpisode: Episode?
+        do {
+            nextEpisode = try QueueService.popNextEpisode(in: context)
+        } catch {
+            logger.error("Failed to pop next episode from queue: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        guard let nextEpisode else { return }
         play(nextEpisode, in: context)
     }
 
@@ -134,7 +143,7 @@ final class PlaybackController: ObservableObject {
         }
 
         if let context = modelContext {
-            try? context.save()
+            do { try context.save() } catch { logger.error("Failed to save playback progress: \(error.localizedDescription, privacy: .public)") }
         }
         updateNowPlaying(episode: episode)
     }
@@ -152,7 +161,7 @@ final class PlaybackController: ObservableObject {
                 if let context = self.modelContext {
                     let event = PlaybackEvent(kind: .completed, position: self.duration, episode: episode)
                     context.insert(event)
-                    try? context.save()
+                    do { try context.save() } catch { self.logger.error("Failed to save playback completion event: \(error.localizedDescription, privacy: .public)") }
                 }
                 if UserDefaults.standard.object(forKey: "offscript.autoPlayNext") as? Bool ?? true {
                     self.skipToNextInQueue()

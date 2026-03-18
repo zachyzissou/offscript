@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftData
 
 protocol PodcastSearchProviding {
@@ -11,6 +12,8 @@ protocol FeedSyncProviding {
 }
 
 struct PodcastSearchService: PodcastSearchProviding {
+    private let logger = Logger(subsystem: "com.offscript", category: "PodcastSearch")
+
     func search(query: String) async throws -> [PodcastSearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
@@ -41,6 +44,7 @@ struct PodcastSearchService: PodcastSearchProviding {
 }
 
 final class FeedSyncService: FeedSyncProviding {
+    private let logger = Logger(subsystem: "com.offscript", category: "FeedSync")
     private let topicExtractionService = TopicExtractionService()
 
     @MainActor
@@ -94,6 +98,7 @@ final class FeedSyncService: FeedSyncProviding {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
+                logger.error("Sync failed for '\(podcast.title, privacy: .public)': response is not HTTP — URL: \(podcast.feedURL.absoluteString, privacy: .public)")
                 podcast.syncStatus = "failed"
                 try context.save()
                 return
@@ -107,6 +112,7 @@ final class FeedSyncService: FeedSyncProviding {
             }
 
             guard (200..<300).contains(httpResponse.statusCode) else {
+                logger.error("Sync failed for '\(podcast.title, privacy: .public)': HTTP \(httpResponse.statusCode) — URL: \(podcast.feedURL.absoluteString, privacy: .public)")
                 podcast.syncStatus = "failed"
                 try context.save()
                 return
@@ -159,8 +165,9 @@ final class FeedSyncService: FeedSyncProviding {
 
             try context.save()
         } catch {
+            logger.error("Sync failed for '\(podcast.title, privacy: .public)': \(error.localizedDescription, privacy: .public) — URL: \(podcast.feedURL.absoluteString, privacy: .public)")
             podcast.syncStatus = "failed"
-            try? context.save()
+            do { try context.save() } catch { logger.error("Failed to persist sync failure status: \(error.localizedDescription, privacy: .public)") }
             throw error
         }
     }
