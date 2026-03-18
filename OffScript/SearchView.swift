@@ -229,18 +229,13 @@ struct SearchView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .offscriptPageBackground()
-        .navigationTitle("Search")
+        .navigationTitle("Discover")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: query) { _, newValue in
             isSearchActive = !newValue.isEmpty
         }
         .task(id: query) { await search() }
-        .task {
-            guard selectedGenre == nil, featuredResults.isEmpty else { return }
-            let initial = AppSettings.preferredGenres.first ?? allGenres.first!
-            selectedGenre = initial
-            await loadFeatured(for: initial)
-        }
+        // Don't auto-load genre results — let the user tap a genre to explore
         .sheet(item: $previewResult) { result in
             SearchResultDetailView(
                 result: result,
@@ -400,7 +395,7 @@ private struct SearchHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             OffScriptUtilityHeader(
-                eyebrow: "Search",
+                eyebrow: "Discover",
                 title: "Find a signal worth following",
                 subtitle: "Start with a show you trust or a topic you want more of. OffScript can work from either."
             )

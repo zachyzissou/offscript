@@ -164,7 +164,7 @@ private struct OffScriptTabBar: View {
         ("waveform.path.ecg", "Home", 0),
         ("books.vertical", "Library", 1),
         ("text.badge.plus", "Queue", 2),
-        ("magnifyingglass", "Search", 3)
+        ("sparkle.magnifyingglass", "Discover", 3)
     ]
 
     var body: some View {
