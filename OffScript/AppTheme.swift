@@ -318,7 +318,7 @@ struct OffScriptSectionHeader: View {
                 .foregroundStyle(Color.offscriptTextPrimary)
             Text(subtitle)
                 .font(.offscriptBody)
-                .foregroundStyle(Color.offscriptTextSecondary)
+                .foregroundStyle(Color.offscriptAccentSecondary.opacity(0.7))
         }
     }
 }
