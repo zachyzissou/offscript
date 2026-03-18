@@ -27,11 +27,30 @@
 		1B9A23312F68C21600788880 /* OffScript.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OffScript.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B9A23402F68C21700788880 /* OffScriptTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OffScriptTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B9A234A2F68C21700788880 /* OffScriptUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OffScriptUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		527CBBB28BD34B7E9247529C /* PlayfairDisplay-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "PlayfairDisplay-Variable.ttf"; sourceTree = "<group>"; };
+		1837AA8921E6408E835E9F53 /* PlayfairDisplay-Italic-Variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "PlayfairDisplay-Italic-Variable.ttf"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A1B2C3D40000000000000001 /* Exceptions for "OffScript" folder in "OffScript" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			publicHeaders = (
+			);
+			privacyInfoFiles = (
+			);
+			target = 1B9A23302F68C21600788880 /* OffScript */;
+			membershipExceptions = (
+				Info.plist,
+			);
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		1B9A23332F68C21600788880 /* OffScript */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A1B2C3D40000000000000001 /* Exceptions for "OffScript" folder in "OffScript" target */,
+			);
 			path = OffScript;
 			sourceTree = "<group>";
 		};
@@ -90,6 +109,15 @@
 				1B9A234A2F68C21700788880 /* OffScriptUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		005F4CA7863C48D0935FF2DF /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				527CBBB28BD34B7E9247529C /* PlayfairDisplay-Variable.ttf */,
+				1837AA8921E6408E835E9F53 /* PlayfairDisplay-Italic-Variable.ttf */,
+			);
+			path = Fonts;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -212,6 +240,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				750F92A8608B41C980E2FFC6 /* PlayfairDisplay-Variable.ttf in Resources */,
+				EAD1672458CD4BC4B1E53128 /* PlayfairDisplay-Italic-Variable.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -396,13 +426,14 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OffScript/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OffScript;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				INFOPLIST_KEY_UIBackgroundModes = audio;
+				INFOPLIST_KEY_UIBackgroundModes = "audio fetch";
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
@@ -439,13 +470,14 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OffScript/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OffScript;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				INFOPLIST_KEY_UIBackgroundModes = audio;
+				INFOPLIST_KEY_UIBackgroundModes = "audio fetch";
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;

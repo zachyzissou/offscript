@@ -119,8 +119,15 @@ struct ContentView: View {
             #endif
         }
         .onChange(of: scenePhase) { _, newValue in
-            guard newValue == .active, hasSeenOnboarding else { return }
-            SyncCoordinator.shared.scheduleForegroundRefreshIfNeeded()
+            switch newValue {
+            case .active:
+                guard hasSeenOnboarding else { return }
+                SyncCoordinator.shared.scheduleForegroundRefreshIfNeeded()
+            case .background:
+                BackgroundFeedRefresh.scheduleNextRefresh()
+            default:
+                break
+            }
         }
     }
 }

@@ -5,6 +5,7 @@
 //  Created by Zach Gonser on 3/16/26.
 //
 
+import BackgroundTasks
 import Foundation
 import OSLog
 import SwiftData
@@ -81,6 +82,9 @@ struct OffScriptApp: App {
             ContentView()
         }
         .modelContainer(sharedModelContainer)
+        .backgroundTask(.appRefresh(BackgroundFeedRefresh.taskIdentifier)) {
+            await BackgroundFeedRefresh.performRefresh(container: sharedModelContainer)
+        }
     }
 
     private static func makeModelContainer(schema: Schema) throws -> ModelContainer {
