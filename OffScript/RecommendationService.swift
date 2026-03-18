@@ -48,6 +48,35 @@ enum RecommendationScorer {
 }
 
 final class RecommendationService {
+    let discoveryService = DiscoveryService()
+
+    @MainActor
+    func discoverySection(context: ModelContext) async -> HomeFeedSection? {
+        guard let tasteProfile = try? TasteProfileService.loadOrCreate(in: context) else { return nil }
+
+        // Only show discovery if the user has some taste data
+        let hasData = !tasteProfile.topTags.isEmpty || !tasteProfile.preferredGenres.isEmpty
+        guard hasData else { return nil }
+
+        let podcasts = (try? context.fetch(FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.isSubscribed == true }
+        ))) ?? []
+        let subscribedFeedURLs = Set(podcasts.map { $0.feedURL.absoluteString })
+
+        let results = await discoveryService.discoverPodcasts(
+            tasteProfile: tasteProfile,
+            subscribedFeedURLs: subscribedFeedURLs
+        )
+
+        guard !results.isEmpty else { return nil }
+
+        return HomeFeedSection(
+            title: "Discover New Shows",
+            subtitle: "Podcasts you haven't tried that match your taste.",
+            discoveryResults: results
+        )
+    }
+
     @MainActor
     func homeSections(context: ModelContext, limit: Int = 6) throws -> [HomeFeedSection] {
         try? TasteProfileService.refresh(in: context)

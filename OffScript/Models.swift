@@ -366,6 +366,23 @@ struct HomeFeedSection: Identifiable {
     let title: String
     let subtitle: String
     let scoredEpisodes: [ScoredEpisode]
+    let discoveryResults: [ScoredDiscoveryResult]
+
+    init(title: String, subtitle: String, scoredEpisodes: [ScoredEpisode]) {
+        self.title = title
+        self.subtitle = subtitle
+        self.scoredEpisodes = scoredEpisodes
+        self.discoveryResults = []
+    }
+
+    init(title: String, subtitle: String, discoveryResults: [ScoredDiscoveryResult]) {
+        self.title = title
+        self.subtitle = subtitle
+        self.scoredEpisodes = []
+        self.discoveryResults = discoveryResults
+    }
+
+    var isDiscoverySection: Bool { !discoveryResults.isEmpty }
 
     var episodes: [Episode] {
         scoredEpisodes.map(\.episode)

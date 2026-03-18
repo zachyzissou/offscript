@@ -6,9 +6,12 @@ struct HomeView: View {
     @State private var sections: [HomeFeedSection] = []
     @State private var errorMessage: String?
     @State private var isLoading = true
+    @State private var discoveryPreviewResult: PodcastSearchResult?
+    @State private var importingDiscoveryID: String?
     let onOpenSettings: () -> Void
 
     private let recommendationService = RecommendationService()
+    private let syncService = FeedSyncService()
 
     var body: some View {
         ScrollView {
@@ -83,13 +86,27 @@ struct HomeView: View {
                     }
 
                     ForEach(Array(sections.dropFirst().enumerated()), id: \.element.id) { offset, section in
-                        RecommendationRail(
-                            title: section.title,
-                            subtitle: section.subtitle,
-                            episodes: section.episodes,
-                            reasonProvider: { section.explanation(for: $0) }
-                        )
-                        .staggeredEntrance(index: offset + 2)
+                        if section.isDiscoverySection {
+                            DiscoveryRail(
+                                title: section.title,
+                                subtitle: section.subtitle,
+                                results: section.discoveryResults,
+                                importingID: importingDiscoveryID,
+                                onPreview: { scored in discoveryPreviewResult = scored.result },
+                                onAdd: { scored in
+                                    Task { await addDiscoveryResult(scored.result) }
+                                }
+                            )
+                            .staggeredEntrance(index: offset + 2)
+                        } else {
+                            RecommendationRail(
+                                title: section.title,
+                                subtitle: section.subtitle,
+                                episodes: section.episodes,
+                                reasonProvider: { section.explanation(for: $0) }
+                            )
+                            .staggeredEntrance(index: offset + 2)
+                        }
                     }
                 }
             }
@@ -116,12 +133,54 @@ struct HomeView: View {
         }
         .task { await loadSections() }
         .refreshable { await loadSections() }
+        .sheet(item: $discoveryPreviewResult) { result in
+            SearchResultDetailView(
+                result: result,
+                isAdded: isAlreadySubscribed(result),
+                isImporting: importingDiscoveryID == result.id,
+                onAdd: { Task { await addDiscoveryResult(result) } }
+            )
+        }
+    }
+
+    private func isAlreadySubscribed(_ result: PodcastSearchResult) -> Bool {
+        let feedURL = result.feedURL
+        let descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.feedURL == feedURL && $0.isSubscribed == true }
+        )
+        return (try? modelContext.fetchCount(descriptor)) ?? 0 > 0
+    }
+
+    @MainActor
+    private func addDiscoveryResult(_ result: PodcastSearchResult) async {
+        importingDiscoveryID = result.id
+        defer { importingDiscoveryID = nil }
+
+        do {
+            _ = try await syncService.importPodcast(from: result, into: modelContext)
+            try? TasteProfileService.refresh(in: modelContext)
+            await recommendationService.discoveryService.invalidateCache()
+            TelemetryService.track(
+                "discovery_imported",
+                metadata: ["podcast": result.title, "source": "home_discovery"],
+                in: modelContext
+            )
+            await loadSections()
+        } catch {
+            // Import failed — user can retry from the card
+        }
     }
 
     @MainActor
     private func loadSections() async {
         do {
-            let loaded = try recommendationService.homeSections(context: modelContext)
+            var loaded = try recommendationService.homeSections(context: modelContext)
+
+            // Append discovery section after existing episode sections
+            if let discovery = await recommendationService.discoverySection(context: modelContext) {
+                loaded.append(discovery)
+            }
+
             sections = loaded
             errorMessage = nil
             isLoading = false
@@ -431,5 +490,118 @@ private struct EpisodeRailCard: View {
             return "\(dateString) • \(EpisodeDurationFormatter.short(duration))"
         }
         return dateString
+    }
+}
+
+// MARK: - Discovery Section Views
+
+private struct DiscoveryRail: View {
+    let title: String
+    let subtitle: String
+    let results: [ScoredDiscoveryResult]
+    let importingID: String?
+    let onPreview: (ScoredDiscoveryResult) -> Void
+    let onAdd: (ScoredDiscoveryResult) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            OffScriptSectionHeader(title: title, subtitle: subtitle)
+                .padding(.horizontal, OffScriptTheme.pagePadding)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 18) {
+                    ForEach(results) { scored in
+                        DiscoveryRailCard(
+                            scored: scored,
+                            isImporting: importingID == scored.id,
+                            onPreview: { onPreview(scored) },
+                            onAdd: { onAdd(scored) }
+                        )
+                    }
+                }
+                .padding(.horizontal, OffScriptTheme.pagePadding)
+            }
+        }
+    }
+}
+
+private struct DiscoveryRailCard: View {
+    let scored: ScoredDiscoveryResult
+    let isImporting: Bool
+    let onPreview: () -> Void
+    let onAdd: () -> Void
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.offscriptCardRaised, Color.offscriptCardUtility],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            VStack(alignment: .leading, spacing: 12) {
+                Button {
+                    onPreview()
+                } label: {
+                    VStack(alignment: .leading, spacing: 12) {
+                        OffScriptArtworkView(
+                            url: scored.result.artworkURL,
+                            cornerRadius: OffScriptTheme.Radius.medium
+                        )
+                        .frame(width: 190, height: 142)
+                        .padding(.top, 4)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            OffScriptExplanationTag(text: scored.explanation)
+
+                            Text(scored.result.author.uppercased())
+                                .font(.offscriptMicro.weight(.semibold))
+                                .foregroundStyle(Color.offscriptAccent)
+
+                            Text(scored.result.title)
+                                .font(.offscriptCardTitle)
+                                .foregroundStyle(Color.offscriptTextPrimary)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+
+                            if let summary = scored.result.summary {
+                                Text(summary)
+                                    .font(.offscriptMeta)
+                                    .foregroundStyle(Color.offscriptTextMuted)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+
+                HStack(spacing: 10) {
+                    Button("Preview") {
+                        onPreview()
+                    }
+                    .buttonStyle(SecondaryPillButtonStyle())
+
+                    Button(isImporting ? "Adding..." : "Add to Library") {
+                        onAdd()
+                    }
+                    .buttonStyle(PrimaryPillButtonStyle())
+                    .disabled(isImporting)
+
+                    Spacer()
+                }
+            }
+            .padding(16)
+        }
+        .frame(width: 222, alignment: .leading)
+        .overlay(
+            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
+                .stroke(Color.offscriptHairline, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.2), radius: 12, y: 6)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(scored.result.title) by \(scored.result.author). \(scored.explanation)")
     }
 }
