@@ -378,7 +378,7 @@ private struct ImportRow: View {
                 switch status {
                 case .pending:
                     Circle()
-                        .fill(Color.white.opacity(0.08))
+                        .fill(Color.offscriptFillLight)
                         .frame(width: 24, height: 24)
                 case .importing:
                     ProgressView()
@@ -397,7 +397,7 @@ private struct ImportRow: View {
             .frame(width: 24, height: 24)
         }
         .padding(14)
-        .background(Color.white.opacity(0.04))
+        .background(Color.offscriptFillSubtle.opacity(0.67))
         .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous))
     }
 }

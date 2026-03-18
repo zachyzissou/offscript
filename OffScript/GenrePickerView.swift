@@ -94,7 +94,7 @@ private struct GenreCard: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 90)
-            .background(isSelected ? Color.offscriptAccentSoft : Color.white.opacity(0.06))
+            .background(isSelected ? Color.offscriptAccentSoft : Color.offscriptFillSubtle)
             .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)

@@ -125,18 +125,18 @@ struct SearchView: View {
                         ForEach(0..<3, id: \.self) { _ in
                             HStack(spacing: 16) {
                                 RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                                    .fill(Color.white.opacity(0.06))
+                                    .fill(Color.offscriptFillSubtle)
                                     .frame(width: 76, height: 76)
 
                                 VStack(alignment: .leading, spacing: 8) {
                                     Capsule()
-                                        .fill(Color.white.opacity(0.06))
+                                        .fill(Color.offscriptFillSubtle)
                                         .frame(width: 80, height: 14)
                                     RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.white.opacity(0.06))
+                                        .fill(Color.offscriptFillSubtle)
                                         .frame(width: 160, height: 16)
                                     RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.white.opacity(0.06))
+                                        .fill(Color.offscriptFillSubtle)
                                         .frame(width: 110, height: 12)
                                 }
 
@@ -889,7 +889,7 @@ private struct SearchImportSuccessCard: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.offscriptTextMuted)
                         .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.06))
+                        .background(Color.offscriptFillSubtle)
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)

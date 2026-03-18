@@ -231,7 +231,7 @@ private struct QueueItemCard: View {
                 .font(.headline.weight(.bold))
                 .foregroundStyle(Color.offscriptTextPrimary)
                 .frame(width: 34, height: 34)
-                .background(Color.white.opacity(0.08))
+                .background(Color.offscriptFillLight)
                 .clipShape(Circle())
                 .overlay(
                     Circle().stroke(Color.offscriptHairline, lineWidth: 1)
@@ -280,7 +280,7 @@ private struct QueueItemCard: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.offscriptTextMuted)
                         .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.06))
+                        .background(Color.offscriptFillSubtle)
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)

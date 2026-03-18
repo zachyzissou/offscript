@@ -97,6 +97,7 @@ struct PlayerView: View {
                                     PlayerCircleButton(systemImage: "gobackward.15", accessibilityLabel: "Skip back 15 seconds", isPrimary: false) {
                                         player.seek(by: -15)
                                     }
+                                    .sensoryFeedback(.impact(weight: .light), trigger: player.currentTime)
 
                                     PlayerCircleButton(
                                         systemImage: player.isPlaying ? "pause.fill" : "play.fill",
@@ -106,14 +107,17 @@ struct PlayerView: View {
                                     ) {
                                         player.togglePlayPause()
                                     }
+                                    .sensoryFeedback(.impact(flexibility: .soft), trigger: player.isPlaying)
 
                                     PlayerCircleButton(systemImage: "goforward.30", accessibilityLabel: "Skip forward 30 seconds", isPrimary: false) {
                                         player.seek(by: 30)
                                     }
+                                    .sensoryFeedback(.impact(weight: .light), trigger: player.currentTime)
 
                                     PlayerCircleButton(systemImage: "forward.end.fill", accessibilityLabel: "Play next queued episode", isPrimary: false) {
                                         player.skipToNextInQueue()
                                     }
+                                    .sensoryFeedback(.impact(weight: .medium), trigger: player.currentEpisode?.id)
                                 }
 
                                 if let nextItem {
@@ -279,7 +283,7 @@ private struct PlayerCircleButton: View {
                 .font(.system(size: isPrimary ? 28 : 22, weight: .semibold))
                 .foregroundStyle(isPrimary ? Color.black : Color.offscriptTextPrimary)
                 .frame(width: size, height: size)
-                .background(isPrimary ? Color.offscriptAccent : Color.white.opacity(0.08))
+                .background(isPrimary ? Color.offscriptAccent : Color.offscriptFillLight)
                 .clipShape(Circle())
                 .overlay(
                     Circle()

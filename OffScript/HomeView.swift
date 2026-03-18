@@ -28,10 +28,10 @@ struct HomeView: View {
                         VStack(alignment: .leading, spacing: 16) {
                             VStack(alignment: .leading, spacing: 6) {
                                 RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.white.opacity(0.06))
+                                    .fill(Color.offscriptFillSubtle)
                                     .frame(width: 130, height: 16)
                                 RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.white.opacity(0.06))
+                                    .fill(Color.offscriptFillSubtle)
                                     .frame(width: 200, height: 12)
                             }
                             .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -405,7 +405,7 @@ private struct EpisodeRailCard: View {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Color.offscriptTextPrimary)
                             .frame(width: 36, height: 36)
-                            .background(Color.white.opacity(0.08))
+                            .background(Color.offscriptFillLight)
                             .clipShape(Circle())
                     }
                     .disabled(episode.isQueued)
