@@ -16,7 +16,7 @@ struct ContentView: View {
             if hasSeenOnboarding {
                 GeometryReader { proxy in
                     let bottomSafeArea = proxy.safeAreaInsets.bottom
-                    let miniPlayerInset = player.currentEpisode != nil ? miniPlayerHeight + 20 : 0
+                    let miniPlayerInset = player.currentEpisode != nil ? miniPlayerHeight + 28 : 0
 
                     TabView(selection: $selectedTab) {
                         NavigationStack {
@@ -55,7 +55,7 @@ struct ContentView: View {
                     .tint(Color.offscriptAccent)
                     .background(alignment: .bottom) {
                         Color.offscriptBackgroundBottom
-                            .frame(height: player.currentEpisode != nil ? miniPlayerHeight + bottomSafeArea + 36 : bottomSafeArea + 96)
+                            .frame(height: player.currentEpisode != nil ? miniPlayerHeight + bottomSafeArea + 72 : bottomSafeArea + 96)
                             .ignoresSafeArea(edges: .bottom)
                     }
                     .toolbarBackground(Color.offscriptCardUtility.opacity(0.98), for: .tabBar)
@@ -69,8 +69,9 @@ struct ContentView: View {
                     .overlay(alignment: .bottom) {
                         if player.currentEpisode != nil {
                             MiniPlayer()
+                                .contentShape(Rectangle())
                                 .measureHeight($miniPlayerHeight)
-                                .padding(.bottom, bottomSafeArea + 8)
+                                .padding(.bottom, bottomSafeArea + 56)
                                 .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
                     }

@@ -47,11 +47,12 @@ struct MiniPlayer: View {
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .sensoryFeedback(.impact(flexibility: .soft), trigger: player.isPlaying)
                 .accessibilityLabel(player.isPlaying ? "Pause playback" : "Resume playback")
                 .accessibilityValue(episode.title)
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.vertical, 12)
             .offscriptSurface(radius: OffScriptTheme.Radius.medium)
             // Progress bar overlaid at top edge, clipped by card shape
             .overlay(alignment: .top) {

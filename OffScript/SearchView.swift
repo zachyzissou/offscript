@@ -820,7 +820,7 @@ private struct SearchResultDetailView: View {
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
                 }
-                .padding(.top, 16)
+                .padding(.top, 24)
                 .padding(.bottom, 32)
             }
             .offscriptPageBackground()
