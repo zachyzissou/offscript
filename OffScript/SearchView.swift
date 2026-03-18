@@ -44,7 +44,8 @@ struct SearchView: View {
                     if !recentSearches.isEmpty {
                         RecentSearchesSection(
                             items: recentSearches,
-                            onSelect: { item in query = item }
+                            onSelect: { item in query = item },
+                            onClear: { recentSearchesStorage = "" }
                         )
                     }
                 }
@@ -254,13 +255,24 @@ private struct StarterTopicsSection: View {
 private struct RecentSearchesSection: View {
     let items: [String]
     let onSelect: (String) -> Void
+    let onClear: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            OffScriptSectionHeader(
-                title: "Recent Searches",
-                subtitle: "Jump back into the topics and shows you were already exploring."
-            )
+            HStack(alignment: .top) {
+                OffScriptSectionHeader(
+                    title: "Recent Searches",
+                    subtitle: "Jump back into the topics and shows you were already exploring."
+                )
+
+                Spacer()
+
+                Button("Clear") {
+                    withAnimation { onClear() }
+                }
+                .font(.offscriptMeta.weight(.semibold))
+                .foregroundStyle(Color.offscriptDestructive)
+            }
             .padding(.horizontal, OffScriptTheme.pagePadding)
 
             LazyVStack(spacing: 12) {

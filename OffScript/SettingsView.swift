@@ -1,5 +1,9 @@
+import AuthenticationServices
+import OSLog
 import SwiftData
 import SwiftUI
+
+private let settingsLogger = Logger(subsystem: "com.offscript", category: "Settings")
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -7,6 +11,13 @@ struct SettingsView: View {
     @Query private var episodes: [Episode]
     @AppStorage("offscript.autoPlayNext") private var autoPlayNext = true
     @AppStorage("offscript.preferShortEpisodes") private var preferShortEpisodes = false
+    @AppStorage("offscript.cloudSyncEnabled") private var cloudSyncEnabled = false
+    @AppStorage("offscript.appleUserID") private var appleUserID: String = ""
+    @AppStorage("offscript.appleUserName") private var appleUserName: String = ""
+    @State private var showSignOutConfirmation = false
+    @State private var signInMessage: String?
+
+    private var isSignedIn: Bool { !appleUserID.isEmpty }
 
     var body: some View {
         NavigationStack {
@@ -51,6 +62,69 @@ struct SettingsView: View {
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
 
+                    // MARK: - iCloud Sync Section
+                    VStack(alignment: .leading, spacing: 14) {
+                        OffScriptSectionHeader(
+                            title: "iCloud Sync",
+                            subtitle: "Keep your subscriptions and queue in sync across devices."
+                        )
+
+                        if isSignedIn {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "person.crop.circle.fill")
+                                        .font(.title3)
+                                        .foregroundStyle(Color.offscriptAccent)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("Signed in as \(appleUserName.isEmpty ? "Apple ID User" : appleUserName)")
+                                            .font(.headline)
+                                            .foregroundStyle(Color.offscriptTextPrimary)
+                                        Text("iCloud syncs automatically when connected.")
+                                            .font(.offscriptMeta)
+                                            .foregroundStyle(Color.offscriptTextMuted)
+                                    }
+                                }
+
+                                Button(role: .destructive) {
+                                    showSignOutConfirmation = true
+                                } label: {
+                                    Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                .foregroundStyle(Color.red.opacity(0.85))
+                            }
+                            .padding(18)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .offscriptUtilitySurface()
+                        } else {
+                            VStack(alignment: .leading, spacing: 14) {
+                                Text("Sign in to enable iCloud sync across your devices.")
+                                    .font(.offscriptBody)
+                                    .foregroundStyle(Color.offscriptTextSecondary)
+
+                                SignInWithAppleButton(.signIn) { request in
+                                    request.requestedScopes = [.fullName]
+                                } onCompletion: { result in
+                                    handleSignInResult(result)
+                                }
+                                .signInWithAppleButtonStyle(.white)
+                                .frame(height: 50)
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                                if let signInMessage {
+                                    Text(signInMessage)
+                                        .font(.offscriptMeta)
+                                        .foregroundStyle(Color.offscriptTextMuted)
+                                        .transition(.opacity)
+                                }
+                            }
+                            .padding(18)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .offscriptUtilitySurface()
+                        }
+                    }
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+
                     VStack(alignment: .leading, spacing: 14) {
                         OffScriptSectionHeader(
                             title: "About",
@@ -79,7 +153,49 @@ struct SettingsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .alert("Sign Out", isPresented: $showSignOutConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Sign Out", role: .destructive) {
+                    signOut()
+                }
+            } message: {
+                Text("Sync will stop on next launch. Your local data will remain on this device.")
+            }
         }
+    }
+
+    private func handleSignInResult(_ result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .success(let authorization):
+            if let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
+                appleUserID = credential.user
+                if let fullName = credential.fullName {
+                    let name = [fullName.givenName, fullName.familyName]
+                        .compactMap { $0 }
+                        .joined(separator: " ")
+                    if !name.isEmpty {
+                        appleUserName = name
+                    }
+                }
+                cloudSyncEnabled = true
+                withAnimation {
+                    signInMessage = "Signed in. Sync will activate on next launch."
+                }
+                settingsLogger.info("Sign in with Apple succeeded for user \(credential.user, privacy: .private)")
+            }
+        case .failure(let error):
+            settingsLogger.error("Sign in with Apple failed: \(error.localizedDescription, privacy: .public)")
+            withAnimation {
+                signInMessage = "Sign-in failed. Please try again."
+            }
+        }
+    }
+
+    private func signOut() {
+        appleUserID = ""
+        appleUserName = ""
+        cloudSyncEnabled = false
+        settingsLogger.info("User signed out; sync disabled")
     }
 
     private func statCard(_ title: String, value: String) -> some View {

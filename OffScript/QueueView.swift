@@ -36,8 +36,8 @@ struct QueueView: View {
                             message: "Your queue is a working set, not a backlog. Add a few episodes you actually plan to hear next."
                         )
 
-                        NavigationLink("Browse Home") {
-                            HomeView(onOpenSettings: {})
+                        NavigationLink("Explore shows in Search") {
+                            SearchView()
                         }
                         .buttonStyle(PrimaryPillButtonStyle())
                     }
