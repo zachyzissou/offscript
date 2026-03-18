@@ -9,6 +9,9 @@ struct SettingsView: View {
     @State private var autoPlayNext = AppSettings.autoPlayNext
     @State private var preferShortEpisodes = AppSettings.preferShortEpisodes
     @State private var downloadedOnly = AppSettings.libraryShowDownloadedOnly
+    @State private var showGenreEditor = false
+    @State private var editingGenres: Set<Genre> = Set(AppSettings.preferredGenres)
+    @State private var tasteProfile: UserTasteProfile?
 
     var body: some View {
         NavigationStack {
@@ -56,6 +59,150 @@ struct SettingsView: View {
                             detail: "Start the library in download-focused mode so offline listening stays one tap away.",
                             isOn: $downloadedOnly
                         )
+                    }
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+
+                    // MARK: - Your Taste
+                    VStack(alignment: .leading, spacing: 14) {
+                        OffScriptSectionHeader(
+                            title: "Your Taste",
+                            subtitle: "A snapshot of what OffScript thinks you like, built from your listening and preferences."
+                        )
+
+                        // Preferred Genres
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("Preferred Genres")
+                                    .font(.headline)
+                                    .foregroundStyle(Color.offscriptTextPrimary)
+                                Spacer()
+                                Button("Edit") { showGenreEditor = true }
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.offscriptAccent)
+                            }
+
+                            if AppSettings.preferredGenres.isEmpty {
+                                Text("No genres selected yet. Tap Edit to choose what you like.")
+                                    .font(.offscriptBody)
+                                    .foregroundStyle(Color.offscriptTextMuted)
+                            } else {
+                                WrappingHStack(items: AppSettings.preferredGenres, spacing: 8) { genre in
+                                    Label(genre.title, systemImage: genre.systemImage)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(Color.offscriptAccent)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(Color.offscriptAccentSoft)
+                                        .clipShape(Capsule())
+                                }
+                            }
+                        }
+                        .padding(18)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .offscriptUtilitySurface()
+
+                        // Top Tags
+                        if let profile = tasteProfile, !profile.topTags.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Top Tags")
+                                    .font(.headline)
+                                    .foregroundStyle(Color.offscriptTextPrimary)
+
+                                Text("Derived from episodes you liked or marked as \"more like this.\"")
+                                    .font(.offscriptMeta)
+                                    .foregroundStyle(Color.offscriptTextMuted)
+
+                                WrappingHStack(items: profile.topTags, spacing: 8) { tag in
+                                    Text(tag)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(Color.offscriptTextSecondary)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(Color.offscriptFillSubtle)
+                                        .clipShape(Capsule())
+                                }
+                            }
+                            .padding(18)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .offscriptUtilitySurface()
+                        }
+
+                        // Show Affinity
+                        if let profile = tasteProfile, !profile.showAffinity.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Shows You Keep Finishing")
+                                    .font(.headline)
+                                    .foregroundStyle(Color.offscriptTextPrimary)
+
+                                Text("The shows where you consistently listen through.")
+                                    .font(.offscriptMeta)
+                                    .foregroundStyle(Color.offscriptTextMuted)
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(profile.showAffinity, id: \.self) { show in
+                                        HStack(spacing: 10) {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundStyle(Color.offscriptAccent)
+                                                .font(.footnote)
+                                            Text(show)
+                                                .font(.offscriptBody)
+                                                .foregroundStyle(Color.offscriptTextPrimary)
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(18)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .offscriptUtilitySurface()
+                        }
+
+                        // Duration Preference
+                        if let profile = tasteProfile {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Duration Preference")
+                                    .font(.headline)
+                                    .foregroundStyle(Color.offscriptTextPrimary)
+
+                                HStack(spacing: 14) {
+                                    Image(systemName: profile.prefersShortEpisodes ? "hare" : "tortoise")
+                                        .font(.title3.weight(.semibold))
+                                        .foregroundStyle(Color.offscriptAccent)
+                                        .frame(width: 34, height: 34)
+                                        .background(Color.offscriptAccentSoft)
+                                        .clipShape(Circle())
+
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(profile.prefersShortEpisodes ? "Leans short" : "Leans long")
+                                            .font(.offscriptBody.weight(.semibold))
+                                            .foregroundStyle(Color.offscriptTextPrimary)
+
+                                        Text("Average completed episode: \(Int(profile.averageCompletedDurationMinutes)) min")
+                                            .font(.offscriptMeta)
+                                            .foregroundStyle(Color.offscriptTextMuted)
+                                    }
+                                }
+                            }
+                            .padding(18)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .offscriptUtilitySurface()
+                        }
+
+                        // Reset Taste Profile
+                        Button {
+                            resetTasteProfile()
+                        } label: {
+                            HStack {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .foregroundStyle(Color.offscriptDestructive)
+                                Text("Reset Taste Profile")
+                                    .font(.headline)
+                                    .foregroundStyle(Color.offscriptDestructive)
+                                Spacer()
+                            }
+                            .padding(18)
+                            .offscriptUtilitySurface()
+                        }
+                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
 
@@ -193,6 +340,32 @@ struct SettingsView: View {
         .onChange(of: downloadedOnly) { _, newValue in
             AppSettings.libraryShowDownloadedOnly = newValue
         }
+        .task { loadTasteProfile() }
+        .sheet(isPresented: $showGenreEditor) {
+            GenreEditorSheet(
+                selectedGenres: $editingGenres,
+                onSave: {
+                    AppSettings.preferredGenres = Array(editingGenres).sorted { $0.title < $1.title }
+                    try? TasteProfileService.refresh(in: modelContext)
+                    loadTasteProfile()
+                }
+            )
+        }
+    }
+
+    private func loadTasteProfile() {
+        tasteProfile = try? TasteProfileService.loadOrCreate(in: modelContext)
+        editingGenres = Set(AppSettings.preferredGenres)
+    }
+
+    private func resetTasteProfile() {
+        let signals = (try? modelContext.fetch(FetchDescriptor<PreferenceSignal>())) ?? []
+        for signal in signals {
+            modelContext.delete(signal)
+        }
+        try? modelContext.save()
+        try? TasteProfileService.refresh(in: modelContext)
+        loadTasteProfile()
     }
 
     private func statCard(_ title: String, value: String) -> some View {
@@ -275,5 +448,156 @@ struct SettingsView: View {
         return downloadStorageBytes > 0
             ? "\(offlineReadyCount) episodes, \(formatter.string(fromByteCount: downloadStorageBytes))"
             : "No downloads"
+    }
+}
+
+// MARK: - Genre Editor Sheet
+
+private struct GenreEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var selectedGenres: Set<Genre>
+    let onSave: () -> Void
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    Text("Pick the genres that match how you actually listen. OffScript uses these to weight recommendations.")
+                        .font(.offscriptBody)
+                        .foregroundStyle(Color.offscriptTextSecondary)
+                        .padding(.horizontal, OffScriptTheme.pagePadding)
+
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(Genre.allCases) { genre in
+                            Button {
+                                toggleGenre(genre)
+                            } label: {
+                                VStack(spacing: 8) {
+                                    Image(systemName: genre.systemImage)
+                                        .font(.title3.weight(.semibold))
+                                        .foregroundStyle(selectedGenres.contains(genre) ? Color.offscriptAccent : Color.offscriptTextSecondary)
+
+                                    Text(genre.title)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(selectedGenres.contains(genre) ? Color.offscriptTextPrimary : Color.offscriptTextSecondary)
+                                        .multilineTextAlignment(.center)
+                                        .lineLimit(2)
+                                        .minimumScaleFactor(0.8)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 90)
+                                .background(selectedGenres.contains(genre) ? Color.offscriptAccentSoft : Color.offscriptFillSubtle)
+                                .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
+                                        .stroke(selectedGenres.contains(genre) ? Color.offscriptAccent : Color.offscriptHairline, lineWidth: selectedGenres.contains(genre) ? 2 : 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .sensoryFeedback(.impact(flexibility: .soft), trigger: selectedGenres.contains(genre))
+                        }
+                    }
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+                }
+                .padding(.top, 16)
+                .padding(.bottom, 32)
+            }
+            .offscriptPageBackground()
+            .navigationTitle("Edit Genres")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave()
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+
+    private func toggleGenre(_ genre: Genre) {
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+            if selectedGenres.contains(genre) {
+                selectedGenres.remove(genre)
+            } else {
+                selectedGenres.insert(genre)
+            }
+        }
+    }
+}
+
+// MARK: - Wrapping HStack
+
+private struct WrappingHStack<Item: Hashable, Content: View>: View {
+    let items: [Item]
+    let spacing: CGFloat
+    @ViewBuilder let content: (Item) -> Content
+
+    @State private var totalHeight: CGFloat = .zero
+
+    var body: some View {
+        GeometryReader { geometry in
+            self.generateContent(in: geometry)
+        }
+        .frame(height: totalHeight)
+    }
+
+    private func generateContent(in geometry: GeometryProxy) -> some View {
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+
+        return ZStack(alignment: .topLeading) {
+            ForEach(items, id: \.self) { item in
+                content(item)
+                    .padding(.trailing, spacing)
+                    .padding(.bottom, spacing)
+                    .alignmentGuide(.leading) { dimension in
+                        if abs(width - dimension.width) > geometry.size.width {
+                            width = 0
+                            height -= dimension.height + spacing
+                        }
+                        let result = width
+                        if item == items.last {
+                            width = 0
+                        } else {
+                            width -= dimension.width
+                        }
+                        return result
+                    }
+                    .alignmentGuide(.top) { _ in
+                        let result = height
+                        if item == items.last {
+                            height = 0
+                        }
+                        return result
+                    }
+            }
+        }
+        .background(viewHeightReader($totalHeight))
+    }
+
+    private func viewHeightReader(_ binding: Binding<CGFloat>) -> some View {
+        GeometryReader { geometry in
+            Color.clear.preference(key: HeightPreferenceKey.self, value: geometry.size.height)
+        }
+        .onPreferenceChange(HeightPreferenceKey.self) { binding.wrappedValue = $0 }
+    }
+}
+
+private struct HeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }

@@ -22,7 +22,7 @@ struct SearchView: View {
     private let searchService = PodcastSearchService()
     private let syncService = FeedSyncService()
     private let recommendationService = RecommendationService()
-    private let starterGenres = Array(Genre.allCases.prefix(6))
+    private let allGenres = Genre.allCases
 
     private var subscribedFeedURLs: Set<String> {
         Set(podcasts.filter(\.isSubscribed).map { $0.feedURL.absoluteString })
@@ -50,7 +50,7 @@ struct SearchView: View {
                     }
 
                     BrowseGenresSection(
-                        genres: starterGenres,
+                        genres: allGenres,
                         selectedGenre: selectedGenre,
                         onSelect: { genre in
                             selectedGenre = genre
@@ -196,6 +196,12 @@ struct SearchView: View {
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, isPresented: $isSearchActive, prompt: "Search podcasts or hosts")
         .task(id: query) { await search() }
+        .task {
+            guard selectedGenre == nil, featuredResults.isEmpty else { return }
+            let initial = AppSettings.preferredGenres.first ?? allGenres.first!
+            selectedGenre = initial
+            await loadFeatured(for: initial)
+        }
         .sheet(item: $previewResult) { result in
             SearchResultDetailView(
                 result: result,
@@ -222,7 +228,7 @@ struct SearchView: View {
     }
 
     private var topicTrails: [String] {
-        let sourceGenres = selectedGenre.map { [$0] } ?? (AppSettings.preferredGenres.isEmpty ? starterGenres.prefix(3).map { $0 } : AppSettings.preferredGenres)
+        let sourceGenres = selectedGenre.map { [$0] } ?? (AppSettings.preferredGenres.isEmpty ? Array(allGenres.prefix(3)) : AppSettings.preferredGenres)
         var topics: [String] = []
         for genre in sourceGenres {
             topics.append(contentsOf: SearchTopicCatalog.topics(for: genre))
