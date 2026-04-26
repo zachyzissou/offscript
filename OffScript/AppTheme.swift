@@ -57,89 +57,136 @@ enum OffScriptTheme {
     static let itemSpacing: CGFloat = 16
 
     enum Radius {
-        static let small: CGFloat = 16
-        static let medium: CGFloat = 24
-        static let large: CGFloat = 32
+        // Tuner is sharp. These were 16/24/32 in the previous warm theme; now
+        // they're tightened to 6/8/12. Keeping the names so call sites still
+        // build — but the visual rhythm is dramatically tighter, which is
+        // intentional for the instrument-cluster aesthetic.
+        static let small: CGFloat = 6
+        static let medium: CGFloat = 8
+        static let large: CGFloat = 12
     }
 }
 
+// MARK: - Tuner OLED palette
+//
+// Pure black field, signal-yellow as the only "interactive" accent, plus a
+// small functional accent set used exclusively for tag pills, ring meter
+// strokes, and traces. Modeled on high-end OLED instrument clusters
+// (Polestar / McLaren / studio monitor) — flat surfaces, hairline strokes,
+// no gradients, no glow.
+//
+// Token names are preserved from the previous warm-amber theme so existing
+// screens keep building. As each screen is converted to the Tuner primitives
+// (`OffScriptTunerKit.swift`), it stops depending on these compatibility
+// shims and uses the named Tuner palette directly.
 extension Color {
-    static let offscriptBackground = Color(red: 0.05, green: 0.05, blue: 0.06)
-    static let offscriptBackgroundTop = Color(red: 0.10, green: 0.09, blue: 0.08)
-    static let offscriptBackgroundBottom = Color(red: 0.03, green: 0.03, blue: 0.05)
+    // Surfaces — pure black field, almost-imperceptible elevation steps.
+    static let offscriptBackground = Color.black
+    static let offscriptBackgroundTop = Color.black
+    static let offscriptBackgroundBottom = Color.black
 
-    static let offscriptCard = Color(red: 0.11, green: 0.11, blue: 0.13)
-    static let offscriptCardRaised = Color(red: 0.14, green: 0.14, blue: 0.16)
-    static let offscriptCardStrong = Color(red: 0.18, green: 0.17, blue: 0.15)
-    static let offscriptCardUtility = Color(red: 0.10, green: 0.10, blue: 0.12)
+    static let offscriptCard = Color(red: 0.039, green: 0.039, blue: 0.039)         // #0a0a0a panel
+    static let offscriptCardRaised = Color(red: 0.062, green: 0.062, blue: 0.066)   // #101011 raised
+    static let offscriptCardStrong = Color(red: 0.078, green: 0.078, blue: 0.082)   // #141415 strong
+    static let offscriptCardUtility = Color.black                                   // recessed = nothing
 
-    static let offscriptAccent = Color(red: 0.96, green: 0.52, blue: 0.19)
-    static let offscriptAccentSoft = Color(red: 0.96, green: 0.52, blue: 0.19).opacity(0.18)
-    static let offscriptTextPrimary = Color(red: 0.96, green: 0.95, blue: 0.92)
-    static let offscriptTextSecondary = Color.white.opacity(0.78)
-    static let offscriptTextMuted = Color.white.opacity(0.52)
-    static let offscriptHairline = Color.white.opacity(0.12)
-    static let offscriptProgressTrack = Color.white.opacity(0.12)
-    static let offscriptFillSubtle = Color.white.opacity(0.06)
-    static let offscriptFillLight = Color.white.opacity(0.08)
+    // Signal yellow — the ONLY interactive accent. Use for play, scrubber,
+    // active state, focus rings. Never use it for decorative section labels.
+    static let offscriptAccent = Color(red: 0.910, green: 0.824, blue: 0.290)       // #e8d24a
+    static let offscriptAccentSoft = Color(red: 0.910, green: 0.824, blue: 0.290).opacity(0.18)
 
-    // Warm cream secondary accent — for informational highlights that aren't CTAs
-    static let offscriptAccentSecondary = Color(red: 0.92, green: 0.84, blue: 0.68)
-    static let offscriptAccentSecondaryMuted = Color(red: 0.92, green: 0.84, blue: 0.68).opacity(0.14)
+    // Type — warm-tinted whites so pure white doesn't burn.
+    static let offscriptTextPrimary = Color(red: 0.953, green: 0.945, blue: 0.918)  // #f3f1ea
+    static let offscriptTextSecondary = Color(white: 0.953).opacity(0.62)
+    static let offscriptTextMuted = Color(white: 0.953).opacity(0.32)               // textFaint
+    static let offscriptHairline = Color.white.opacity(0.08)
+    static let offscriptProgressTrack = Color.white.opacity(0.08)
+    static let offscriptFillSubtle = Color.white.opacity(0.04)
+    static let offscriptFillLight = Color.white.opacity(0.06)
 
-    // Destructive — desaturated coral that belongs in the warm palette
-    static let offscriptDestructive = Color(red: 0.88, green: 0.36, blue: 0.32)
-    static let offscriptDestructiveSoft = Color(red: 0.88, green: 0.36, blue: 0.32).opacity(0.16)
+    // Functional accent set — tag pills + ring meter strokes only. Each
+    // color carries semantic meaning, not decoration:
+    //   accentSecondary (cyan) → informational tag (episode #, host name)
+    //   accentOK        (mint) → mode / status pill ("LIVE", "AUTO")
+    //   destructive     (red)  → warnings, errors, RECord state
+    static let offscriptAccentSecondary = Color(red: 0.361, green: 0.776, blue: 1.0)         // #5cc6ff cyan
+    static let offscriptAccentSecondaryMuted = Color(red: 0.361, green: 0.776, blue: 1.0).opacity(0.14)
+
+    static let offscriptAccentOK = Color(red: 0.486, green: 0.871, blue: 0.643)              // #7cd9a4 mint
+    static let offscriptAccentOKMuted = Color(red: 0.486, green: 0.871, blue: 0.643).opacity(0.14)
+
+    static let offscriptDestructive = Color(red: 0.910, green: 0.353, blue: 0.235)           // #e85a3c warm red
+    static let offscriptDestructiveSoft = Color(red: 0.910, green: 0.353, blue: 0.235).opacity(0.16)
 }
 
+// MARK: - Tuner type stack
+//
+// Mono-forward, instrument-cluster aesthetic. Two distinct stacks with
+// non-overlapping jobs:
+//
+//   Display (huge thin sans):   primary readouts — "32m", "1.25×", episode title
+//   Body (system sans regular): readable prose — episode descriptions, settings copy
+//   Mono (tabular caption):     labels, tag pills, timecodes, anywhere digits column up
+//
+// Token names match the previous theme so existing call sites keep working;
+// what changes is the *vocabulary* — no more serif anywhere, no more
+// Playfair, no more decorative fonts. The instrument cluster speaks two
+// languages and that's it.
 extension Font {
-    // Playfair Display for editorial headlines — high-contrast serif with character.
-    // All sizes use Dynamic Type ramps via `relativeTo` so users with larger
-    // text settings get appropriately scaled type without breaking layouts.
-    static let offscriptHero = Font.custom("PlayfairDisplay-Bold", size: 32, relativeTo: .largeTitle)
-    static let offscriptDisplay = Font.custom("PlayfairDisplay-Bold", size: 24, relativeTo: .title)
-    static let offscriptUtilityTitle = Font.system(.title2, design: .default, weight: .bold)
-    static let offscriptSectionTitle = Font.custom("PlayfairDisplay-SemiBold", size: 20, relativeTo: .title3)
-    static let offscriptCardTitle = Font.system(.headline, design: .default, weight: .semibold)
+    /// Huge, ultra-thin numeric display — Ferrari-cluster "210 km/h" energy.
+    /// Use for the single biggest number on a screen (player timecode, hero
+    /// stat). Tabular digits so values don't shift width as they tick.
+    static let offscriptHero = Font.system(size: 56, weight: .ultraLight, design: .default)
+        .monospacedDigit()
+
+    /// Display line — episode titles in player + episode detail. Thin sans
+    /// at headline weight, NOT serif. The instrument cluster has no serif.
+    static let offscriptDisplay = Font.system(.title2, design: .default).weight(.light)
+
+    /// Section / utility titles. Sans semibold — readable, no display drama.
+    static let offscriptUtilityTitle = Font.system(.title3, design: .default, weight: .semibold)
+    static let offscriptSectionTitle = Font.system(.headline, design: .default, weight: .semibold)
+
+    /// Card titles (episode / podcast names in lists).
+    static let offscriptCardTitle = Font.system(.subheadline, design: .default, weight: .semibold)
+
+    /// Body copy — system default, no special design.
     static let offscriptBody = Font.system(.callout, design: .default)
-    /// Monospaced caption with tabular digits — use everywhere times are shown
-    /// (durations, scrubber, episode lengths) so digit columns line up.
+
+    /// Monospaced caption with tabular digits. Use for every timecode,
+    /// duration, percentage, scrubber readout, and date metadata so digit
+    /// columns line up frame-perfect.
     static let offscriptMeta = Font.system(.caption, design: .monospaced).monospacedDigit()
     static let offscriptMicro = Font.system(.caption2, design: .monospaced).monospacedDigit()
+
+    /// Tiny tag-pill label — uppercase, mono, heavily tracked. Used inside
+    /// `OffScriptTagPill` (see OffScriptTunerKit). Apply with `.tracking(1.4)`.
+    static let offscriptTagLabel = Font.system(size: 9.5, weight: .semibold, design: .monospaced)
 }
 
 struct OffScriptBackgroundView: View {
+    // Tuner is OLED — pure black, no gradient. The `trueBlackMode` setting is
+    // now redundant (we're always true black) but we honor it for any UI that
+    // still references it.
     var body: some View {
-        ZStack {
-            if AppSettings.trueBlackMode {
-                Color.black
-            } else {
-                LinearGradient(
-                    colors: [.offscriptBackgroundTop, .offscriptBackgroundBottom],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
-        }
+        Color.black
     }
 }
 
 struct OffScriptArtworkPlaceholder: View {
     var cornerRadius: CGFloat = OffScriptTheme.Radius.medium
 
+    /// Sharp-edged placeholder consistent with the Tuner aesthetic — flat
+    /// black panel + hairline + waveform glyph. No gradient, no shadow.
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [.offscriptAccentSoft, Color.white.opacity(0.06)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .fill(Color.offscriptCard)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(Color.offscriptHairline, lineWidth: 0.5)
 
             Image(systemName: "waveform")
-                .font(.system(size: 22, weight: .medium))
+                .font(.system(size: 22, weight: .light))
                 .foregroundStyle(Color.offscriptTextMuted)
         }
     }
@@ -263,19 +310,19 @@ struct OffScriptArtworkView: View {
 struct OffScriptReasonBadge: View {
     let text: String
 
+    /// Tuner tag pill — outlined hairline rectangle, mono uppercase label.
+    /// No fill, no shadow. Reads as instrument-cluster instrumentation.
     var body: some View {
         Text(text.uppercased())
-            .font(.caption2.weight(.bold))
-            .tracking(0.8)
+            .font(.offscriptTagLabel)
+            .tracking(1.4)
             .foregroundStyle(Color.offscriptTextPrimary)
             .lineLimit(1)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(Color.offscriptFillLight)
-            .clipShape(Capsule())
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .overlay(
-                Capsule()
-                    .stroke(Color.offscriptHairline, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .stroke(Color.offscriptHairline, lineWidth: 0.5)
             )
     }
 }
@@ -283,21 +330,22 @@ struct OffScriptReasonBadge: View {
 struct OffScriptExplanationTag: View {
     let text: String
 
+    /// Why-this-was-recommended tag. Cyan = informational accent, tiny
+    /// hairline rect, mono uppercase. Distinct from the neutral
+    /// `OffScriptReasonBadge` because it carries semantic meaning ("we
+    /// chose this because...").
     var body: some View {
-        HStack(spacing: 6) {
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(Color.offscriptAccent)
-                .frame(width: 3, height: 14)
-
-            Text(text)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(Color.offscriptAccentSecondary)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(Color.offscriptAccentSecondaryMuted)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        Text(text.uppercased())
+            .font(.offscriptTagLabel)
+            .tracking(1.4)
+            .foregroundStyle(Color.offscriptAccentSecondary)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .overlay(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .stroke(Color.offscriptAccentSecondary.opacity(0.45), lineWidth: 0.5)
+            )
     }
 }
 
@@ -404,23 +452,20 @@ struct OffScriptUtilityHeader: View {
 
 struct OffScriptProgressBar: View {
     let value: Double
-    var height: CGFloat = 5
+    var height: CGFloat = 2
 
+    /// Tuner progress — single-pixel hairline track, flat yellow fill. No
+    /// gradient, no glow. Reads as an instrument readout, not a "progress
+    /// bar."
     var body: some View {
         GeometryReader { proxy in
             let clamped = min(max(value, 0), 1)
 
             ZStack(alignment: .leading) {
-                Capsule()
+                Rectangle()
                     .fill(Color.offscriptProgressTrack)
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [.offscriptAccent, Color.offscriptAccent.opacity(0.75)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                Rectangle()
+                    .fill(Color.offscriptAccent)
                     .frame(width: proxy.size.width * clamped)
             }
         }
@@ -439,9 +484,10 @@ struct OffScriptScrubber: View {
     @State private var isScrubbing = false
     @State private var scrubValue: Double = 0
 
-    private let trackHeight: CGFloat = 6
-    private let activeTrackHeight: CGFloat = 10
-    private let thumbSize: CGFloat = 16
+    // Tuner instrument scrubber — hairline track, square yellow thumb.
+    private let trackHeight: CGFloat = 2
+    private let activeTrackHeight: CGFloat = 4
+    private let thumbSize: CGFloat = 12
 
     private var safeDuration: TimeInterval { max(duration, 1) }
 
@@ -456,27 +502,20 @@ struct OffScriptScrubber: View {
             let trackWidth = proxy.size.width
 
             ZStack(alignment: .leading) {
-                // Background track
-                Capsule()
+                // Background track — hairline, no fill.
+                Rectangle()
                     .fill(Color.offscriptProgressTrack)
                     .frame(height: height)
 
-                // Filled progress
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [.offscriptAccent, Color.offscriptAccent.opacity(0.75)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                // Filled progress — flat yellow, no gradient.
+                Rectangle()
+                    .fill(Color.offscriptAccent)
                     .frame(width: max(trackWidth * displayFraction, height), height: height)
 
-                // Thumb
-                Circle()
+                // Thumb — square instrument key, no shadow.
+                Rectangle()
                     .fill(Color.offscriptAccent)
                     .frame(width: thumbSize, height: thumbSize)
-                    .shadow(color: Color.offscriptAccent.opacity(0.35), radius: 4, y: 2)
                     .scaleEffect(isScrubbing ? 1.15 : 1)
                     .offset(x: thumbOffset(trackWidth: trackWidth))
             }
@@ -518,32 +557,28 @@ struct OffScriptSurfaceModifier: ViewModifier {
     var radius: CGFloat = OffScriptTheme.Radius.medium
     var prominent: Bool = false
 
+    /// Tuner OLED surface — flat panel + hairline. No gradient. No grain.
+    /// No drop shadow (instrument clusters don't have lifted cards). The
+    /// `prominent` variant just bumps the panel one step on the elevation
+    /// ramp so a hero card reads slightly above its siblings.
     func body(content: Content) -> some View {
         content
             .background(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: prominent
-                                ? [Color.offscriptCardStrong, Color.offscriptCardRaised]
-                                : [Color.offscriptCardRaised, Color.offscriptCard],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .offscriptGrain(opacity: prominent ? 0.035 : 0.025)
+                    .fill(prominent ? Color.offscriptCardRaised : Color.offscriptCard)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .stroke(Color.offscriptHairline, lineWidth: 1)
+                    .stroke(Color.offscriptHairline, lineWidth: 0.5)
             )
-            .shadow(color: Color.black.opacity(prominent ? 0.34 : 0.22), radius: prominent ? 24 : 16, y: prominent ? 12 : 8)
     }
 }
 
 struct OffScriptUtilitySurfaceModifier: ViewModifier {
     var radius: CGFloat = OffScriptTheme.Radius.medium
 
+    /// Recessed surface — pure black with a hairline. Used for inputs,
+    /// search fields, settings rows.
     func body(content: Content) -> some View {
         content
             .background(
@@ -552,9 +587,8 @@ struct OffScriptUtilitySurfaceModifier: ViewModifier {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .stroke(Color.offscriptHairline, lineWidth: 1)
+                    .stroke(Color.offscriptHairline, lineWidth: 0.5)
             )
-            .shadow(color: Color.black.opacity(0.16), radius: 10, y: 4)
     }
 }
 
@@ -593,41 +627,50 @@ private struct ViewHeightPreferenceKey: PreferenceKey {
 struct PrimaryPillButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Tuner primary CTA — square-ish hairline-bordered slab with a yellow
+    /// fill and uppercase mono label. Replaces the warm capsule pill that
+    /// the previous theme used. Stays a Capsule shape for layout
+    /// compatibility, but visually reads as an OLED action key.
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.subheadline.weight(.bold))
+            .textCase(.uppercase)
+            .tracking(0.8)
             .foregroundStyle(.black)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 18)
             .padding(.vertical, 13)
-            .background(Color.offscriptAccent.opacity(configuration.isPressed ? 0.78 : 1.0))
+            .background(Color.offscriptAccent.opacity(configuration.isPressed ? 0.72 : 1.0))
             .clipShape(Capsule())
-            .shadow(color: Color.offscriptAccent.opacity(configuration.isPressed ? 0 : 0.25), radius: 8, y: 4)
-            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.94 : 1.0))
-            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.65), value: configuration.isPressed)
+            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.96 : 1.0))
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
 struct SecondaryPillButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Tuner secondary action — outlined hairline pill, no fill, mono cap
+    /// label. Sits next to a primary pill without competing for weight.
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.subheadline.weight(.semibold))
+            .textCase(.uppercase)
+            .tracking(0.8)
             .foregroundStyle(Color.offscriptTextPrimary)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 16)
             .padding(.vertical, 11)
-            .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.08))
+            .background(Color.white.opacity(configuration.isPressed ? 0.06 : 0))
             .clipShape(Capsule())
             .overlay(
                 Capsule()
-                    .stroke(Color.offscriptHairline, lineWidth: 1)
+                    .stroke(Color.offscriptHairline, lineWidth: 0.5)
             )
-            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.96 : 1.0))
-            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.97 : 1.0))
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 

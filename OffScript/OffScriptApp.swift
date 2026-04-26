@@ -55,13 +55,51 @@ struct OffScriptApp: App {
         AppSettings.applyLaunchOverridesIfNeeded()
         OffScriptTips.configureIfNeeded()
 
+        // Tuner OLED tab bar: pure black, hairline top divider, mono labels.
         let tabBarAppearance = UITabBarAppearance()
         tabBarAppearance.configureWithOpaqueBackground()
-        tabBarAppearance.backgroundColor = UIColor(red: 0.06, green: 0.06, blue: 0.08, alpha: 1.0)
+        tabBarAppearance.backgroundColor = .black
         tabBarAppearance.shadowColor = UIColor.white.withAlphaComponent(0.08)
+
+        // Item label styling — small uppercase mono with tracking.
+        let signalYellow = UIColor(red: 232.0/255.0, green: 210.0/255.0, blue: 74.0/255.0, alpha: 1)
+        let textMuted = UIColor(white: 0.953, alpha: 0.32)
+        for itemAppearance in [
+            tabBarAppearance.stackedLayoutAppearance,
+            tabBarAppearance.inlineLayoutAppearance,
+            tabBarAppearance.compactInlineLayoutAppearance
+        ] {
+            itemAppearance.normal.iconColor = textMuted
+            itemAppearance.normal.titleTextAttributes = [
+                .foregroundColor: textMuted,
+                .font: UIFont.monospacedSystemFont(ofSize: 9.5, weight: .semibold),
+                .kern: 1.4
+            ]
+            itemAppearance.selected.iconColor = signalYellow
+            itemAppearance.selected.titleTextAttributes = [
+                .foregroundColor: signalYellow,
+                .font: UIFont.monospacedSystemFont(ofSize: 9.5, weight: .semibold),
+                .kern: 1.4
+            ]
+        }
 
         UITabBar.appearance().standardAppearance = tabBarAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
+
+        // Navigation bar — flat black, mono uppercase title.
+        let navAppearance = UINavigationBarAppearance()
+        navAppearance.configureWithOpaqueBackground()
+        navAppearance.backgroundColor = .black
+        navAppearance.shadowColor = UIColor.white.withAlphaComponent(0.08)
+        navAppearance.titleTextAttributes = [
+            .foregroundColor: UIColor(white: 0.953, alpha: 1),
+            .font: UIFont.monospacedSystemFont(ofSize: 12, weight: .semibold),
+            .kern: 1.6
+        ]
+        UINavigationBar.appearance().standardAppearance = navAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
+        UINavigationBar.appearance().compactAppearance = navAppearance
+        UINavigationBar.appearance().tintColor = signalYellow
     }
 
     // MARK: - Model Container with Versioned Migration
