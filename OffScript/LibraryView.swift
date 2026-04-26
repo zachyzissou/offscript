@@ -849,11 +849,17 @@ private struct LibrarySearchField: View {
     @Binding var query: String
     @FocusState private var focused: Bool
 
+    /// Tuner search input — recessed black panel with hairline border, mono
+    /// uppercase placeholder. Replaces the rounded-rect editorial search
+    /// from the previous theme.
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Color.offscriptTextMuted)
-            TextField("Search inside your library", text: $query)
+            TextField("", text: $query, prompt: Text("SEARCH LIBRARY")
+                .font(.offscriptTagLabel)
+                .foregroundStyle(Color.offscriptTextMuted))
                 .textFieldStyle(.plain)
                 .foregroundStyle(Color.offscriptTextPrimary)
                 .autocorrectionDisabled()
@@ -864,17 +870,18 @@ private struct LibrarySearchField: View {
                     query = ""
                     focused = false
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Color.offscriptTextMuted)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
-        .background(Color.offscriptCard, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.offscriptCardUtility)
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            Rectangle()
                 .stroke(Color.offscriptHairline, lineWidth: 0.5)
         )
     }
@@ -883,35 +890,34 @@ private struct LibrarySearchField: View {
 private struct LibraryFocusChips: View {
     @Binding var selection: LibraryView.LibraryFocusFilter
 
+    /// Tuner filter chips — square hairline-bordered cells, mono uppercase
+    /// labels. Selected chip fills with signal yellow; the rest stay
+    /// outlined. No glass, no shadow, no spring bounce.
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 ForEach(LibraryView.LibraryFocusFilter.allCases) { filter in
                     let isSelected = selection == filter
                     Button {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
-                            selection = filter
-                        }
+                        selection = filter
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: filter.systemImage)
-                                .font(.caption.weight(.semibold))
-                                .symbolEffect(.bounce, value: isSelected)
-                            Text(filter.title)
-                                .font(.subheadline.weight(.semibold))
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(filter.title.uppercased())
+                                .font(.offscriptTagLabel)
+                                .tracking(1.2)
                         }
                         .foregroundStyle(isSelected ? Color.black : Color.offscriptTextPrimary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .background {
-                            if isSelected {
-                                Capsule()
-                                    .fill(Color.offscriptAccent)
-                                    .shadow(color: Color.offscriptAccent.opacity(0.35), radius: 10, y: 4)
-                            } else {
-                                Capsule().fill(.clear).offscriptGlass(in: Capsule())
-                            }
-                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(isSelected ? Color.offscriptAccent : Color.clear)
+                        .overlay(
+                            Rectangle().stroke(
+                                isSelected ? Color.clear : Color.offscriptHairline,
+                                lineWidth: 0.5
+                            )
+                        )
                     }
                     .buttonStyle(.plain)
                     .sensoryFeedback(.selection, trigger: isSelected)
@@ -933,46 +939,25 @@ private struct LibraryHeader: View {
             OffScriptUtilityHeader(
                 eyebrow: "Library",
                 title: "Your listening shelf",
-                subtitle: "Shows, unfinished episodes, and fresh drops."
+                subtitle: editorialSummary
             )
 
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 116), spacing: 10, alignment: .leading)],
-                alignment: .leading,
-                spacing: 10
-            ) {
-                LibraryStatPill(label: "Shows", value: "\(showCount)")
-                LibraryStatPill(label: "Unplayed", value: "\(unplayedCount)")
-                LibraryStatPill(label: "In Progress", value: "\(inProgressCount)")
-                LibraryStatPill(label: "Downloads", value: "\(downloadedCount)")
-            }
-
             if showDownloadedOnly {
-                OffScriptReasonBadge(text: "Downloaded only")
+                TTagPill(label: "Downloaded only", tone: .ok)
             }
         }
         .padding(.horizontal, OffScriptTheme.pagePadding)
     }
-}
 
-private struct LibraryStatPill: View {
-    let label: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(value)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(Color.offscriptTextPrimary)
-            Text(label.uppercased())
-                .font(.offscriptMicro.weight(.semibold))
-                .foregroundStyle(Color.offscriptTextMuted)
-                .lineLimit(2)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
+    /// Editorial one-liner replacing the four stat tiles. Reads like an
+    /// editor's note ("4 unplayed across 12 shows, 33m in progress") instead
+    /// of the AI-slop hero-metric layout the previous theme used.
+    private var editorialSummary: String {
+        var parts: [String] = []
+        parts.append("\(unplayedCount) unplayed across \(showCount) \(showCount == 1 ? "show" : "shows")")
+        if inProgressCount > 0 { parts.append("\(inProgressCount) in progress") }
+        if downloadedCount > 0 { parts.append("\(downloadedCount) downloaded") }
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -1083,37 +1068,45 @@ private struct PodcastShelfCard: View {
     let unplayedCount: Int
     let inProgressCount: Int
 
+    /// Tuner shelf row — square hairline-bordered artwork on the left, mono
+    /// uppercase show metadata on the right. Tag pills carry the unplayed /
+    /// in-progress / sync state. No drop shadow, no soft surface.
     var body: some View {
-        HStack(spacing: 16) {
-            OffScriptArtworkView(url: podcast.artworkURL)
-                .frame(width: 96, height: 96)
+        HStack(spacing: 14) {
+            OffScriptArtworkView(url: podcast.artworkURL, cornerRadius: 4)
+                .frame(width: 72, height: 72)
+                .overlay(
+                    Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+                )
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(podcast.title)
                     .font(.offscriptCardTitle)
                     .foregroundStyle(Color.offscriptTextPrimary)
                     .lineLimit(2)
 
                 if let author = podcast.author {
-                    Text(author)
-                        .font(.offscriptBody)
-                        .foregroundStyle(Color.offscriptTextSecondary)
+                    Text(author.uppercased())
+                        .font(.offscriptTagLabel)
+                        .tracking(1.4)
+                        .foregroundStyle(Color.offscriptTextMuted)
                         .lineLimit(1)
                 }
 
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     if inProgressCount > 0 {
-                        OffScriptReasonBadge(text: "\(inProgressCount) in progress")
+                        TTagPill(label: "\(inProgressCount) IN PROGRESS", tone: .signal)
                     }
-                    OffScriptReasonBadge(text: "\(unplayedCount) unplayed")
+                    TTagPill(label: "\(unplayedCount) UNPLAYED", tone: .neutral)
                     if podcast.syncStatus == "failed" {
-                        OffScriptReasonBadge(text: "Sync issue")
+                        TTagPill(label: "SYNC ISSUE", tone: .warn)
                     }
                 }
 
                 if let latestPubDate = podcast.latestPubDate {
-                    Text("Updated \(latestPubDate.formatted(date: .abbreviated, time: .omitted))")
-                        .font(.offscriptMeta)
+                    Text("UPDATED \(latestPubDate.formatted(date: .abbreviated, time: .omitted).uppercased())")
+                        .font(.offscriptMicro)
+                        .tracking(1.2)
                         .foregroundStyle(Color.offscriptTextMuted)
                 }
 
@@ -1128,11 +1121,14 @@ private struct PodcastShelfCard: View {
             Spacer()
 
             Image(systemName: "chevron.right")
-                .font(.footnote.weight(.semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color.offscriptTextMuted)
         }
-        .padding(18)
-        .offscriptSurface()
+        .padding(14)
+        .background(Color.offscriptCard)
+        .overlay(
+            Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+        )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(podcast.title)\(podcast.author.map { ", by \($0)" } ?? ""), \(unplayedCount) unplayed")
     }

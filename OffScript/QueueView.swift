@@ -257,12 +257,12 @@ private struct QueueHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             OffScriptUtilityHeader(
-                eyebrow: "Queue",
+                eyebrow: "Stack",
                 title: "Queue with intent",
-                subtitle: "This is your working set: what plays next, what can wait, and what deserves the top slot right now."
+                subtitle: "Your working set — what plays next, what can wait, what deserves the top slot."
             )
 
-            OffScriptReasonBadge(text: "\(count) queued")
+            TTagPill(label: "\(count) QUEUED", tone: .neutral)
         }
         .padding(.horizontal, OffScriptTheme.pagePadding)
     }
@@ -272,11 +272,14 @@ private struct QueueLeadCard: View {
     @Environment(\.modelContext) private var modelContext
     let item: QueueItem
 
+    /// Tuner queue lead — flat black panel with hairline border, square
+    /// hairline-bordered artwork, mono uppercase NEXT UP eyebrow, single
+    /// signal-yellow PLAY FROM TOP CTA + outlined REMOVE.
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 12) {
-                    OffScriptReasonBadge(text: "Next Up")
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    TTagPill(label: "NEXT UP", tone: .signal)
 
                     Text(item.episode.title)
                         .font(.offscriptDisplay)
@@ -284,24 +287,33 @@ private struct QueueLeadCard: View {
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Text(item.episode.podcast.title)
-                        .font(.headline)
-                        .foregroundStyle(Color.offscriptTextSecondary)
+                    Text(item.episode.podcast.title.uppercased())
+                        .font(.offscriptTagLabel)
+                        .tracking(1.4)
+                        .foregroundStyle(Color.offscriptAccentSecondary)
+                        .lineLimit(1)
 
                     if let duration = item.episode.duration {
-                        Text(EpisodeDurationFormatter.short(duration))
+                        Text(EpisodeDurationFormatter.short(duration).uppercased())
                             .font(.offscriptMeta)
+                            .tracking(1.0)
                             .foregroundStyle(Color.offscriptTextMuted)
                     }
                 }
 
                 Spacer(minLength: 0)
 
-                OffScriptArtworkView(url: item.episode.artworkURL ?? item.episode.podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.large)
-                    .frame(width: 96, height: 96)
+                OffScriptArtworkView(
+                    url: item.episode.artworkURL ?? item.episode.podcast.artworkURL,
+                    cornerRadius: 4
+                )
+                .frame(width: 88, height: 88)
+                .overlay(
+                    Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+                )
             }
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Button("Play from Top") {
                     PlaybackController.shared.play(item.episode, in: modelContext)
                 }
@@ -309,15 +321,16 @@ private struct QueueLeadCard: View {
                 .sensoryFeedback(.impact(flexibility: .soft), trigger: item.episode.id)
 
                 Button("Remove") {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        try? QueueService.remove(item, in: modelContext)
-                    }
+                    try? QueueService.remove(item, in: modelContext)
                 }
                 .buttonStyle(SecondaryPillButtonStyle())
             }
         }
-        .padding(22)
-        .offscriptSurface(radius: OffScriptTheme.Radius.large, prominent: true)
+        .padding(16)
+        .background(Color.offscriptCard)
+        .overlay(
+            Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+        )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Next up: \(item.episode.title) from \(item.episode.podcast.title)")
     }

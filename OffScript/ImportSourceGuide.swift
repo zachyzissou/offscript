@@ -201,12 +201,16 @@ struct BringYourShowsStep: View {
     let onPickFile: () -> Void
     let onShowGuide: (ImportSource) -> Void
 
+    /// Tuner OLED bring-your-shows step — eyebrow + thin sans display
+    /// title + sans body, then a column of square hairline-bordered source
+    /// rows. No circle icons, no warm fills.
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Step 2 · Bring your shows")
-                        .font(.offscriptMicro.weight(.semibold))
+                    Text("STEP 2 · BRING YOUR SHOWS")
+                        .font(.offscriptTagLabel)
+                        .tracking(1.6)
                         .foregroundStyle(Color.offscriptAccent)
                     Text("Already have a library somewhere?")
                         .font(.offscriptDisplay)
@@ -218,7 +222,7 @@ struct BringYourShowsStep: View {
                 }
                 .padding(.horizontal, 24)
 
-                VStack(spacing: 10) {
+                VStack(spacing: 0) {
                     ForEach(ImportSource.allCases) { source in
                         sourceRow(source)
                     }
@@ -237,6 +241,7 @@ struct BringYourShowsStep: View {
 
                 Text("You can always come back to this from Settings → Import.")
                     .font(.offscriptMicro)
+                    .tracking(1.0)
                     .foregroundStyle(Color.offscriptTextMuted)
                     .padding(.horizontal, 24)
             }
@@ -254,18 +259,23 @@ struct BringYourShowsStep: View {
             }
         } label: {
             HStack(spacing: 14) {
+                // Square hairline cell (no soft circle background) — fits
+                // the instrument-cluster vocabulary.
                 Image(systemName: source.systemImage)
-                    .font(.title3)
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.offscriptAccent)
                     .frame(width: 36, height: 36)
-                    .background(Color.offscriptAccentSoft, in: Circle())
+                    .overlay(
+                        Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+                    )
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(source.title)
-                        .font(.headline)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(source.title.uppercased())
+                        .font(.offscriptCardTitle)
+                        .tracking(0.6)
                         .foregroundStyle(Color.offscriptTextPrimary)
                     Text(source.tagline)
-                        .font(.offscriptMeta)
+                        .font(.offscriptMicro)
                         .foregroundStyle(Color.offscriptTextMuted)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -274,15 +284,14 @@ struct BringYourShowsStep: View {
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Color.offscriptTextMuted)
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.offscriptCard, in: RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous))
+            .background(Color.offscriptCard)
             .overlay(
-                RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous)
-                    .stroke(Color.offscriptHairline, lineWidth: 0.5)
+                Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
             )
         }
         .buttonStyle(.plain)

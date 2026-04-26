@@ -439,61 +439,71 @@ private struct TopicTrailSection: View {
 }
 
 private struct SearchPromptCard: View {
+    /// Tuner Discover prompt — flat black panel + cyan eyebrow + sans body.
+    /// No circle icon background, no gradient surface.
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "sparkles")
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(Color.offscriptAccent)
-                .frame(width: 34, height: 34)
-                .background(Color.offscriptAccentSoft)
-                .clipShape(Circle())
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Good starting point")
-                    .font(.headline)
-                    .foregroundStyle(Color.offscriptTextPrimary)
-
-                Text("Search for three strong inputs: a favorite show, a reliable host, and one topic you want more of.")
-                    .font(.offscriptBody)
-                    .foregroundStyle(Color.offscriptTextSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Color.offscriptAccentSecondary)
+                Text("STARTING POINT")
+                    .font(.offscriptTagLabel)
+                    .tracking(1.4)
+                    .foregroundStyle(Color.offscriptAccentSecondary)
             }
+            Text("Search for three strong inputs: a favorite show, a reliable host, and one topic you want more of.")
+                .font(.offscriptBody)
+                .foregroundStyle(Color.offscriptTextPrimary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(18)
-        .offscriptSurface(radius: OffScriptTheme.Radius.medium, prominent: true)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.offscriptCard)
+        .overlay(
+            Rectangle().stroke(Color.offscriptAccentSecondary.opacity(0.32), lineWidth: 0.5)
+        )
     }
 }
 
 private struct OPMLPromptCard: View {
     let action: () -> Void
 
+    /// Tuner OPML prompt — flat hairline panel, mono uppercase eyebrow, sans
+    /// body, square chevron cell on the right.
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: "tray.and.arrow.down.fill")
-                    .font(.title3.weight(.semibold))
+            HStack(spacing: 12) {
+                Image(systemName: "tray.and.arrow.down")
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.offscriptAccentSecondary)
-                    .frame(width: 34, height: 34)
-                    .background(Color.offscriptAccentSecondaryMuted, in: Circle())
+                    .frame(width: 32, height: 32)
+                    .overlay(
+                        Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+                    )
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Already follow shows elsewhere?")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.offscriptTextPrimary)
-                    Text("Import an OPML from Apple Podcasts, Pocket Casts, Overcast, Castro, or Spotify.")
-                        .font(.offscriptMeta)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("ALREADY FOLLOW SHOWS ELSEWHERE?")
+                        .font(.offscriptTagLabel)
+                        .tracking(1.4)
+                        .foregroundStyle(Color.offscriptAccentSecondary)
+                    Text("Import OPML from Apple Podcasts, Pocket Casts, Overcast, Castro, Spotify.")
+                        .font(.offscriptMicro)
                         .foregroundStyle(Color.offscriptTextMuted)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Color.offscriptTextMuted)
             }
-            .padding(16)
+            .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .offscriptUtilitySurface()
+            .background(Color.offscriptCard)
+            .overlay(
+                Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+            )
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Import subscriptions from another podcast app")

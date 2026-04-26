@@ -77,11 +77,13 @@ struct EpisodeVerticalCard: View, Equatable {
         return episode.playedPosition / duration
     }
 
+    /// Tuner OLED rail card — square hairline-bordered artwork at top, mono
+    /// uppercase show name (cyan) above thin sans episode title, mono date
+    /// stamp, hairline progress strip when in progress. Buttons are square
+    /// hairline cells: signal-yellow play key + outlined plus, ellipsis on
+    /// the right. No gradient, no drop shadow.
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Artwork zone — tappable for navigation. Uses a value-based
-            // NavigationLink so the destination is registered once on the
-            // enclosing stack rather than per-card.
             tapTarget {
                 OffScriptArtworkView(
                     url: episode.artworkURL ?? episode.podcast.artworkURL,
@@ -90,15 +92,15 @@ struct EpisodeVerticalCard: View, Equatable {
                 .frame(width: 200, height: 150)
             }
 
-            // Text + buttons zone
             VStack(alignment: .leading, spacing: 8) {
                 if let tag = explanationTag {
-                    OffScriptExplanationTag(text: tag)
+                    TTagPill(label: tag, tone: .signal)
                 }
 
                 Text(episode.podcast.title.uppercased())
-                    .font(.offscriptMicro.weight(.semibold))
-                    .foregroundStyle(Color.offscriptAccent)
+                    .font(.offscriptTagLabel)
+                    .tracking(1.4)
+                    .foregroundStyle(Color.offscriptAccentSecondary)
                     .lineLimit(1)
 
                 tapTarget {
@@ -109,41 +111,36 @@ struct EpisodeVerticalCard: View, Equatable {
                         .multilineTextAlignment(.leading)
                 }
 
-                Text(metadata)
-                    .font(.offscriptMeta)
+                Text(metadata.uppercased())
+                    .font(.offscriptMicro)
+                    .tracking(1.2)
                     .foregroundStyle(Color.offscriptTextMuted)
 
                 if progressValue > 0 {
-                    OffScriptProgressBar(value: progressValue, height: 4)
+                    OffScriptProgressBar(value: progressValue, height: 1)
                 }
 
-                HStack(spacing: 8) {
-                    // Play circle
+                HStack(spacing: 6) {
                     Button {
                         PlaybackController.shared.play(episode, in: modelContext)
                     } label: {
                         Image(systemName: playIcon)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(isCurrentlyPlaying ? Color.offscriptTextPrimary : .black)
-                            .frame(width: 36, height: 36)
+                            .frame(width: 32, height: 32)
                             .background(isCurrentlyPlaying ? Color.offscriptFillLight : Color.offscriptAccent)
-                            .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(isCurrentlyPlaying ? "Pause" : "Play \(episode.title)")
 
-                    // Queue circle
                     Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            try? QueueService.add(episode, in: modelContext)
-                        }
+                        try? QueueService.add(episode, in: modelContext)
                     } label: {
                         Image(systemName: episode.isQueued ? "checkmark" : "plus")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(Color.offscriptTextPrimary)
-                            .frame(width: 36, height: 36)
-                            .background(Color.offscriptFillLight)
-                            .clipShape(Circle())
+                            .frame(width: 32, height: 32)
+                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5))
                     }
                     .buttonStyle(.plain)
                     .disabled(episode.isQueued)
@@ -152,29 +149,13 @@ struct EpisodeVerticalCard: View, Equatable {
                     Spacer()
 
                     Menu {
-                        Button {
-                            registerSignal(.moreLikeThis)
-                        } label: {
-                            Label("More like this", systemImage: "arrow.up.heart")
-                        }
-                        Button {
-                            registerSignal(.like)
-                        } label: {
-                            Label("Like", systemImage: "hand.thumbsup")
-                        }
-                        Button(role: .destructive) {
-                            registerSignal(.lessLikeThis)
-                        } label: {
-                            Label("Less like this", systemImage: "hand.thumbsdown")
-                        }
-                        Button(role: .destructive) {
-                            registerSignal(.notInterested)
-                        } label: {
-                            Label("Not interested", systemImage: "xmark.circle")
-                        }
+                        Button { registerSignal(.moreLikeThis) } label: { Label("More like this", systemImage: "arrow.up.heart") }
+                        Button { registerSignal(.like) } label: { Label("Like", systemImage: "hand.thumbsup") }
+                        Button(role: .destructive) { registerSignal(.lessLikeThis) } label: { Label("Less like this", systemImage: "hand.thumbsdown") }
+                        Button(role: .destructive) { registerSignal(.notInterested) } label: { Label("Not interested", systemImage: "xmark.circle") }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.subheadline.weight(.bold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(Color.offscriptTextMuted)
                             .frame(width: 32, height: 32)
                             .contentShape(Rectangle())
@@ -185,22 +166,10 @@ struct EpisodeVerticalCard: View, Equatable {
             .padding(12)
         }
         .frame(width: 200, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.offscriptCardRaised, Color.offscriptCardUtility],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous))
+        .background(Color.offscriptCard)
         .overlay(
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                .stroke(Color.offscriptHairline, lineWidth: 1)
+            Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
         )
-        .shadow(color: Color.black.opacity(0.2), radius: 12, y: 6)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(episode.title) from \(episode.podcast.title)\(explanationTag.map { ". \($0)" } ?? "")")
     }
@@ -276,34 +245,40 @@ struct EpisodeCompactCard: View, Equatable {
             && lhs.showPodcastTitle == rhs.showPodcastTitle
     }
 
+    /// Tuner OLED list row — square hairline-bordered artwork + mono cyan
+    /// show eyebrow + sans episode title + mono date metadata + square
+    /// signal-yellow play key. Optional rank renders as a square hairline
+    /// cell with mono numeral.
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             if let rank {
-                Text("\(rank)")
-                    .font(.headline.weight(.bold))
+                Text(String(format: "%02d", rank))
+                    .font(.system(.subheadline, design: .monospaced).weight(.semibold))
                     .foregroundStyle(Color.offscriptTextPrimary)
-                    .frame(width: 34, height: 34)
-                    .background(Color.offscriptFillLight)
-                    .clipShape(Circle())
+                    .frame(width: 32, height: 32)
                     .overlay(
-                        Circle().stroke(Color.offscriptHairline, lineWidth: 1)
+                        Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
                     )
             }
 
             tapTarget {
                 OffScriptArtworkView(
                     url: episode.artworkURL ?? episode.podcast.artworkURL,
-                    cornerRadius: OffScriptTheme.Radius.small
+                    cornerRadius: 4
                 )
-                .frame(width: 56, height: 56)
+                .frame(width: 48, height: 48)
+                .overlay(
+                    Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+                )
             }
 
             tapTarget {
                 VStack(alignment: .leading, spacing: 4) {
                     if showPodcastTitle {
                         Text(episode.podcast.title.uppercased())
-                            .font(.offscriptMicro.weight(.semibold))
-                            .foregroundStyle(Color.offscriptAccent)
+                            .font(.offscriptTagLabel)
+                            .tracking(1.4)
+                            .foregroundStyle(Color.offscriptAccentSecondary)
                             .lineLimit(1)
                     }
 
@@ -313,23 +288,22 @@ struct EpisodeCompactCard: View, Equatable {
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
 
-                    Text(metadata)
-                        .font(.offscriptMeta)
+                    Text(metadata.uppercased())
+                        .font(.offscriptMicro)
+                        .tracking(1.2)
                         .foregroundStyle(Color.offscriptTextMuted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            // Play circle
             Button {
                 PlaybackController.shared.play(episode, in: modelContext)
             } label: {
                 Image(systemName: playIcon)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(isCurrentlyPlaying ? Color.offscriptTextPrimary : .black)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 32, height: 32)
                     .background(isCurrentlyPlaying ? Color.offscriptFillLight : Color.offscriptAccent)
-                    .clipShape(Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isCurrentlyPlaying ? "Pause" : "Play \(episode.title)")
@@ -339,18 +313,20 @@ struct EpisodeCompactCard: View, Equatable {
                     onRemove()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.caption.weight(.semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Color.offscriptTextMuted)
                         .frame(width: 28, height: 28)
-                        .background(Color.offscriptFillSubtle)
-                        .clipShape(Circle())
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Remove \(episode.title)")
             }
         }
-        .padding(16)
-        .offscriptUtilitySurface()
+        .padding(12)
+        .background(Color.offscriptCard)
+        .overlay(
+            Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+        )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(episode.title) from \(episode.podcast.title)")
     }

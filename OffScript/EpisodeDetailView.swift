@@ -43,33 +43,36 @@ struct EpisodeDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
                 VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .top, spacing: 18) {
+                    HStack(alignment: .top, spacing: 14) {
                         OffScriptArtworkView(
                             url: episode.artworkURL ?? episode.podcast.artworkURL,
-                            cornerRadius: OffScriptTheme.Radius.large
+                            cornerRadius: 4
                         )
-                        .frame(width: 96, height: 96)
+                        .frame(width: 88, height: 88)
+                        .overlay(
+                            Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+                        )
 
                         VStack(alignment: .leading, spacing: 8) {
                             Text(episode.podcast.title.uppercased())
-                                .font(.offscriptMicro.weight(.semibold))
-                                .foregroundStyle(Color.offscriptAccent)
-                                .lineLimit(1)
+                                .font(.offscriptTagLabel)
+                                .tracking(1.4)
+                                .foregroundStyle(Color.offscriptAccentSecondary)
+                                .lineLimit(2)
 
-                            HStack(spacing: 8) {
-                                Label(metadata, systemImage: "clock")
-                                    .font(.offscriptMeta)
-                                    .foregroundStyle(Color.offscriptTextMuted)
-                            }
+                            Text(metadata.uppercased())
+                                .font(.offscriptMeta)
+                                .tracking(1.0)
+                                .foregroundStyle(Color.offscriptTextMuted)
 
-                            HStack(spacing: 8) {
+                            HStack(spacing: 6) {
                                 if episode.isPlayed {
-                                    OffScriptReasonBadge(text: "Played")
+                                    TTagPill(label: "PLAYED", tone: .ok)
                                 } else if episode.playedPosition > 0 {
-                                    OffScriptReasonBadge(text: "In progress")
+                                    TTagPill(label: "IN PROGRESS", tone: .signal)
                                 }
                                 if episode.isQueued {
-                                    OffScriptReasonBadge(text: "Queued")
+                                    TTagPill(label: "QUEUED", tone: .neutral)
                                 }
                             }
                         }
@@ -84,10 +87,11 @@ struct EpisodeDetailView: View {
 
                 if progressValue > 0, !episode.isPlayed {
                     VStack(alignment: .leading, spacing: 8) {
-                        OffScriptProgressBar(value: progressValue, height: 6)
-                        Text(timeRemaining)
+                        OffScriptProgressBar(value: progressValue, height: 1)
+                        Text(timeRemaining.uppercased())
                             .font(.offscriptMeta)
-                            .foregroundStyle(Color.offscriptTextMuted)
+                            .tracking(1.0)
+                            .foregroundStyle(Color.offscriptAccent)
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
                 }
@@ -138,10 +142,12 @@ struct EpisodeDetailView: View {
                 }
 
                 if !chapters.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Chapters")
-                            .font(.offscriptSectionTitle)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("CHAPTERS")
+                            .font(.offscriptTagLabel)
+                            .tracking(1.6)
                             .foregroundStyle(Color.offscriptTextPrimary)
+                            .padding(.bottom, 4)
 
                         ForEach(chapters) { chapter in
                             Button {
@@ -152,7 +158,7 @@ struct EpisodeDetailView: View {
                                     Text(timestamp(chapter.startTime))
                                         .font(.offscriptMeta.monospacedDigit())
                                         .foregroundStyle(Color.offscriptAccent)
-                                        .frame(width: 50, alignment: .leading)
+                                        .frame(width: 56, alignment: .leading)
 
                                     Text(chapter.title)
                                         .font(.offscriptBody)
@@ -161,8 +167,12 @@ struct EpisodeDetailView: View {
 
                                     Spacer()
                                 }
-                                .padding(14)
-                                .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background(Color.offscriptCard)
+                                .overlay(
+                                    Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+                                )
                             }
                             .buttonStyle(.plain)
                         }
