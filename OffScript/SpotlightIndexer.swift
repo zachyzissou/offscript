@@ -67,24 +67,23 @@ final class SpotlightIndexer {
         items.append(contentsOf: podcasts.map(makeItem(for:)))
         items.append(contentsOf: episodeItems)
 
-        // Wrap delete + add in beginBatch/endBatch so Spotlight commits a
-        // single transaction instead of a per-item write per call.
-        session.beginBatch()
+        // NOTE: `beginBatch`/`endBatch` is only supported on app-private
+        // `CSSearchableIndex` instances (created via `init(name:)`); calling
+        // it on `.default()` raises "Batching not supported" and crashes the
+        // app on launch. The default index already coalesces writes
+        // internally, so we just chain delete → indexSearchableItems and let
+        // the system handle batching.
         session.deleteSearchableItems(withDomainIdentifiers: [podcastDomain, episodeDomain]) { [weak self] error in
             if let error {
                 self?.logger.error("Spotlight delete failed: \(String(describing: error), privacy: .public)")
             }
-        }
-        session.indexSearchableItems(items) { [weak self] error in
-            if let error {
-                self?.logger.error("Spotlight index failed: \(String(describing: error), privacy: .public)")
-            }
-        }
-        session.endBatch(withClientState: Data()) { [weak self] error in
-            if let error {
-                self?.logger.error("Spotlight endBatch failed: \(String(describing: error), privacy: .public)")
-            } else {
-                self?.logger.info("Indexed \(items.count, privacy: .public) Spotlight items")
+
+            session.indexSearchableItems(items) { error in
+                if let error {
+                    self?.logger.error("Spotlight index failed: \(String(describing: error), privacy: .public)")
+                } else {
+                    self?.logger.info("Indexed \(items.count, privacy: .public) Spotlight items")
+                }
             }
         }
     }
