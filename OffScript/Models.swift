@@ -164,6 +164,54 @@ final class PreferenceSignal {
 }
 
 @Model
+final class UserTasteProfile {
+    private static let listSeparator = "\u{1F}"
+
+    var id: String = "primary"
+    private var preferredGenresStorage: String = ""
+    private var topTagsStorage: String = ""
+    private var showAffinityStorage: String = ""
+    var averageCompletedDurationMinutes: Double = 30
+    var prefersShortEpisodes: Bool = false
+    var unfinishedEpisodeAffinity: Double = 0
+    var lastUpdatedAt: Date = Date()
+
+    init(id: String = "primary") {
+        self.id = id
+    }
+
+    var preferredGenres: [String] {
+        get {
+            guard !preferredGenresStorage.isEmpty else { return [] }
+            return preferredGenresStorage.components(separatedBy: Self.listSeparator)
+        }
+        set {
+            preferredGenresStorage = newValue.joined(separator: Self.listSeparator)
+        }
+    }
+
+    var topTags: [String] {
+        get {
+            guard !topTagsStorage.isEmpty else { return [] }
+            return topTagsStorage.components(separatedBy: Self.listSeparator)
+        }
+        set {
+            topTagsStorage = newValue.joined(separator: Self.listSeparator)
+        }
+    }
+
+    var showAffinity: [String] {
+        get {
+            guard !showAffinityStorage.isEmpty else { return [] }
+            return showAffinityStorage.components(separatedBy: Self.listSeparator)
+        }
+        set {
+            showAffinityStorage = newValue.joined(separator: Self.listSeparator)
+        }
+    }
+}
+
+@Model
 final class EpisodeProfile {
     private static let listSeparator = "\u{1F}"
 

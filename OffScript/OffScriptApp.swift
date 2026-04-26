@@ -29,6 +29,7 @@ struct OffScriptApp: App {
             PlaybackEvent.self,
             PreferenceSignal.self,
             QueueItem.self,
+            UserTasteProfile.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
