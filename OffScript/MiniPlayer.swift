@@ -13,9 +13,11 @@ struct MiniPlayer: View {
                 // Progress bar — full width, top edge
                 progressBar
 
-                // Content
+                // Tuner OLED MiniPlayer — flat black, square hairline-bordered
+                // artwork, mono uppercase show name, square play key in
+                // signal yellow, hairline-bordered skip cell. No glass, no
+                // gradient, no glow.
                 HStack(spacing: 12) {
-                    // Artwork + info — tap opens full player
                     Button {
                         player.isPlayerPresented = true
                     } label: {
@@ -23,54 +25,57 @@ struct MiniPlayer: View {
                             ZStack {
                                 OffScriptArtworkView(
                                     url: episode.artworkURL ?? episode.podcast.artworkURL,
-                                    cornerRadius: 8
+                                    cornerRadius: 4
                                 )
                                 .frame(width: 44, height: 44)
+                                .overlay(
+                                    Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+                                )
 
                                 if player.isPlaying {
-                                    Image(systemName: "waveform")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundStyle(Color.offscriptAccent)
-                                        .padding(4)
-                                        .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-                                        .symbolEffect(.variableColor.iterative.reversing, options: .repeating)
-                                        .transition(.opacity.combined(with: .scale))
+                                    // Tiny REC pip overlaid bottom-right.
+                                    Circle()
+                                        .fill(Color.offscriptDestructive)
+                                        .frame(width: 5, height: 5)
+                                        .offset(x: 17, y: 17)
+                                        .transition(.opacity)
                                 }
                             }
 
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(episode.podcast.title.uppercased())
+                                    .font(.offscriptTagLabel)
+                                    .tracking(1.4)
+                                    .foregroundStyle(Color.offscriptAccentSecondary)
+                                    .lineLimit(1)
+
                                 Text(episode.title)
-                                    .font(.subheadline.weight(.semibold))
+                                    .font(.offscriptCardTitle)
                                     .foregroundStyle(Color.offscriptTextPrimary)
                                     .lineLimit(1)
 
-                                HStack(spacing: 4) {
-                                    Text(episode.podcast.title)
+                                if timePublisher.duration > 0 {
+                                    Text(remainingTimeLabel)
+                                        .font(.offscriptMicro)
                                         .foregroundStyle(Color.offscriptTextMuted)
                                         .lineLimit(1)
-
-                                    if timePublisher.duration > 0 {
-                                        Text("· \(remainingTimeLabel)")
-                                            .foregroundStyle(Color.offscriptTextMuted)
-                                    }
                                 }
-                                .font(.caption)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                     .buttonStyle(.plain)
 
-                    // Transport
-                    HStack(spacing: 2) {
+                    // Transport — square hairline cells, signal yellow play key.
+                    HStack(spacing: 6) {
                         Button {
                             player.togglePlayPause()
                         } label: {
                             Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.body.weight(.bold))
+                                .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(.black)
-                                .frame(width: 36, height: 36)
-                                .background(Color.offscriptAccent, in: Circle())
+                                .frame(width: 38, height: 38)
+                                .background(Color.offscriptAccent)
                                 .contentTransition(.symbolEffect(.replace.downUp))
                         }
                         .buttonStyle(.plain)
@@ -80,25 +85,23 @@ struct MiniPlayer: View {
                             player.seek(by: 30)
                         } label: {
                             Image(systemName: "goforward.30")
-                                .font(.callout.weight(.semibold))
-                                .foregroundStyle(Color.offscriptTextSecondary)
-                                .frame(width: 36, height: 36)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color.offscriptTextPrimary)
+                                .frame(width: 38, height: 38)
+                                .overlay(
+                                    Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+                                )
                                 .symbolEffect(.bounce, value: timePublisher.currentTime)
                         }
                         .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.vertical, 10)
             }
             .background {
-                Rectangle()
-                    .fill(.clear)
-                    .offscriptGlass(in: Rectangle())
-                    .overlay {
-                        // Subtle warm tint so the glass picks up the editorial palette
-                        Rectangle().fill(Color.offscriptCardRaised.opacity(0.32))
-                    }
+                // Pure black, no glass.
+                Color.black
                     .overlay(alignment: .top) {
                         Rectangle()
                             .fill(Color.offscriptHairline)
@@ -122,17 +125,20 @@ struct MiniPlayer: View {
     // MARK: - Progress
 
     private var progressBar: some View {
+        // Tuner instrument signal — 1pt hairline strip across the very top
+        // edge of the bar. NOT a separate progress widget; the strip IS the
+        // top edge of the dock.
         GeometryReader { proxy in
             let clamped = min(max(progressValue, 0), 1)
             ZStack(alignment: .leading) {
                 Rectangle()
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.offscriptHairline)
                 Rectangle()
                     .fill(Color.offscriptAccent)
                     .frame(width: proxy.size.width * clamped)
             }
         }
-        .frame(height: 2.5)
+        .frame(height: 1)
     }
 
     // MARK: - Gestures

@@ -221,27 +221,31 @@ private struct HomeEditorialHeader: View {
         Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day())
     }
 
+    /// Tuner station header — mono uppercase eyebrow ("STATION"), big thin
+    /// sans display title, and a hairline rule beneath. Replaces the warm
+    /// serif "Ready when you are" header.
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Ready when you are")
-                .font(.system(.title, design: .serif, weight: .bold))
-                .foregroundStyle(Color.offscriptTextPrimary)
-                .scrollTransition(.interactive, axis: .vertical) { content, phase in
-                    content
-                        .opacity(phase.isIdentity ? 1.0 : 0.45)
-                        .scaleEffect(phase.isIdentity ? 1.0 : 0.92, anchor: .leading)
-                        .blur(radius: phase.isIdentity ? 0 : 1.5)
-                }
+            HStack {
+                Text("STATION")
+                    .font(.offscriptTagLabel)
+                    .tracking(1.6)
+                    .foregroundStyle(Color.offscriptAccent)
+                Spacer()
+                Text(dayString.uppercased())
+                    .font(.offscriptMicro)
+                    .tracking(1.4)
+                    .foregroundStyle(Color.offscriptTextMuted)
+            }
 
-            Text(dayString.uppercased())
-                .font(.offscriptMeta.weight(.semibold).monospacedDigit())
-                .tracking(1.2)
-                .foregroundStyle(Color.offscriptAccent.opacity(0.85))
-                .scrollTransition(.interactive, axis: .vertical) { content, phase in
-                    content
-                        .opacity(phase.isIdentity ? 1.0 : 0.0)
-                        .offset(y: phase.isIdentity ? 0 : -8)
-                }
+            Text("Tonight's signal")
+                .font(.offscriptDisplay)
+                .foregroundStyle(Color.offscriptTextPrimary)
+
+            Rectangle()
+                .fill(Color.offscriptHairline)
+                .frame(height: 0.5)
+                .padding(.top, 2)
         }
         .padding(.horizontal, OffScriptTheme.pagePadding)
     }
@@ -258,54 +262,34 @@ private struct HeroRecommendationCard: View {
         return episode.playedPosition / duration
     }
 
+    /// Tuner OLED hero — flat black panel with hairline border, square
+    /// artwork at top, episode info as instrument-cluster readouts beneath,
+    /// single signal-yellow PLAY key. No gradient overlay, no grain, no
+    /// shadow.
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Artwork hero zone — tappable for navigation
             NavigationLink(value: EpisodeNavigation(episode: episode)) {
-                ZStack(alignment: .bottomLeading) {
-                    OffScriptArtworkView(
-                        url: episode.artworkURL ?? episode.podcast.artworkURL,
-                        cornerRadius: 0
-                    )
-                    .frame(height: 200)
-                    .clipped()
-                    .overlay(
-                        LinearGradient(
-                            colors: [.clear, .clear, Color.offscriptCardStrong.opacity(0.7), Color.offscriptCardStrong],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-
-                    // Overlay the explanation tag on the artwork
-                    VStack(alignment: .leading, spacing: 8) {
-                        OffScriptExplanationTag(text: reason)
-
-                        Text(episode.podcast.title)
-                            .font(.offscriptMeta.weight(.semibold))
-                            .tracking(0.8)
-                            .foregroundStyle(Color.offscriptTextSecondary)
-                            .lineLimit(1)
-                    }
-                    .padding(20)
-                }
+                OffScriptArtworkView(
+                    url: episode.artworkURL ?? episode.podcast.artworkURL,
+                    cornerRadius: 0
+                )
+                .frame(height: 200)
+                .clipped()
             }
             .buttonStyle(.plain)
-            .clipShape(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: OffScriptTheme.Radius.large,
-                    bottomLeadingRadius: 0,
-                    bottomTrailingRadius: 0,
-                    topTrailingRadius: OffScriptTheme.Radius.large,
-                    style: .continuous
-                )
-            )
 
-            // Content zone
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
+                // Tag row — show name (cyan) + reasoning (signal yellow).
+                HStack(spacing: 6) {
+                    TTagPill(label: episode.podcast.title, tone: .info)
+                    TTagPill(label: reason, tone: .signal)
+                    Spacer()
+                }
+
+                // Episode title — thin sans display.
                 NavigationLink(value: EpisodeNavigation(episode: episode)) {
                     Text(episode.title)
-                        .font(.system(.title2, design: .serif, weight: .bold))
+                        .font(.offscriptDisplay)
                         .foregroundStyle(Color.offscriptTextPrimary)
                         .multilineTextAlignment(.leading)
                         .lineLimit(3)
@@ -313,25 +297,32 @@ private struct HeroRecommendationCard: View {
                 }
                 .buttonStyle(.plain)
 
-                HStack(spacing: 12) {
-                    Label(metadata, systemImage: "clock")
+                // Mono metadata row — date · duration, plus remaining if in
+                // progress.
+                HStack(spacing: 8) {
+                    Text(metadata.uppercased())
+                        .font(.offscriptMeta)
+                        .tracking(1.0)
+                        .foregroundStyle(Color.offscriptTextMuted)
                     if episode.playedPosition > 0, !episode.isPlayed {
-                        Label(timeRemaining, systemImage: "arrow.trianglehead.clockwise")
-                    }
-                }
-                .font(.offscriptMeta)
-                .foregroundStyle(Color.offscriptTextMuted)
-
-                if progressValue > 0 {
-                    VStack(alignment: .leading, spacing: 8) {
-                        OffScriptProgressBar(value: progressValue, height: 6)
-                        Text("Resume from where you left off")
+                        Text("·")
                             .font(.offscriptMeta)
                             .foregroundStyle(Color.offscriptTextMuted)
+                        Text(timeRemaining.uppercased())
+                            .font(.offscriptMeta)
+                            .tracking(1.0)
+                            .foregroundStyle(Color.offscriptAccent)
                     }
                 }
 
-                HStack(spacing: 10) {
+                // In-progress hairline strip.
+                if progressValue > 0 {
+                    OffScriptProgressBar(value: progressValue, height: 1)
+                }
+
+                // Action row — primary signal-yellow PLAY (or RESUME),
+                // secondary outlined QUEUE, ellipsis for ratings.
+                HStack(spacing: 8) {
                     Button(episode.playedPosition > 0 ? "Resume" : "Play") {
                         TelemetryService.track(
                             "recommendation_opened",
@@ -343,7 +334,7 @@ private struct HeroRecommendationCard: View {
                     .buttonStyle(PrimaryPillButtonStyle())
 
                     Button(episode.isQueued ? "Queued" : "Queue") {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        withAnimation(.easeOut(duration: 0.15)) {
                             try? QueueService.add(episode, in: modelContext)
                         }
                     }
@@ -354,50 +345,28 @@ private struct HeroRecommendationCard: View {
                     Spacer()
 
                     Menu {
-                        Button { register(.like) } label: {
-                            Label("Like", systemImage: "hand.thumbsup")
-                        }
-                        Button { register(.moreLikeThis) } label: {
-                            Label("More like this", systemImage: "arrow.up.heart")
-                        }
-                        Button { register(.lessLikeThis) } label: {
-                            Label("Less like this", systemImage: "hand.thumbsdown")
-                        }
-                        Button(role: .destructive) { register(.notInterested) } label: {
-                            Label("Not interested", systemImage: "xmark.circle")
-                        }
+                        Button { register(.like) } label: { Label("Like", systemImage: "hand.thumbsup") }
+                        Button { register(.moreLikeThis) } label: { Label("More like this", systemImage: "arrow.up.heart") }
+                        Button { register(.lessLikeThis) } label: { Label("Less like this", systemImage: "hand.thumbsdown") }
+                        Button(role: .destructive) { register(.notInterested) } label: { Label("Not interested", systemImage: "xmark.circle") }
                     } label: {
-                        Image(systemName: "ellipsis.circle.fill")
-                            .font(.title3)
-                            .symbolRenderingMode(.hierarchical)
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Color.offscriptTextPrimary)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
+                            .frame(width: 38, height: 38)
+                            .overlay(
+                                Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+                            )
                     }
                     .accessibilityLabel("Rate this recommendation")
-                    .accessibilityHint("Like, dislike, or dismiss this episode")
                 }
             }
-            .padding(20)
-            .padding(.bottom, 4)
+            .padding(16)
         }
-        .background(
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.large, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.offscriptCardStrong, Color.offscriptCardRaised],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .offscriptGrain(opacity: 0.035)
-        )
+        .background(Color.offscriptCard)
         .overlay(
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.large, style: .continuous)
-                .stroke(Color.offscriptHairline, lineWidth: 1)
+            Rectangle().stroke(Color.offscriptHairline, lineWidth: 0.5)
         )
-        .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.large, style: .continuous))
-        .shadow(color: Color.black.opacity(0.38), radius: 28, y: 14)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(reason)")
     }

@@ -28,247 +28,22 @@ struct PlayerView: View {
         NavigationStack {
             Group {
                 if let episode = player.currentEpisode {
-                    GeometryReader { proxy in
-                        let artworkSize = min(max(proxy.size.width - 168, 196), 272)
-                        let nextItem = orderedQueueItems.first
-                        let chapters = episode.resolvedChapters
-                        let transcripts = episode.transcriptReferences
-                        let isOfflineReady = DownloadService.shared.localURL(for: episode) != nil
-                        let _ = DownloadService.shared.statusText(for: episode) // keep observation
-
-                        ScrollView {
-                            VStack(spacing: 18) {
-                                if episode.isLikelyVideo {
-                                    OffScriptVideoPlayerView(player: player.player)
-                                        .frame(maxWidth: .infinity)
-                                        .frame(height: artworkSize * 0.75)
-                                        .background(Color.black)
-                                        .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.large, style: .continuous))
-                                        .shadow(color: .black.opacity(0.5), radius: 30, y: 16)
-                                        .padding(.horizontal, 8)
-                                } else {
-                                    OffScriptArtworkView(
-                                        url: episode.artworkURL ?? episode.podcast.artworkURL,
-                                        cornerRadius: OffScriptTheme.Radius.large
-                                    )
-                                    .frame(width: artworkSize, height: artworkSize)
-                                    .shadow(color: .black.opacity(0.45), radius: 24, y: 14)
-                                    .scrollTransition(.interactive, axis: .vertical) { content, phase in
-                                        content
-                                            .scaleEffect(1 + phase.value * 0.03)
-                                            .opacity(1 - abs(phase.value) * 0.15)
-                                    }
-                                }
-
-                                VStack(spacing: 8) {
-                                    Text(episode.title)
-                                        .font(.offscriptDisplay)
-                                        .multilineTextAlignment(.center)
-                                        .foregroundStyle(Color.offscriptTextPrimary)
-                                        .fixedSize(horizontal: false, vertical: true)
-
-                                    Text(episode.podcast.title)
-                                        .font(.headline)
-                                        .foregroundStyle(Color.offscriptTextSecondary)
-
-                                    HStack(spacing: 8) {
-                                        if let duration = episode.duration {
-                                            Text(EpisodeDurationFormatter.short(duration))
-                                                .font(.offscriptMeta)
-                                                .foregroundStyle(Color.offscriptTextMuted)
-                                        }
-                                        if isOfflineReady {
-                                            Image(systemName: "arrow.down.circle.fill")
-                                                .font(.caption)
-                                                .foregroundStyle(Color.offscriptAccent)
-                                        }
-                                        if !transcripts.isEmpty {
-                                            Image(systemName: "captions.bubble.fill")
-                                                .font(.caption)
-                                                .foregroundStyle(Color.offscriptAccent)
-                                        }
-                                        if let sleepTimerEndDate = player.sleepTimerEndDate {
-                                            Text("Sleep \(sleepTimerEndDate.formatted(date: .omitted, time: .shortened))")
-                                                .font(.offscriptMeta)
-                                                .foregroundStyle(Color.offscriptTextMuted)
-                                        }
-                                    }
-
-                                }
-
-                                SmartTakeStrip(episode: episode)
-                                    .frame(maxWidth: 440)
-
-                                if !chapters.isEmpty {
-                                    PlayerChapterStrip(chapters: chapters)
-                                        .frame(maxWidth: 440)
-                                }
-
-                                VStack(spacing: 8) {
-                                    OffScriptScrubber(
-                                        value: Binding(
-                                            get: { timePublisher.currentTime },
-                                            set: { _ in }
-                                        ),
-                                        duration: timePublisher.duration,
-                                        onSeek: { player.seek(to: $0) }
-                                    )
-
-                                    HStack {
-                                        Text(time(timePublisher.currentTime))
-                                        Spacer()
-                                        Text(remainingTime)
-                                    }
-                                    .font(.offscriptMeta.monospacedDigit())
-                                    .foregroundStyle(Color.offscriptTextMuted)
-                                }
-                                .frame(maxWidth: 440)
-
-                                HStack(spacing: 18) {
-                                    PlayerCircleButton(systemImage: "gobackward.15", accessibilityLabel: "Skip back 15 seconds", isPrimary: false) {
-                                        player.seek(by: -15)
-                                    }
-                                    .sensoryFeedback(.impact(weight: .light), trigger: timePublisher.currentTime)
-
-                                    PlayerCircleButton(
-                                        systemImage: player.isPlaying ? "pause.fill" : "play.fill",
-                                        accessibilityLabel: player.isPlaying ? "Pause playback" : "Resume playback",
-                                        isPrimary: true,
-                                        size: 84
-                                    ) {
-                                        player.togglePlayPause()
-                                    }
-                                    .sensoryFeedback(.impact(flexibility: .soft), trigger: player.isPlaying)
-
-                                    PlayerCircleButton(systemImage: "goforward.30", accessibilityLabel: "Skip forward 30 seconds", isPrimary: false) {
-                                        player.seek(by: 30)
-                                    }
-                                    .sensoryFeedback(.impact(weight: .light), trigger: timePublisher.currentTime)
-
-                                    PlayerCircleButton(systemImage: "forward.end.fill", accessibilityLabel: "Play next queued episode", isPrimary: false) {
-                                        player.skipToNextInQueue()
-                                    }
-                                    .sensoryFeedback(.impact(weight: .medium), trigger: player.currentEpisode?.id)
-                                }
-
-                                if let nextItem {
-                                    PlayerUpNextStrip(item: nextItem)
-                                        .frame(maxWidth: 440)
-                                }
-
-                                if !chapters.isEmpty {
-                                    PlayerChaptersSection(chapters: chapters)
-                                        .frame(maxWidth: 440)
-                                }
-
-                                if !transcripts.isEmpty {
-                                    PlayerTranscriptSection(transcripts: transcripts, episodeTitle: episode.title)
-                                        .frame(maxWidth: 440)
-                                }
-
-                                PlayerWhatsNextSection(currentEpisode: episode)
-                                    .frame(maxWidth: 440)
-
-                                HStack(spacing: 10) {
-                                    Menu {
-                                        ForEach([("1.0x", Float(1.0)), ("1.25x", Float(1.25)), ("1.5x", Float(1.5)), ("2.0x", Float(2.0))], id: \.0) { label, rate in
-                                            Button {
-                                                player.setPlaybackRate(rate)
-                                            } label: {
-                                                HStack {
-                                                    Text(label)
-                                                    if player.playbackRate == rate {
-                                                        Image(systemName: "checkmark")
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    } label: {
-                                        Label(String(format: "%.2gx", player.playbackRate), systemImage: "speedometer")
-                                    }
-                                    .buttonStyle(SecondaryPillButtonStyle())
-
-                                    Menu {
-                                        Button("Play Next") {
-                                            try? QueueService.playNext(episode, in: modelContext)
-                                        }
-                                        Button("Add to End") {
-                                            try? QueueService.addToEnd(episode, in: modelContext)
-                                        }
-                                    } label: {
-                                        Label(episode.isQueued ? "Queued" : "Queue", systemImage: "text.badge.plus")
-                                    }
-                                    .buttonStyle(SecondaryPillButtonStyle())
-                                    .disabled(episode.isQueued)
-
-                                    Button("Mark Played") {
-                                        player.completeCurrentEpisode(shouldAutoAdvance: false)
-                                    }
-                                    .buttonStyle(PrimaryPillButtonStyle())
-                                }
-
-                                HStack(spacing: 10) {
-                                    Menu {
-                                        Button("15 minutes") { player.setSleepTimer(minutes: 15) }
-                                        Button("30 minutes") { player.setSleepTimer(minutes: 30) }
-                                        Button("60 minutes") { player.setSleepTimer(minutes: 60) }
-                                        if player.sleepTimerEndDate != nil {
-                                            Button("Cancel Timer", role: .destructive) { player.cancelSleepTimer() }
-                                        }
-                                    } label: {
-                                        Image(systemName: "moon.zzz.fill")
-                                    }
-                                    .buttonStyle(SecondaryPillButtonStyle())
-
-                                    AirPlayRouteButton()
-                                        .frame(width: 44, height: 36)
-
-                                    Button {
-                                        addBookmark(at: episode)
-                                    } label: {
-                                        Image(systemName: "bookmark")
-                                            .symbolEffect(.bounce, value: bookmarkPulse)
-                                    }
-                                    .buttonStyle(SecondaryPillButtonStyle())
-                                    .accessibilityLabel("Save bookmark at current time")
-                                    .sensoryFeedback(.impact(flexibility: .soft), trigger: bookmarkPulse)
-
-                                    Button {
-                                        bookmarksSheetPresented = true
-                                    } label: {
-                                        Image(systemName: "bookmark.square")
-                                    }
-                                    .buttonStyle(SecondaryPillButtonStyle())
-                                    .accessibilityLabel("View saved bookmarks")
-
-                                    ShareLink(item: episode.audioURL) {
-                                        Image(systemName: "square.and.arrow.up")
-                                    }
-                                    .buttonStyle(SecondaryPillButtonStyle())
-
-                                    DownloadButton(episode: episode)
-                                }
-
-                                Spacer(minLength: 8)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 28)
-                        }
-                    }
-                    .background {
-                        PlayerAtmosphereBackground(url: episode.artworkURL ?? episode.podcast.artworkURL)
-                    }
+                    playerBody(for: episode)
                 } else {
                     ContentUnavailableView("Nothing playing", systemImage: "waveform.slash", description: Text("Start an episode from Home, Library, or Queue."))
                         .offscriptPageBackground()
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    Button("Done") {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
                         dismiss()
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.offscriptTextPrimary)
                     }
+                    .accessibilityLabel("Dismiss player")
                 }
             }
         }
@@ -300,9 +75,359 @@ struct PlayerView: View {
         }
     }
 
+    // MARK: - Tuner OLED player body
+    //
+    // Designed against the OffScript Redesign HTML (Tuner direction): pure
+    // black, signal-yellow play key, hairline scrubber + transport row,
+    // ring-meter cluster for SPEED / SLEEP / VOL, and a bottom strip of
+    // outlined utility cells. The artwork (or video) reads as a hairline-
+    // bordered panel on the dashboard, not a soft-shadowed glamour shot.
+    @ViewBuilder
+    private func playerBody(for episode: Episode) -> some View {
+        let nextItem = orderedQueueItems.first
+        let chapters = episode.resolvedChapters
+        let transcripts = episode.transcriptReferences
+        let isOfflineReady = DownloadService.shared.localURL(for: episode) != nil
+
+        ScrollView {
+            VStack(spacing: 24) {
+                playerHeaderTags(for: episode, isOfflineReady: isOfflineReady, hasTranscript: !transcripts.isEmpty)
+                playerArtwork(for: episode)
+                playerTitleBlock(for: episode)
+                SmartTakeStrip(episode: episode).frame(maxWidth: 440)
+                if !chapters.isEmpty {
+                    PlayerChapterStrip(chapters: chapters).frame(maxWidth: 440)
+                }
+                playerScrubberBlock()
+                playerTransportRow()
+                playerInstrumentCluster()
+                playerSecondaryControls(for: episode)
+                if let nextItem {
+                    PlayerUpNextStrip(item: nextItem).frame(maxWidth: 440)
+                }
+                if !chapters.isEmpty {
+                    PlayerChaptersSection(chapters: chapters).frame(maxWidth: 440)
+                }
+                if !transcripts.isEmpty {
+                    PlayerTranscriptSection(transcripts: transcripts, episodeTitle: episode.title)
+                        .frame(maxWidth: 440)
+                }
+                PlayerWhatsNextSection(currentEpisode: episode).frame(maxWidth: 440)
+                Spacer(minLength: 8)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 28)
+        }
+        .background(Color.black.ignoresSafeArea())
+    }
+
+    private func playerHeaderTags(for episode: Episode, isOfflineReady: Bool, hasTranscript: Bool) -> some View {
+        // Top strip: REC dot when playing + episode metadata tag pills.
+        HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(player.isPlaying ? Color.offscriptDestructive : Color.offscriptTextMuted)
+                    .frame(width: 6, height: 6)
+                Text(player.isPlaying ? "REC" : "PAUSED")
+                    .font(.offscriptTagLabel)
+                    .tracking(1.4)
+                    .foregroundStyle(player.isPlaying ? Color.offscriptDestructive : Color.offscriptTextMuted)
+            }
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                if let duration = episode.duration {
+                    TTagPill(label: EpisodeDurationFormatter.short(duration), tone: .neutral)
+                }
+                if isOfflineReady {
+                    TTagPill(label: "OFFLINE", tone: .ok)
+                }
+                if hasTranscript {
+                    TTagPill(label: "TRANSCRIPT", tone: .info)
+                }
+                if let endDate = player.sleepTimerEndDate {
+                    TTagPill(label: "SLEEP \(endDate.formatted(date: .omitted, time: .shortened))", tone: .signal)
+                }
+            }
+        }
+        .frame(maxWidth: 440)
+    }
+
+    @ViewBuilder
+    private func playerArtwork(for episode: Episode) -> some View {
+        GeometryReader { proxy in
+            let artworkSize = min(max(proxy.size.width - 80, 220), 320)
+            ZStack {
+                if episode.isLikelyVideo {
+                    OffScriptVideoPlayerView(player: player.player)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: artworkSize * 0.75)
+                } else {
+                    OffScriptArtworkView(
+                        url: episode.artworkURL ?? episode.podcast.artworkURL,
+                        cornerRadius: OffScriptTheme.Radius.medium
+                    )
+                    .frame(width: artworkSize, height: artworkSize)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .overlay(
+                RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
+                    .stroke(Color.offscriptHairline, lineWidth: 0.5)
+                    .frame(width: artworkSize, height: episode.isLikelyVideo ? artworkSize * 0.75 : artworkSize)
+            )
+        }
+        .frame(height: 320)
+    }
+
+    private func playerTitleBlock(for episode: Episode) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(episode.podcast.title.uppercased())
+                .font(.offscriptTagLabel)
+                .tracking(1.6)
+                .foregroundStyle(Color.offscriptAccentSecondary)
+                .lineLimit(1)
+
+            Text(episode.title)
+                .font(.offscriptDisplay)
+                .foregroundStyle(Color.offscriptTextPrimary)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: 440, alignment: .leading)
+    }
+
+    private func playerScrubberBlock() -> some View {
+        // Two big readouts (CURRENT + REMAINING) framing the hairline
+        // scrubber. The instrument-cluster equivalent of a tape deck timecode.
+        VStack(spacing: 12) {
+            HStack(alignment: .top) {
+                TReadout(
+                    value: time(timePublisher.currentTime),
+                    label: "Position",
+                    size: 32
+                )
+                Spacer()
+                TReadout(
+                    value: remainingTime,
+                    label: "Remaining",
+                    tint: .offscriptAccent,
+                    size: 32,
+                    alignment: .trailing
+                )
+            }
+
+            OffScriptScrubber(
+                value: Binding(
+                    get: { timePublisher.currentTime },
+                    set: { _ in }
+                ),
+                duration: timePublisher.duration,
+                onSeek: { player.seek(to: $0) }
+            )
+        }
+        .frame(maxWidth: 440)
+    }
+
+    private func playerTransportRow() -> some View {
+        // 5-cell hairline transport. Play key emphasized with a yellow ring;
+        // every other cell shares the same skeleton so the row stays level.
+        HStack(spacing: 0) {
+            // Back = restart episode (CD-deck convention; Apple's player
+            // works the same way). There's no "previous queued episode"
+            // concept — Next plays the next queued item.
+            TTransportCell(cap: "Restart", action: { player.seek(to: 0) }) {
+                Image(systemName: "backward.end.fill")
+                    .font(.system(size: 16, weight: .medium))
+            }
+            .sensoryFeedback(.impact(weight: .light), trigger: player.currentEpisode?.id)
+
+            TTransportCell(cap: "−15", action: { player.seek(by: -15) }) {
+                Image(systemName: "gobackward.15")
+                    .font(.system(size: 18, weight: .medium))
+            }
+            .sensoryFeedback(.impact(weight: .light), trigger: timePublisher.currentTime)
+
+            TTransportCell(
+                cap: player.isPlaying ? "Pause" : "Play",
+                emphasized: true,
+                action: { player.togglePlayPause() }
+            ) {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 18, weight: .bold))
+            }
+            .sensoryFeedback(.impact(flexibility: .soft), trigger: player.isPlaying)
+
+            TTransportCell(cap: "+30", action: { player.seek(by: 30) }) {
+                Image(systemName: "goforward.30")
+                    .font(.system(size: 18, weight: .medium))
+            }
+            .sensoryFeedback(.impact(weight: .light), trigger: timePublisher.currentTime)
+
+            TTransportCell(cap: "Next", action: { player.skipToNextInQueue() }) {
+                Image(systemName: "forward.end.fill")
+                    .font(.system(size: 16, weight: .medium))
+            }
+            .sensoryFeedback(.impact(weight: .medium), trigger: player.currentEpisode?.id)
+        }
+        .frame(maxWidth: 440)
+        .overlay(
+            Rectangle()
+                .stroke(Color.offscriptHairline, lineWidth: 0.5)
+        )
+    }
+
+    private func playerInstrumentCluster() -> some View {
+        // Three ring meters in a row: SPEED (yellow), PROGRESS (yellow),
+        // SLEEP (mint when active, neutral otherwise). Replaces the
+        // skeuomorphic round controls below the transport on the previous
+        // theme.
+        HStack(spacing: 24) {
+            Spacer()
+            speedRing
+            progressRing
+            sleepRing
+            Spacer()
+        }
+        .frame(maxWidth: 440)
+    }
+
+    private var speedRing: some View {
+        TRingMeter(
+            value: Double(player.playbackRate),
+            minValue: 0.5,
+            maxValue: 2.5,
+            tint: .offscriptAccent,
+            diameter: 56,
+            label: "Speed",
+            centerText: String(format: "%.2g×", player.playbackRate)
+        )
+    }
+
+    private var progressRing: some View {
+        let frac = timePublisher.duration > 0
+            ? min(timePublisher.currentTime / timePublisher.duration, 1)
+            : 0
+        return TRingMeter(
+            value: frac,
+            tint: .offscriptAccent,
+            diameter: 56,
+            label: "Progress",
+            centerText: "\(Int(frac * 100))%"
+        )
+    }
+
+    private var sleepRing: some View {
+        let active = player.sleepTimerEndDate != nil
+        let label = active
+            ? player.sleepTimerEndDate?.formatted(date: .omitted, time: .shortened) ?? "ON"
+            : "OFF"
+        return TRingMeter(
+            value: active ? 1 : 0,
+            tint: active ? .offscriptAccentOK : .offscriptHairline,
+            diameter: 56,
+            label: "Sleep",
+            centerText: label
+        )
+    }
+
+    @ViewBuilder
+    private func playerSecondaryControls(for episode: Episode) -> some View {
+        // Outlined utility row — speed menu, queue add, mark played, sleep,
+        // airplay, bookmark, share, download. Each cell is the same height
+        // so the row stays level.
+        VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Menu {
+                    ForEach([("1.0×", Float(1.0)), ("1.25×", Float(1.25)), ("1.5×", Float(1.5)), ("2.0×", Float(2.0))], id: \.0) { label, rate in
+                        Button {
+                            player.setPlaybackRate(rate)
+                        } label: {
+                            HStack {
+                                Text(label)
+                                if player.playbackRate == rate {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Text(String(format: "%.2g×", player.playbackRate))
+                }
+                .buttonStyle(SecondaryPillButtonStyle())
+
+                Menu {
+                    Button("Play Next") {
+                        try? QueueService.playNext(episode, in: modelContext)
+                    }
+                    Button("Add to End") {
+                        try? QueueService.addToEnd(episode, in: modelContext)
+                    }
+                } label: {
+                    Text(episode.isQueued ? "Queued" : "Queue")
+                }
+                .buttonStyle(SecondaryPillButtonStyle())
+                .disabled(episode.isQueued)
+
+                Spacer()
+
+                Button("Mark Played") {
+                    player.completeCurrentEpisode(shouldAutoAdvance: false)
+                }
+                .buttonStyle(SecondaryPillButtonStyle())
+            }
+
+            HStack(spacing: 8) {
+                Menu {
+                    Button("15 minutes") { player.setSleepTimer(minutes: 15) }
+                    Button("30 minutes") { player.setSleepTimer(minutes: 30) }
+                    Button("60 minutes") { player.setSleepTimer(minutes: 60) }
+                    if player.sleepTimerEndDate != nil {
+                        Button("Cancel Timer", role: .destructive) { player.cancelSleepTimer() }
+                    }
+                } label: {
+                    Image(systemName: "moon.zzz")
+                }
+                .buttonStyle(SecondaryPillButtonStyle())
+
+                AirPlayRouteButton()
+                    .frame(width: 44, height: 36)
+
+                Button {
+                    addBookmark(at: episode)
+                } label: {
+                    Image(systemName: "bookmark")
+                        .symbolEffect(.bounce, value: bookmarkPulse)
+                }
+                .buttonStyle(SecondaryPillButtonStyle())
+                .accessibilityLabel("Save bookmark at current time")
+                .sensoryFeedback(.impact(flexibility: .soft), trigger: bookmarkPulse)
+
+                Button {
+                    bookmarksSheetPresented = true
+                } label: {
+                    Image(systemName: "bookmark.square")
+                }
+                .buttonStyle(SecondaryPillButtonStyle())
+                .accessibilityLabel("View saved bookmarks")
+
+                ShareLink(item: episode.audioURL) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .buttonStyle(SecondaryPillButtonStyle())
+
+                DownloadButton(episode: episode)
+            }
+        }
+        .frame(maxWidth: 440)
+    }
+
     private var remainingTime: String {
         let remaining = max(timePublisher.duration - timePublisher.currentTime, 0)
-        return "-\(time(remaining))"
+        return "−\(time(remaining))"
     }
 
     private func addBookmark(at episode: Episode) {
@@ -347,60 +472,51 @@ private struct PlayerChapterStrip: View {
     @ObservedObject private var timePublisher = PlaybackTimePublisher.shared
 
     var body: some View {
-        HStack(spacing: 12) {
-            Button {
-                if let target = previousChapterStart {
-                    PlaybackController.shared.seek(to: target)
-                }
-            } label: {
-                Image(systemName: "backward.end.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(previousChapterStart == nil ? Color.offscriptTextMuted.opacity(0.5) : Color.offscriptTextPrimary)
-                    .frame(width: 32, height: 32)
-                    .background(Capsule().fill(.clear).offscriptGlass(in: Capsule()))
-            }
-            .buttonStyle(.plain)
-            .disabled(previousChapterStart == nil)
-            .accessibilityLabel("Previous chapter")
+        // Tuner chapter strip — flat panel with two hairline-square chapter
+        // step keys and an instrument-style chapter readout in the middle.
+        HStack(spacing: 8) {
+            chapterStepButton(systemImage: "backward.end.fill", label: "Previous chapter", target: previousChapterStart)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("CHAPTER \(currentChapterNumber) OF \(chapters.count)")
-                    .font(.offscriptMicro.weight(.semibold))
-                    .foregroundStyle(Color.offscriptAccent)
+                Text("CHAPTER \(currentChapterNumber) / \(chapters.count)")
+                    .font(.offscriptTagLabel)
+                    .tracking(1.4)
+                    .foregroundStyle(Color.offscriptAccentSecondary)
                 Text(currentChapter?.title ?? "—")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.offscriptCardTitle)
                     .foregroundStyle(Color.offscriptTextPrimary)
                     .lineLimit(1)
                     .contentTransition(.opacity)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button {
-                if let target = nextChapterStart {
-                    PlaybackController.shared.seek(to: target)
-                }
-            } label: {
-                Image(systemName: "forward.end.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(nextChapterStart == nil ? Color.offscriptTextMuted.opacity(0.5) : Color.offscriptTextPrimary)
-                    .frame(width: 32, height: 32)
-                    .background(Capsule().fill(.clear).offscriptGlass(in: Capsule()))
-            }
-            .buttonStyle(.plain)
-            .disabled(nextChapterStart == nil)
-            .accessibilityLabel("Next chapter")
+            chapterStepButton(systemImage: "forward.end.fill", label: "Next chapter", target: nextChapterStart)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(
-            Capsule(style: .continuous)
-                .fill(.clear)
-                .offscriptGlass(in: Capsule(style: .continuous))
-        )
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.offscriptCard)
         .overlay(
-            Capsule(style: .continuous)
+            Rectangle()
                 .stroke(Color.offscriptHairline, lineWidth: 0.5)
         )
+    }
+
+    private func chapterStepButton(systemImage: String, label: String, target: TimeInterval?) -> some View {
+        Button {
+            if let target { PlaybackController.shared.seek(to: target) }
+        } label: {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(target == nil ? Color.offscriptTextMuted.opacity(0.5) : Color.offscriptTextPrimary)
+                .frame(width: 32, height: 32)
+                .overlay(
+                    Rectangle()
+                        .stroke(Color.offscriptHairline, lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(target == nil)
+        .accessibilityLabel(label)
     }
 
     private var currentChapterIndex: Int {
@@ -444,31 +560,34 @@ private struct SmartTakeStrip: View {
     @State private var generationTask: Task<Void, Never>?
 
     var body: some View {
-        // Always render the container so the view stays in the hierarchy and
-        // the onAppear task always fires. Crossfade content based on state.
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "sparkles")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(Color.offscriptAccent)
-                .padding(.top, 2)
-
+        // Tuner OLED Smart Take — flat panel with a cyan eyebrow
+        // ("ON-DEVICE TAKE") and the AI commentary in regular sans body.
+        // Replaces the serif-italic editorial pull-quote treatment from the
+        // previous theme.
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Color.offscriptAccentSecondary)
+                Text("ON-DEVICE TAKE")
+                    .font(.offscriptTagLabel)
+                    .tracking(1.4)
+                    .foregroundStyle(Color.offscriptAccentSecondary)
+            }
             Text(take ?? "Reading the room…")
-                .font(.system(.subheadline, design: .serif).italic())
+                .font(.offscriptBody)
                 .foregroundStyle(take == nil ? Color.offscriptTextMuted : Color.offscriptTextPrimary)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentTransition(.opacity)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous)
-                .fill(Color.offscriptAccentSecondaryMuted)
-        )
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.offscriptCard)
         .overlay(
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous)
-                .stroke(Color.offscriptAccentSecondary.opacity(0.18), lineWidth: 0.5)
+            Rectangle()
+                .stroke(Color.offscriptAccentSecondary.opacity(0.32), lineWidth: 0.5)
         )
         .onAppear { kickOffLoad() }
         .onChange(of: episode.id) { _, _ in

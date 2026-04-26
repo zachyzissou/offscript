@@ -407,14 +407,18 @@ struct OffScriptSectionHeader: View {
     let title: String
     let subtitle: String
 
+    /// Tuner section header — small mono uppercase title (instrument label
+    /// style) with a muted body subtitle beneath. Replaces the previous
+    /// serif `offscriptSectionTitle` look.
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.offscriptSectionTitle)
+            Text(title.uppercased())
+                .font(.offscriptTagLabel)
+                .tracking(1.6)
                 .foregroundStyle(Color.offscriptTextPrimary)
             Text(subtitle)
                 .font(.offscriptBody)
-                .foregroundStyle(Color.offscriptAccentSecondary.opacity(0.7))
+                .foregroundStyle(Color.offscriptTextMuted)
         }
     }
 }
@@ -430,22 +434,25 @@ struct OffScriptUtilityHeader: View {
         self.subtitle = subtitle
     }
 
+    /// Tuner utility header — eyebrow tag pill above a thin sans display
+    /// title. The eyebrow is the *only* place signal yellow shows up here;
+    /// it carries the screen's identity. Subtitle is muted body sans.
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let eyebrow {
                 Text(eyebrow.uppercased())
-                    .font(.offscriptMeta.weight(.semibold))
-                    .tracking(1.2)
+                    .font(.offscriptTagLabel)
+                    .tracking(1.6)
                     .foregroundStyle(Color.offscriptAccent)
             }
 
             Text(title)
-                .font(.offscriptUtilityTitle)
+                .font(.offscriptDisplay)
                 .foregroundStyle(Color.offscriptTextPrimary)
 
             Text(subtitle)
                 .font(.offscriptBody)
-                .foregroundStyle(Color.offscriptTextSecondary)
+                .foregroundStyle(Color.offscriptTextMuted)
         }
     }
 }
