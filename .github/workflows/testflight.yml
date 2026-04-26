@@ -41,7 +41,6 @@ jobs:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_KEY_TYPE: team
-      ASC_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
       TEST_DESTINATION: platform=iOS Simulator,OS=latest,name=iPhone 17 Pro
 
     steps:
@@ -54,6 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "DEVELOPER_DIR=$(xcode-select -p)" >> "$GITHUB_ENV"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
           xcodebuild -version
 
       - name: Install App Store Connect script dependencies
