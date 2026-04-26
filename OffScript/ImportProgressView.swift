@@ -197,45 +197,86 @@ struct ImportProgressView: View {
 
     @MainActor
     private func importPodcasts(_ podcasts: [PodcastSearchResult]) async {
+        // Skip per-episode FoundationModels work during onboarding — the
+        // BackgroundEnrichmentService drains it asynchronously after the
+        // feeds are visible.
+        syncService.enrichesInline = false
+        defer { syncService.enrichesInline = true }
+
         for podcast in podcasts {
             statuses[podcast.feedURL] = .importing
             errorMessages[podcast.feedURL] = nil
+        }
 
-            do {
-                let imported = try await withThrowingTimeout(seconds: 45) {
-                    try await syncService.importPodcast(from: podcast, into: modelContext, episodeLimit: 15)
-                }
+        // Cross-task channel that yields only Sendable values (URL + error
+        // string) so we never have to pass SwiftData-owned objects between
+        // tasks. Each task does its own Podcast/Episode work on @MainActor.
+        let maxConcurrent = 3
+        var iterator = podcasts.makeIterator()
 
-                if let newestEpisode = imported.episodes
-                    .sorted(by: { $0.pubDate > $1.pubDate })
-                    .first {
-                    let signal = PreferenceSignal(action: .like, episode: newestEpisode)
-                    modelContext.insert(signal)
-                    try? modelContext.save()
+        await withTaskGroup(of: (URL, String?).self) { group in
+            for _ in 0..<maxConcurrent {
+                guard let next = iterator.next() else { break }
+                group.addTask { @MainActor [self] in
+                    await self.runOneImport(next)
                 }
+            }
+            while let (url, errorMessage) = await group.next() {
+                applyImportOutcome(url: url, errorMessage: errorMessage)
+                if let next = iterator.next() {
+                    group.addTask { @MainActor [self] in
+                        await self.runOneImport(next)
+                    }
+                }
+            }
+        }
+    }
 
-                TelemetryService.track(
-                    "subscription_imported",
-                    metadata: ["podcast": podcast.title, "source": "onboarding"],
-                    in: modelContext
-                )
+    @MainActor
+    private func runOneImport(_ podcast: PodcastSearchResult) async -> (URL, String?) {
+        do {
+            // Smaller default than 15 — 6 keeps onboarding under ~6 sec per feed.
+            let imported = try await withThrowingTimeout(seconds: 30) {
+                try await syncService.importPodcast(from: podcast, into: modelContext, episodeLimit: 6)
+            }
+            // Attach a like signal to the newest episode while we still have
+            // the model object on @MainActor — never crosses a task boundary.
+            if let newest = imported.episodes
+                .sorted(by: { $0.pubDate > $1.pubDate })
+                .first {
+                let signal = PreferenceSignal(action: .like, episode: newest)
+                modelContext.insert(signal)
+                try? modelContext.save()
+            }
+            TelemetryService.track(
+                "subscription_imported",
+                metadata: ["podcast": podcast.title, "source": "onboarding"],
+                in: modelContext
+            )
+            return (podcast.feedURL, nil)
+        } catch {
+            let message = error is CancellationError
+                ? "This feed took too long to respond."
+                : error.localizedDescription
+            TelemetryService.track(
+                "subscription_import_failed",
+                metadata: ["podcast": podcast.title, "source": "onboarding", "error": message],
+                in: modelContext
+            )
+            return (podcast.feedURL, message)
+        }
+    }
 
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    statuses[podcast.feedURL] = .done
-                }
-            } catch {
-                let message = error is CancellationError
-                    ? "This feed took too long to respond."
-                    : error.localizedDescription
-                errorMessages[podcast.feedURL] = message
-                TelemetryService.track(
-                    "subscription_import_failed",
-                    metadata: ["podcast": podcast.title, "source": "onboarding", "error": message],
-                    in: modelContext
-                )
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    statuses[podcast.feedURL] = .failed
-                }
+    @MainActor
+    private func applyImportOutcome(url: URL, errorMessage: String?) {
+        if let errorMessage {
+            errorMessages[url] = errorMessage
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                statuses[url] = .failed
+            }
+        } else {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                statuses[url] = .done
             }
         }
     }

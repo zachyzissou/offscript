@@ -12,7 +12,31 @@ struct LibraryView: View {
     @State private var showDownloadedOnly = AppSettings.libraryShowDownloadedOnly
     @State private var sortMode = AppSettings.LibrarySortMode.newest
     @State private var syncError: String?
+    @State private var focusFilter: LibraryFocusFilter = .all
+    @State private var librarySearch = ""
+    @State private var librarySearchMatches: [Episode] = []
     let onOpenSettings: () -> Void
+
+    enum LibraryFocusFilter: String, CaseIterable, Identifiable {
+        case all, fresh, inProgress, downloads
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .all: return "All"
+            case .fresh: return "Fresh"
+            case .inProgress: return "In Progress"
+            case .downloads: return "Downloads"
+            }
+        }
+        var systemImage: String {
+            switch self {
+            case .all: return "circle.grid.2x2.fill"
+            case .fresh: return "sparkles"
+            case .inProgress: return "play.circle.fill"
+            case .downloads: return "arrow.down.circle.fill"
+            }
+        }
+    }
 
     private var subscribedPodcasts: [Podcast] {
         podcasts
@@ -60,6 +84,65 @@ struct LibraryView: View {
         return counts
     }
 
+    /// Recompute the search matches from the episodes list. Called from
+    /// onChange of the search query — not from `var body`. Computing in body
+    /// turns each keystroke into an O(n) scan plus per-render redundant work.
+    private func refreshLibrarySearchMatches() {
+        let q = librarySearch.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else {
+            librarySearchMatches = []
+            return
+        }
+        var collected: [Episode] = []
+        for episode in episodes {
+            if collected.count >= 40 { break }
+            if episode.title.lowercased().contains(q) {
+                collected.append(episode); continue
+            }
+            if let summary = episode.summary?.lowercased(), summary.contains(q) {
+                collected.append(episode); continue
+            }
+            if episode.podcast.title.lowercased().contains(q) {
+                collected.append(episode)
+            }
+        }
+        librarySearchMatches = collected
+    }
+
+    @ViewBuilder
+    private var librarySearchResults: some View {
+        let matches = librarySearchMatches
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Matches")
+                    .font(.offscriptSectionTitle)
+                    .foregroundStyle(Color.offscriptTextPrimary)
+                Spacer()
+                Text("\(matches.count)")
+                    .font(.offscriptMicro.weight(.semibold))
+                    .foregroundStyle(Color.offscriptAccent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.offscriptAccentSoft, in: Capsule())
+            }
+            .padding(.horizontal, OffScriptTheme.pagePadding)
+
+            if matches.isEmpty {
+                Text("No episodes in your library mention \"\(librarySearch)\".")
+                    .font(.offscriptBody)
+                    .foregroundStyle(Color.offscriptTextMuted)
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+            } else {
+                LazyVStack(spacing: 12) {
+                    ForEach(matches) { episode in
+                        EpisodeCompactCard(episode: episode)
+                            .padding(.horizontal, OffScriptTheme.pagePadding)
+                    }
+                }
+            }
+        }
+    }
+
     private var inProgressCountByPodcast: [UUID: Int] {
         var counts: [UUID: Int] = [:]
         for episode in inProgressEpisodes {
@@ -79,6 +162,16 @@ struct LibraryView: View {
                     showDownloadedOnly: showDownloadedOnly
                 )
 
+                LibraryFocusChips(selection: $focusFilter)
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+
+                LibrarySearchField(query: $librarySearch)
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+
+                if !librarySearch.trimmingCharacters(in: .whitespaces).isEmpty {
+                    librarySearchResults
+                }
+
                 if subscribedPodcasts.isEmpty {
                     VStack(spacing: 20) {
                         ContentUnavailableView("Your library is empty", systemImage: "books.vertical", description: Text("Use Search to bring in shows, then OffScript will keep them fresh here."))
@@ -91,50 +184,67 @@ struct LibraryView: View {
                     .padding(.horizontal, OffScriptTheme.pagePadding)
                     .padding(.top, 24)
                 } else {
-                    if !inProgressEpisodes.isEmpty {
-                        LibraryEpisodeRail(
-                            title: "Continue Listening",
-                            subtitle: "Pick up where you left off.",
-                            episodes: Array(inProgressEpisodes.prefix(8)),
-                            reasonProvider: { episode in
-                                if let duration = episode.duration {
-                                    return "\(EpisodeDurationFormatter.short(max(duration - episode.playedPosition, 0))) left"
+                    if focusFilter == .all || focusFilter == .inProgress {
+                        if !inProgressEpisodes.isEmpty {
+                            LibraryEpisodeRail(
+                                title: "Continue Listening",
+                                subtitle: "Pick up where you left off.",
+                                episodes: Array(inProgressEpisodes.prefix(focusFilter == .inProgress ? 30 : 8)),
+                                reasonProvider: { episode in
+                                    if let duration = episode.duration {
+                                        return "\(EpisodeDurationFormatter.short(max(duration - episode.playedPosition, 0))) left"
+                                    }
+                                    return "In progress"
                                 }
-                                return "In progress"
-                            }
-                        )
+                            )
+                        }
                     }
 
-                    if !freshEpisodes.isEmpty {
-                        LibraryEpisodeRail(
-                            title: "Fresh Episodes",
-                            subtitle: "Recent drops from the shows you already trust.",
-                            episodes: Array(freshEpisodes.prefix(10)),
-                            reasonProvider: { episode in
-                                if let duration = episode.duration {
-                                    return "Fresh • \(EpisodeDurationFormatter.short(duration))"
+                    if focusFilter == .all || focusFilter == .fresh {
+                        if !freshEpisodes.isEmpty {
+                            LibraryEpisodeRail(
+                                title: "Fresh Episodes",
+                                subtitle: "Recent drops from the shows you already trust.",
+                                episodes: Array(freshEpisodes.prefix(focusFilter == .fresh ? 30 : 10)),
+                                reasonProvider: { episode in
+                                    if let duration = episode.duration {
+                                        return "Fresh • \(EpisodeDurationFormatter.short(duration))"
+                                    }
+                                    return "Fresh"
                                 }
-                                return "Fresh"
-                            }
-                        )
+                            )
+                        }
                     }
 
-                    if !downloadActivityEpisodes.isEmpty {
-                        LibraryDownloadActivitySection(episodes: downloadActivityEpisodes)
-                    }
+                    if focusFilter == .all || focusFilter == .downloads {
+                        if !downloadActivityEpisodes.isEmpty {
+                            LibraryDownloadActivitySection(episodes: downloadActivityEpisodes)
+                        }
 
-                    if !downloadedEpisodes.isEmpty {
-                        LibraryEpisodeRail(
-                            title: "Downloaded",
-                            subtitle: "Ready when the signal drops.",
-                            episodes: Array(downloadedEpisodes.prefix(10)),
-                            reasonProvider: { episode in
-                                if let duration = episode.duration {
-                                    return "Offline • \(EpisodeDurationFormatter.short(duration))"
+                        if !downloadedEpisodes.isEmpty {
+                            LibraryEpisodeRail(
+                                title: "Downloaded",
+                                subtitle: "Ready when the signal drops.",
+                                episodes: Array(downloadedEpisodes.prefix(focusFilter == .downloads ? 30 : 10)),
+                                reasonProvider: { episode in
+                                    if let duration = episode.duration {
+                                        return "Offline • \(EpisodeDurationFormatter.short(duration))"
+                                    }
+                                    return "Offline"
                                 }
-                                return "Offline"
-                            }
-                        )
+                            )
+                        }
+
+                        if focusFilter == .downloads, downloadedEpisodes.isEmpty, downloadActivityEpisodes.isEmpty {
+                            OffScriptEmptyState(
+                                icon: "arrow.down.circle",
+                                headline: "Nothing downloaded yet",
+                                message: "Tap the download icon on any episode to keep it offline.",
+                                generatedCopyKey: "library.downloads.empty",
+                                generatedCopyPrompt: "Surface: empty Downloads filter on a podcast app's Library tab. Write a two-sentence prompt to download something for offline listening."
+                            )
+                            .padding(.horizontal, OffScriptTheme.pagePadding)
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 14) {
@@ -157,6 +267,27 @@ struct LibraryView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .padding(.horizontal, OffScriptTheme.pagePadding)
+                                .contextMenu {
+                                    Button {
+                                        markAllPlayed(podcast)
+                                    } label: {
+                                        Label("Mark all played", systemImage: "checkmark.circle")
+                                    }
+                                    Button {
+                                        Task { await syncSingle(podcast) }
+                                    } label: {
+                                        Label("Refresh feed", systemImage: "arrow.clockwise")
+                                    }
+                                    ShareLink(item: podcast.feedURL) {
+                                        Label("Share feed URL", systemImage: "square.and.arrow.up")
+                                    }
+                                    Divider()
+                                    Button(role: .destructive) {
+                                        unsubscribe(podcast)
+                                    } label: {
+                                        Label("Unsubscribe", systemImage: "xmark.bin")
+                                    }
+                                }
                             }
                         }
                     }
@@ -172,6 +303,16 @@ struct LibraryView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .refreshable { await syncSubscriptions() }
+        .onChange(of: librarySearch) { _, _ in
+            refreshLibrarySearchMatches()
+        }
+        .onChange(of: episodes) { _, _ in
+            // If the underlying library changes while a search is active,
+            // re-run the filter so the matches list stays in sync.
+            if !librarySearch.trimmingCharacters(in: .whitespaces).isEmpty {
+                refreshLibrarySearchMatches()
+            }
+        }
         .overlay(alignment: .top) {
             if let syncError {
                 Text(syncError)
@@ -222,6 +363,42 @@ struct LibraryView: View {
     }
 
     @MainActor
+    private func markAllPlayed(_ podcast: Podcast) {
+        let podcastID = podcast.id
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast.id == podcastID && $0.isPlayed == false }
+        )
+        let unplayed = (try? modelContext.fetch(descriptor)) ?? []
+        for episode in unplayed {
+            episode.isPlayed = true
+            episode.playedPosition = episode.duration ?? episode.playedPosition
+        }
+        try? modelContext.save()
+        TelemetryService.track(
+            "podcast_marked_all_played",
+            metadata: ["podcast": podcast.title, "count": "\(unplayed.count)"],
+            in: modelContext
+        )
+    }
+
+    @MainActor
+    private func syncSingle(_ podcast: Podcast) async {
+        await SyncCoordinator.shared.refreshSubscriptions([podcast], force: true)
+    }
+
+    @MainActor
+    private func unsubscribe(_ podcast: Podcast) {
+        podcast.isSubscribed = false
+        try? modelContext.save()
+        TelemetryService.track(
+            "podcast_unsubscribed",
+            metadata: ["podcast": podcast.title],
+            in: modelContext
+        )
+        OffScriptNotifications.shared.cancelPendingNotifications(forPodcastID: podcast.id, in: modelContext)
+    }
+
+    @MainActor
     private func syncSubscriptions() async {
         syncError = nil
         await SyncCoordinator.shared.refreshSubscriptions(subscribedPodcasts, force: true)
@@ -265,6 +442,7 @@ struct PodcastDetailView: View {
     @Query private var podcastEpisodes: [Episode]
     @State private var filter: EpisodeFilter = .all
     @State private var episodeSearchQuery = ""
+    @State private var showPreferences = false
 
     private var episodes: [Episode] {
         let filtered = podcastEpisodes
@@ -355,6 +533,328 @@ struct PodcastDetailView: View {
         .navigationTitle(podcast.title)
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $episodeSearchQuery, prompt: "Search episodes")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showPreferences = true
+                } label: {
+                    Image(systemName: "slider.horizontal.3")
+                }
+                .accessibilityLabel("Show preferences")
+            }
+        }
+        .sheet(isPresented: $showPreferences) {
+            PodcastPreferencesSheet(podcast: podcast)
+                .presentationDetents([.medium, .large])
+        }
+    }
+}
+
+struct PodcastPreferencesSheet: View {
+    let podcast: Podcast
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var introSeconds: Double = 0
+    @State private var outroSeconds: Double = 0
+    @State private var rateOverride: Double = 0  // 0 = none
+    @State private var notify: Bool = false
+
+    var body: some View {
+        navigationContent
+            .onAppear { load() }
+            .modifier(PodcastPreferencesPersister(
+                podcastID: podcast.id,
+                introSeconds: introSeconds,
+                outroSeconds: outroSeconds,
+                rateOverride: rateOverride,
+                notify: notify
+            ))
+    }
+
+    private var navigationContent: some View {
+        NavigationStack {
+            ScrollView {
+                content
+                    .padding(.vertical, 16)
+            }
+            .offscriptPageBackground()
+            .navigationTitle("Preferences")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Done") { dismiss() }
+                        .tint(Color.offscriptAccent)
+                }
+            }
+            .preferredColorScheme(.dark)
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
+            OffScriptUtilityHeader(
+                eyebrow: podcast.title.uppercased(),
+                title: "Show preferences",
+                subtitle: "Tune how OffScript handles episodes from this show — without changing your defaults."
+            )
+            .padding(.horizontal, OffScriptTheme.pagePadding)
+
+            introCard
+                .padding(.horizontal, OffScriptTheme.pagePadding)
+
+            outroCard
+                .padding(.horizontal, OffScriptTheme.pagePadding)
+
+            rateCard
+                .padding(.horizontal, OffScriptTheme.pagePadding)
+
+            notifyCard
+                .padding(.horizontal, OffScriptTheme.pagePadding)
+
+            Spacer(minLength: 32)
+        }
+    }
+
+    private var introCard: some View {
+        let detail: String = introSeconds == 0
+            ? "Off — start from the very beginning."
+            : "Skip the first \(Int(introSeconds))s of every new episode."
+        return sliderCard(title: "Skip intro", detail: detail, value: $introSeconds, range: 0...120, step: 5, unit: "s")
+    }
+
+    private var outroCard: some View {
+        let detail: String = outroSeconds == 0
+            ? "Off — play to the end."
+            : "Treat the last \(Int(outroSeconds))s as outro and surface what's next early."
+        return sliderCard(title: "Skip outro", detail: detail, value: $outroSeconds, range: 0...180, step: 5, unit: "s")
+    }
+
+    private func load() {
+        introSeconds = Double(PodcastPreferences.skipIntroSeconds(for: podcast.id))
+        outroSeconds = Double(PodcastPreferences.skipOutroSeconds(for: podcast.id))
+        rateOverride = Double(PodcastPreferences.playbackRate(for: podcast.id) ?? 0)
+        notify = PodcastPreferences.notificationsEnabled(for: podcast.id)
+    }
+
+    private func sliderCard(title: String, detail: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double, unit: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(title)
+                    .font(.offscriptCardTitle)
+                    .foregroundStyle(Color.offscriptTextPrimary)
+                Spacer()
+                Text("\(Int(value.wrappedValue))\(unit)")
+                    .font(.system(.subheadline, design: .monospaced).monospacedDigit().weight(.semibold))
+                    .foregroundStyle(Color.offscriptAccent)
+            }
+            Text(detail)
+                .font(.offscriptMeta)
+                .foregroundStyle(Color.offscriptTextMuted)
+            Slider(value: value, in: range, step: step) {
+                Text(title)
+            }
+            .tint(Color.offscriptAccent)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .offscriptUtilitySurface()
+    }
+
+    private var rateCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            rateCardHeader
+            Text("Lock a specific speed for this show, regardless of your global setting.")
+                .font(.offscriptMeta)
+                .foregroundStyle(Color.offscriptTextMuted)
+            rateChips
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .offscriptUtilitySurface()
+    }
+
+    private var rateCardHeader: some View {
+        HStack {
+            Text("Playback speed override")
+                .font(.offscriptCardTitle)
+                .foregroundStyle(Color.offscriptTextPrimary)
+            Spacer()
+            Text(rateOverride == 0 ? "Default" : String(format: "%.2gx", rateOverride))
+                .font(.system(.subheadline, design: .monospaced).monospacedDigit().weight(.semibold))
+                .foregroundStyle(Color.offscriptAccent)
+        }
+    }
+
+    private var rateChips: some View {
+        HStack(spacing: 8) {
+            ForEach([0.0, 1.0, 1.25, 1.5, 1.75, 2.0], id: \.self) { rate in
+                rateChip(for: rate)
+            }
+        }
+    }
+
+    private func rateChip(for rate: Double) -> some View {
+        let isSelected = rate == rateOverride
+        let label: String = rate == 0 ? "Default" : String(format: "%.2gx", rate)
+        return Button {
+            rateOverride = rate
+        } label: {
+            Text(label)
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(isSelected ? Color.black : Color.offscriptTextPrimary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(isSelected ? Color.offscriptAccent : Color.offscriptFillLight))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var notifyCard: some View {
+        Toggle(isOn: $notify) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Notify on new episodes")
+                    .font(.offscriptCardTitle)
+                    .foregroundStyle(Color.offscriptTextPrimary)
+                Text("OffScript pings you when this show drops a new episode.")
+                    .font(.offscriptMeta)
+                    .foregroundStyle(Color.offscriptTextMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(Color.offscriptAccent)
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .offscriptUtilitySurface()
+    }
+}
+
+/// Persists podcast prefs as the sliders / toggles change. Splits each
+/// onChange into its own tiny modifier so the type-checker doesn't choke on
+/// the chained closures.
+private struct PodcastPreferencesPersister: ViewModifier {
+    let podcastID: UUID
+    let introSeconds: Double
+    let outroSeconds: Double
+    let rateOverride: Double
+    let notify: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .modifier(PrefIntChange(value: introSeconds) { v in
+                PodcastPreferences.setSkipIntroSeconds(Int(v), for: podcastID)
+            })
+            .modifier(PrefIntChange(value: outroSeconds) { v in
+                PodcastPreferences.setSkipOutroSeconds(Int(v), for: podcastID)
+            })
+            .modifier(PrefDoubleChange(value: rateOverride) { v in
+                PodcastPreferences.setPlaybackRate(v > 0 ? Float(v) : nil, for: podcastID)
+            })
+            .modifier(PrefBoolChange(value: notify) { v in
+                PodcastPreferences.setNotificationsEnabled(v, for: podcastID)
+                if v {
+                    Task { await OffScriptNotifications.shared.requestPermissionIfNeeded() }
+                }
+            })
+    }
+}
+
+private struct PrefIntChange: ViewModifier {
+    let value: Double
+    let onChange: (Double) -> Void
+    func body(content: Content) -> some View {
+        content.onChange(of: value) { _, v in onChange(v) }
+    }
+}
+
+private struct PrefDoubleChange: ViewModifier {
+    let value: Double
+    let onChange: (Double) -> Void
+    func body(content: Content) -> some View {
+        content.onChange(of: value) { _, v in onChange(v) }
+    }
+}
+
+private struct PrefBoolChange: ViewModifier {
+    let value: Bool
+    let onChange: (Bool) -> Void
+    func body(content: Content) -> some View {
+        content.onChange(of: value) { _, v in onChange(v) }
+    }
+}
+
+private struct LibrarySearchField: View {
+    @Binding var query: String
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(Color.offscriptTextMuted)
+            TextField("Search inside your library", text: $query)
+                .textFieldStyle(.plain)
+                .foregroundStyle(Color.offscriptTextPrimary)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .focused($focused)
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                    focused = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Color.offscriptTextMuted)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(Color.offscriptCard, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.offscriptHairline, lineWidth: 0.5)
+        )
+    }
+}
+
+private struct LibraryFocusChips: View {
+    @Binding var selection: LibraryView.LibraryFocusFilter
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(LibraryView.LibraryFocusFilter.allCases) { filter in
+                    let isSelected = selection == filter
+                    Button {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.78)) {
+                            selection = filter
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: filter.systemImage)
+                                .font(.caption.weight(.semibold))
+                                .symbolEffect(.bounce, value: isSelected)
+                            Text(filter.title)
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        .foregroundStyle(isSelected ? Color.black : Color.offscriptTextPrimary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background {
+                            if isSelected {
+                                Capsule()
+                                    .fill(Color.offscriptAccent)
+                                    .shadow(color: Color.offscriptAccent.opacity(0.35), radius: 10, y: 4)
+                            } else {
+                                Capsule().fill(.clear).offscriptGlass(in: Capsule())
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .sensoryFeedback(.selection, trigger: isSelected)
+                }
+            }
+        }
     }
 }
 

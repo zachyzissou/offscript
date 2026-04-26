@@ -6,6 +6,7 @@ struct OnboardingFlowView: View {
     @State private var step = 0
     @State private var selectedGenres: Set<Genre> = []
     @State private var selectedPodcasts: [PodcastSearchResult] = []
+    @State private var signInError: String?
 
     init(onComplete: (() -> Void)? = nil) {
         self.onComplete = onComplete
@@ -88,15 +89,7 @@ struct OnboardingFlowView: View {
                 Spacer(minLength: 60)
 
                 VStack(alignment: .leading, spacing: 18) {
-                    Text("OffScript")
-                        .font(.system(size: 46, weight: .bold, design: .serif))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [Color.offscriptTextPrimary, Color.offscriptAccent],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                    AnimatedOnboardingTitle()
                         .staggeredEntrance(index: 0, delay: 0.12)
 
                     Text("Podcasts that feel curated,\nnot algorithmic.")
@@ -112,20 +105,29 @@ struct OnboardingFlowView: View {
                 }
 
                 VStack(spacing: 12) {
-                    SignInWithAppleButtonView(onComplete: {
-                        // Enable CloudKit sync when user signs in with Apple
-                        if AppSettings.currentUserID != nil {
-                            AppSettings.cloudSyncEnabled = true
-                        }
+                    SignInWithAppleButtonView(onSuccess: {
+                        AppSettings.cloudSyncEnabled = true
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { step = 1 }
+                    }, onError: { message in
+                        signInError = message
+                    }, onCancel: {
+                        // User dismissed the system sheet — no action.
                     })
                     .frame(height: 52)
                     .staggeredEntrance(index: 3, delay: 0.12)
 
-                    Text("Sign in to sync your library across devices")
-                        .font(.offscriptMeta)
-                        .foregroundStyle(Color.offscriptTextMuted)
-                        .staggeredEntrance(index: 4, delay: 0.12)
+                    if let signInError {
+                        Text(signInError)
+                            .font(.offscriptMeta)
+                            .foregroundStyle(Color.offscriptDestructive)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 16)
+                    } else {
+                        Text("Sign in to sync your library across devices")
+                            .font(.offscriptMeta)
+                            .foregroundStyle(Color.offscriptTextMuted)
+                            .staggeredEntrance(index: 4, delay: 0.12)
+                    }
 
                     Button("Skip for now") {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { step = 1 }
@@ -143,13 +145,63 @@ struct OnboardingFlowView: View {
     }
 }
 
+// MARK: - Animated Title
+
+private struct AnimatedOnboardingTitle: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    enum Phase: CaseIterable { case enter, settle, breathe }
+
+    var body: some View {
+        Text("OffScript")
+            .font(.system(size: 46, weight: .bold, design: .serif))
+            .foregroundStyle(
+                LinearGradient(
+                    colors: [Color.offscriptTextPrimary, Color.offscriptAccent],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .modifier(TitlePhase(reduceMotion: reduceMotion))
+    }
+
+    private struct TitlePhase: ViewModifier {
+        let reduceMotion: Bool
+
+        func body(content: Content) -> some View {
+            if reduceMotion {
+                content
+            } else {
+                content
+                    .phaseAnimator(Phase.allCases) { view, phase in
+                        view
+                            .opacity(phase == .enter ? 0 : 1)
+                            .scaleEffect(phase == .enter ? 0.92 : (phase == .breathe ? 1.015 : 1.0), anchor: .leading)
+                            .blur(radius: phase == .enter ? 6 : 0)
+                    } animation: { phase in
+                        switch phase {
+                        case .enter:
+                            return .easeOut(duration: 0.6)
+                        case .settle:
+                            return .spring(response: 0.6, dampingFraction: 0.78)
+                        case .breathe:
+                            return .easeInOut(duration: 4.0)
+                        }
+                    }
+            }
+        }
+    }
+}
+
 // MARK: - Sign in with Apple
 
 private struct SignInWithAppleButtonView: UIViewRepresentable {
-    let onComplete: () -> Void
+    let onSuccess: () -> Void
+    let onError: (String) -> Void
+    let onCancel: () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onComplete: onComplete)
+        Coordinator(onSuccess: onSuccess, onError: onError, onCancel: onCancel)
     }
 
     func makeUIView(context: Context) -> ASAuthorizationAppleIDButton {
@@ -161,37 +213,61 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
 
     func updateUIView(_ uiView: ASAuthorizationAppleIDButton, context: Context) {}
 
-    final class Coordinator: NSObject, ASAuthorizationControllerDelegate {
-        let onComplete: () -> Void
+    final class Coordinator: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+        let onSuccess: () -> Void
+        let onError: (String) -> Void
+        let onCancel: () -> Void
 
-        init(onComplete: @escaping () -> Void) {
-            self.onComplete = onComplete
+        init(onSuccess: @escaping () -> Void, onError: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+            self.onSuccess = onSuccess
+            self.onError = onError
+            self.onCancel = onCancel
         }
 
         @objc func handleSignIn() {
             let request = ASAuthorizationAppleIDProvider().createRequest()
-            request.requestedScopes = [.fullName]
+            request.requestedScopes = [.fullName, .email]
 
             let controller = ASAuthorizationController(authorizationRequests: [request])
             controller.delegate = self
+            controller.presentationContextProvider = self
             controller.performRequests()
         }
 
         func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
-            if let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
-                let displayName = [credential.fullName?.givenName, credential.fullName?.familyName]
-                    .compactMap { $0 }
-                    .joined(separator: " ")
-                try? AppSettings.saveCredential(
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+                onError("Sign in returned an unsupported credential.")
+                return
+            }
+            let displayName = [credential.fullName?.givenName, credential.fullName?.familyName]
+                .compactMap { $0 }
+                .joined(separator: " ")
+            do {
+                try AppSettings.saveCredential(
                     userID: credential.user,
                     displayName: displayName.isEmpty ? nil : displayName
                 )
+                onSuccess()
+            } catch {
+                onError("Couldn't save credential: \(error.localizedDescription)")
             }
-            onComplete()
         }
 
         func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
-            onComplete()
+            // ASAuthorizationError.canceled (1001) is benign — the user closed the sheet.
+            let nsError = error as NSError
+            if nsError.domain == ASAuthorizationError.errorDomain,
+               nsError.code == ASAuthorizationError.canceled.rawValue {
+                onCancel()
+            } else {
+                onError(error.localizedDescription)
+            }
+        }
+
+        func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+            UIApplication.shared.connectedScenes
+                .compactMap { ($0 as? UIWindowScene)?.keyWindow }
+                .first ?? ASPresentationAnchor()
         }
     }
 }

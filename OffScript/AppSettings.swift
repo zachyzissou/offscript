@@ -36,6 +36,7 @@ enum AppSettings {
         static let librarySortMode = "offscript.librarySortMode"
         static let cloudSyncEnabled = "offscript.cloudSyncEnabled"
         static let lastCloudSyncDate = "offscript.lastCloudSyncDate"
+        static let trueBlackMode = "offscript.trueBlackMode"
     }
 
     enum LibrarySortMode: String, CaseIterable {
@@ -98,6 +99,11 @@ enum AppSettings {
     static var cloudSyncEnabled: Bool {
         get { defaults.bool(forKey: Key.cloudSyncEnabled) }
         set { defaults.set(newValue, forKey: Key.cloudSyncEnabled) }
+    }
+
+    static var trueBlackMode: Bool {
+        get { defaults.bool(forKey: Key.trueBlackMode) }
+        set { defaults.set(newValue, forKey: Key.trueBlackMode) }
     }
 
     static var lastCloudSyncDate: Date? {

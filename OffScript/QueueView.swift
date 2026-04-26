@@ -4,9 +4,17 @@ import SwiftUI
 struct QueueView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var queueItems: [QueueItem]
+    @State private var sessionPickerPresented = false
+    @State private var sessionPlan: TimeSlotPlaylistService.Plan?
+    @State private var isBuildingSession = false
 
-    private var orderedItems: [QueueItem] {
-        queueItems.sorted { lhs, rhs in
+    /// Cached sorted snapshot — recomputed only when @Query fires, not on
+    /// every body evaluation. Avoids a full sort per render even when nothing
+    /// changed.
+    @State private var orderedItems: [QueueItem] = []
+
+    private func recomputeOrdered() {
+        orderedItems = queueItems.sorted { lhs, rhs in
             if lhs.position == rhs.position {
                 return lhs.createdAt < rhs.createdAt
             }
@@ -25,12 +33,19 @@ struct QueueView: View {
             VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
                 QueueHeader(count: orderedItems.count)
 
+                TimeSlotSessionCard(isBuilding: isBuildingSession) { minutes in
+                    Task { await buildSession(minutes: minutes) }
+                }
+                .padding(.horizontal, OffScriptTheme.pagePadding)
+
                 if orderedItems.isEmpty {
                     VStack(spacing: 20) {
                         OffScriptEmptyState(
                             icon: "text.badge.plus",
                             headline: "Nothing queued yet",
-                            message: "Your queue is a working set, not a backlog. Add a few episodes you actually plan to hear next."
+                            message: "Your queue is a working set, not a backlog. Add a few episodes you actually plan to hear next.",
+                            generatedCopyKey: "queue.empty",
+                            generatedCopyPrompt: "Surface: empty Queue tab in a curated podcast app. Write a two-sentence editorial nudge that frames the queue as a curated working set."
                         )
 
                         NavigationLink("Browse Home") {
@@ -159,6 +174,80 @@ struct QueueView: View {
         .toolbarBackground(Color.offscriptBackgroundTop.opacity(0.98), for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .onAppear { recomputeOrdered() }
+        .onChange(of: queueItems) { _, _ in recomputeOrdered() }
+    }
+}
+
+private extension QueueView {
+    func buildSession(minutes: Int) async {
+        isBuildingSession = true
+        defer { isBuildingSession = false }
+        guard let plan = await TimeSlotPlaylistService.shared.buildPlan(targetMinutes: minutes, in: modelContext) else {
+            return
+        }
+        sessionPlan = plan
+        TimeSlotPlaylistService.shared.apply(plan: plan, in: modelContext, autoplay: false)
+    }
+}
+
+private struct TimeSlotSessionCard: View {
+    let isBuilding: Bool
+    let onSelect: (Int) -> Void
+
+    private let presets: [Int] = [15, 30, 45, 60]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "timer")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.offscriptAccent)
+                    .padding(10)
+                    .background(Color.offscriptAccentSoft, in: Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("How much time have you got?")
+                        .font(.offscriptCardTitle)
+                        .foregroundStyle(Color.offscriptTextPrimary)
+                    Text("OffScript builds a queue that fits — finishing what you started, then layering in the best next picks.")
+                        .font(.offscriptMeta)
+                        .foregroundStyle(Color.offscriptTextMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+            }
+
+            if isBuilding {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small).tint(Color.offscriptAccent)
+                    Text("Composing your session…")
+                        .font(.offscriptMeta)
+                        .foregroundStyle(Color.offscriptTextMuted)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    ForEach(presets, id: \.self) { minutes in
+                        Button {
+                            onSelect(minutes)
+                        } label: {
+                            Text("\(minutes)m")
+                                .font(.system(.subheadline, design: .default, weight: .bold).monospacedDigit())
+                                .foregroundStyle(Color.offscriptTextPrimary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(
+                                    Capsule().fill(.clear).offscriptGlass(in: Capsule())
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .sensoryFeedback(.impact(flexibility: .soft), trigger: minutes)
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .offscriptUtilitySurface()
     }
 }
 

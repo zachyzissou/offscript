@@ -182,6 +182,12 @@ private struct ItunesLookupResult: Decodable {
 final class FeedSyncService {
     private let topicExtractionService = TopicExtractionService()
 
+    /// Inline enrichment is off by default — sync should never block on
+    /// FoundationModels. Background enrichment picks up new episodes from
+    /// `BackgroundEnrichmentService` afterwards. Direct callers (manual
+    /// refresh that wants the spinner to wait) can flip this on temporarily.
+    var enrichesInline: Bool = false
+
     @MainActor
     func importPodcast(from result: PodcastSearchResult, into context: ModelContext, episodeLimit: Int? = nil) async throws -> Podcast {
         let feedURL = result.feedURL
@@ -292,9 +298,16 @@ final class FeedSyncService {
             let sortedItems = parsed.items.sorted { ($0.pubDate ?? .distantPast) > ($1.pubDate ?? .distantPast) }
             let itemsToProcess = episodeLimit.map { Array(sortedItems.prefix($0)) } ?? sortedItems
 
+            // Phase 1: insert/update all episodes WITHOUT chapter fetches or NLP.
+            // External chapter URLs and FoundationModels enrichment defer to phase 2
+            // so the user sees their feed in seconds, not minutes.
+            var newlyCreatedIDs: [UUID] = []
+            var itemsForChapterFetch: [(UUID, ParsedFeedItem)] = []
+
             for item in itemsToProcess {
                 let guid = item.guid ?? item.audioURL.absoluteString
-                let resolvedChapters = await resolvedChapters(for: item)
+                let embeddedChapters = EpisodeChapterParser.normalize(item.chapters, duration: item.duration)
+
                 if let existing = existingEpisodes.first(where: { $0.guid == guid || $0.audioURL == item.audioURL }) {
                     existing.title = item.title
                     existing.summary = item.summary
@@ -303,7 +316,9 @@ final class FeedSyncService {
                     existing.artworkURL = item.artworkURL ?? existing.artworkURL
                     existing.seasonNumber = item.seasonNumber ?? existing.seasonNumber
                     existing.episodeNumber = item.episodeNumber ?? existing.episodeNumber
-                    existing.chapters = resolvedChapters
+                    if !embeddedChapters.isEmpty {
+                        existing.chapters = embeddedChapters
+                    }
                     existing.transcriptReferences = item.transcriptReferences
                 } else {
                     let episode = Episode(
@@ -318,14 +333,61 @@ final class FeedSyncService {
                         episodeNumber: item.episodeNumber,
                         podcast: podcast
                     )
-                    episode.chapters = resolvedChapters
+                    episode.chapters = embeddedChapters
                     episode.transcriptReferences = item.transcriptReferences
                     context.insert(episode)
-                    try await topicExtractionService.enrich(episode: episode, in: context)
+                    newlyCreatedIDs.append(episode.id)
+
+                    // Defer chapter fetch only if the feed listed external chapter URLs
+                    if embeddedChapters.isEmpty,
+                       let chaptersURL = item.externalChapterURL {
+                        _ = chaptersURL  // avoid unused warning if logic added later
+                        itemsForChapterFetch.append((episode.id, item))
+                    }
                 }
             }
 
             try context.save()
+
+            // Schedule local notifications for any new episodes from shows the
+            // user has explicitly opted into for new-episode pings.
+            if !newlyCreatedIDs.isEmpty {
+                let descriptor = FetchDescriptor<Episode>(
+                    predicate: #Predicate<Episode> { newlyCreatedIDs.contains($0.id) }
+                )
+                if let createdEpisodes = try? context.fetch(descriptor) {
+                    for episode in createdEpisodes {
+                        OffScriptNotifications.shared.scheduleNewEpisodeNotificationIfNeeded(for: episode)
+                    }
+                }
+            }
+
+            // Phase 2: kick off background enrichment for the new episodes
+            // and let the import complete.
+            if !newlyCreatedIDs.isEmpty {
+                if enrichesInline {
+                    // Direct callers (manual refresh, recurring sync) want full
+                    // enrichment before returning so the UI is fresh.
+                    let descriptor = FetchDescriptor<Episode>(
+                        predicate: #Predicate<Episode> { newlyCreatedIDs.contains($0.id) }
+                    )
+                    if let episodes = try? context.fetch(descriptor) {
+                        for episode in episodes {
+                            try? await topicExtractionService.enrich(episode: episode, in: context)
+                        }
+                        try? context.save()
+                    }
+                } else {
+                    BackgroundEnrichmentService.shared.queue(episodeIDs: newlyCreatedIDs)
+                }
+
+                if !itemsForChapterFetch.isEmpty {
+                    let snapshot = itemsForChapterFetch
+                    Task.detached(priority: .background) { [weak self] in
+                        await self?.resolveExternalChaptersInBackground(snapshot)
+                    }
+                }
+            }
         } catch {
             podcast.syncStatus = "failed"
             podcast.syncErrorMessage = error.localizedDescription
@@ -341,6 +403,48 @@ final class FeedSyncService {
         }
         guard let externalChapterURL = item.externalChapterURL else { return [] }
         return (try? await ExternalChapterLoader.load(from: externalChapterURL, duration: item.duration)) ?? []
+    }
+
+    /// Off the main actor: fetches external chapter URLs in parallel, then
+    /// hops back to write into SwiftData. Used as a deferred phase 2 after
+    /// the user already sees their feed.
+    nonisolated private func resolveExternalChaptersInBackground(_ items: [(UUID, ParsedFeedItem)]) async {
+        // Resolve in parallel
+        let resolved: [(UUID, [EpisodeChapter])] = await withTaskGroup(of: (UUID, [EpisodeChapter]).self) { group in
+            for (id, item) in items {
+                group.addTask {
+                    let chapters = await Self.fetchChaptersStandalone(for: item)
+                    return (id, chapters)
+                }
+            }
+            var collected: [(UUID, [EpisodeChapter])] = []
+            for await result in group {
+                if !result.1.isEmpty {
+                    collected.append(result)
+                }
+            }
+            return collected
+        }
+
+        guard !resolved.isEmpty else { return }
+        let resolvedSnapshot = resolved
+        await MainActor.run {
+            guard let context = ModelContainerRef.shared?.mainContext else { return }
+            for (id, chapters) in resolvedSnapshot {
+                let descriptor = FetchDescriptor<Episode>(
+                    predicate: #Predicate<Episode> { $0.id == id }
+                )
+                if let episode = try? context.fetch(descriptor).first {
+                    episode.chapters = chapters
+                }
+            }
+            try? context.save()
+        }
+    }
+
+    nonisolated private static func fetchChaptersStandalone(for item: ParsedFeedItem) async -> [EpisodeChapter] {
+        guard let url = item.externalChapterURL else { return [] }
+        return (try? await ExternalChapterLoader.load(from: url, duration: item.duration)) ?? []
     }
 }
 
@@ -487,12 +591,22 @@ struct ParsedFeedItem {
     var pubDate: Date?
     var duration: TimeInterval?
     var audioURL: URL
+    var enclosureMimeType: String?
     var artworkURL: URL?
     var seasonNumber: Int?
     var episodeNumber: Int?
     var chapters: [EpisodeChapter] = []
     var externalChapterURL: URL?
     var transcriptReferences: [EpisodeTranscriptReference] = []
+
+    var isLikelyVideo: Bool {
+        if let mime = enclosureMimeType?.lowercased(), mime.hasPrefix("video/") {
+            return true
+        }
+        return Self.videoExtensions.contains(audioURL.pathExtension.lowercased())
+    }
+
+    static let videoExtensions: Set<String> = ["mp4", "m4v", "mov", "webm", "mkv"]
 }
 
 final class RSSFeedParser: NSObject, XMLParserDelegate {
@@ -527,7 +641,15 @@ final class RSSFeedParser: NSObject, XMLParserDelegate {
 
         if insideItem, currentElement == "enclosure", let urlString = attributeDict["url"], let url = URL(string: urlString) {
             ensureCurrentItem(audioURL: url)
-            currentItem?.audioURL = url
+            // Prefer the enclosure with explicit video MIME, otherwise keep the
+            // first enclosure URL (most feeds only list one).
+            let mime = attributeDict["type"]
+            let prefersVideo = mime?.lowercased().hasPrefix("video/") ?? false
+            let alreadyVideo = currentItem?.enclosureMimeType?.lowercased().hasPrefix("video/") ?? false
+            if !alreadyVideo || prefersVideo {
+                currentItem?.audioURL = url
+                currentItem?.enclosureMimeType = mime
+            }
         }
 
         if currentElement == "itunes:image", let href = attributeDict["href"], let url = URL(string: href) {

@@ -51,7 +51,7 @@ final class PlaybackController: ObservableObject {
         set { PlaybackTimePublisher.shared.duration = newValue }
     }
 
-    private let player = AVPlayer()
+    let player = AVPlayer()
     private var timeObserver: Any?
     private var completionObserver: Any?
     private var interruptionObserver: NSObjectProtocol?
@@ -92,11 +92,18 @@ final class PlaybackController: ObservableObject {
         player.replaceCurrentItem(with: item)
 
         let savedPosition = episode.playedPosition
+        let introSkip = TimeInterval(PodcastPreferences.skipIntroSeconds(for: episode.podcast.id))
 
         if savedPosition > 0 {
             let time = CMTime(seconds: savedPosition, preferredTimescale: 600)
             player.seek(to: time)
             currentTime = savedPosition
+        } else if introSkip > 0 {
+            // Fresh start on this episode — honor the per-show intro skip so
+            // the user doesn't have to scrub past the same theme music.
+            let time = CMTime(seconds: introSkip, preferredTimescale: 600)
+            player.seek(to: time)
+            currentTime = introSkip
         } else {
             currentTime = 0
         }
@@ -104,9 +111,13 @@ final class PlaybackController: ObservableObject {
         lastPersistedPosition = currentTime
 
         player.play()
-        player.rate = playbackRate
+        // Honor per-podcast playback rate override if present, otherwise the
+        // user's global preferred rate.
+        let effectiveRate = PodcastPreferences.playbackRate(for: episode.podcast.id) ?? playbackRate
+        player.rate = effectiveRate
         isPlaying = true
         isPlayerPresented = true
+        startOrUpdateLiveActivity(force: true)
         recordPlaybackEvent(kind: origin == .queue ? .advancedFromQueue : (savedPosition > 0 ? .resumed : .started), episode: episode, position: currentTime)
         TelemetryService.track(
             origin == .queue ? "queue_autoplay_started" : "play_started",
@@ -172,6 +183,7 @@ final class PlaybackController: ObservableObject {
         }
         isPlaying.toggle()
         updateNowPlayingPlaybackRate()
+        startOrUpdateLiveActivity(force: true)
     }
 
     func seek(by seconds: Double) {
@@ -212,16 +224,40 @@ final class PlaybackController: ObservableObject {
 
     func setSleepTimer(minutes: Int) {
         sleepTimerTask?.cancel()
-        let endDate = Date().addingTimeInterval(TimeInterval(minutes * 60))
+        // Always restore volume to 1.0 in case a prior fade left it low.
+        self.player.volume = 1.0
+        let totalSeconds = TimeInterval(minutes * 60)
+        let endDate = Date().addingTimeInterval(totalSeconds)
         sleepTimerEndDate = endDate
+
+        // Fade out the audio over the final stretch so it doesn't feel like a
+        // cliff. Window scales with timer length: 8s for short timers, 25s for
+        // long ones.
+        let fadeWindow: TimeInterval = min(25, max(6, totalSeconds * 0.10))
+        let fadeStartOffset = max(0, totalSeconds - fadeWindow)
+
         sleepTimerTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(TimeInterval(minutes * 60)))
+            try? await Task.sleep(for: .seconds(fadeStartOffset))
+            guard !Task.isCancelled else { return }
+
+            // Drive the fade in 0.5s ticks.
+            let steps = Int(fadeWindow / 0.5)
+            for step in 0..<steps {
+                guard !Task.isCancelled else { return }
+                let progress = Double(step + 1) / Double(steps)
+                let volume = Float(max(0.0, 1.0 - progress))
+                self.player.volume = volume
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+
             guard !Task.isCancelled else { return }
             self.player.pause()
             self.isPlaying = false
             self.sleepTimerEndDate = nil
             self.persistPlaybackProgress(force: true)
             self.updateNowPlayingPlaybackRate()
+            // Restore volume so the next play doesn't start silent.
+            self.player.volume = 1.0
         }
     }
 
@@ -229,6 +265,18 @@ final class PlaybackController: ObservableObject {
         sleepTimerTask?.cancel()
         sleepTimerTask = nil
         sleepTimerEndDate = nil
+        // Snap volume back in case we cancel mid-fade.
+        self.player.volume = 1.0
+    }
+
+    func extendSleepTimer(byMinutes additional: Int) {
+        guard let current = sleepTimerEndDate else {
+            setSleepTimer(minutes: additional)
+            return
+        }
+        let remaining = max(0, current.timeIntervalSinceNow)
+        let totalMinutes = Int((remaining + TimeInterval(additional * 60)) / 60)
+        setSleepTimer(minutes: max(1, totalMinutes))
     }
 
     func skipToNextInQueue() {
@@ -259,6 +307,7 @@ final class PlaybackController: ObservableObject {
             skipToNextInQueue()
         } else {
             updateNowPlaying(episode: episode)
+            NowPlayingActivityCoordinator.shared.end()
         }
     }
 
@@ -276,6 +325,7 @@ final class PlaybackController: ObservableObject {
         self.isPlaying = isPlaying
         isPlayerPresented = presentPlayer
         updateNowPlaying(episode: episode)
+        startOrUpdateLiveActivity(force: true)
     }
     #endif
 
@@ -289,8 +339,60 @@ final class PlaybackController: ObservableObject {
                 }
 
                 persistPlaybackProgress()
+                startOrUpdateLiveActivity()
             }
         }
+    }
+
+    private func startOrUpdateLiveActivity(force: Bool = false) {
+        guard let episode = currentEpisode else {
+            NowPlayingActivityCoordinator.shared.end()
+            SharedNowPlayingState.write(nil)
+            return
+        }
+        let coordinator = NowPlayingActivityCoordinator.shared
+        coordinator.start(
+            episodeID: episode.id.uuidString,
+            episodeTitle: episode.title,
+            podcastTitle: episode.podcast.title,
+            artworkURL: episode.artworkURL ?? episode.podcast.artworkURL,
+            elapsed: currentTime,
+            duration: max(duration, 1),
+            isPlaying: isPlaying,
+            playbackRate: Double(playbackRate)
+        )
+        coordinator.update(
+            elapsed: currentTime,
+            duration: max(duration, 1),
+            isPlaying: isPlaying,
+            playbackRate: Double(playbackRate),
+            force: force
+        )
+
+        // Mirror state into the shared App Group so the home-screen widget
+        // can render real Now Playing data. Throttle to avoid widget reload spam.
+        if force || shouldEmitSharedSnapshot {
+            let snapshot = SharedNowPlayingState.Snapshot(
+                episodeID: episode.id.uuidString,
+                episodeTitle: episode.title,
+                podcastTitle: episode.podcast.title,
+                artworkURLString: (episode.artworkURL ?? episode.podcast.artworkURL)?.absoluteString,
+                elapsed: currentTime,
+                duration: max(duration, 1),
+                isPlaying: isPlaying,
+                playbackRate: Double(playbackRate)
+            )
+            SharedNowPlayingState.write(snapshot)
+            lastSharedSnapshotAt = .now
+        }
+    }
+
+    private var lastSharedSnapshotAt: Date = .distantPast
+    /// Throttle widget reloads to once every 30s while playing — the home
+    /// screen widget projects elapsed time forward client-side, so finer
+    /// granularity isn't worth the WidgetKit reload cost.
+    private var shouldEmitSharedSnapshot: Bool {
+        Date().timeIntervalSince(lastSharedSnapshotAt) > 30
     }
 
     private func observePlaybackCompletion() {
@@ -478,8 +580,10 @@ final class PlaybackController: ObservableObject {
         guard let episode, let modelContext else { return }
         let event = PlaybackEvent(kind: kind, position: position, episode: episode)
         modelContext.insert(event)
-        try? modelContext.save()
-        try? TasteProfileService.refresh(in: modelContext)
+        // Save is debounced — every event used to do a synchronous SQLite
+        // write + a TasteProfile recompute, which stalled the UI on long
+        // sessions. We coalesce within 750ms windows.
+        scheduleDebouncedEventFlush()
         TelemetryService.track(
             "playback_event",
             metadata: [
@@ -489,6 +593,24 @@ final class PlaybackController: ObservableObject {
             ],
             in: modelContext
         )
+    }
+
+    private var pendingEventFlushTask: Task<Void, Never>?
+
+    private func scheduleDebouncedEventFlush() {
+        pendingEventFlushTask?.cancel()
+        let context = modelContext
+        pendingEventFlushTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(750))
+            guard !Task.isCancelled, let self, let context else { return }
+            try? context.save()
+            // TasteProfile.refresh internally throttles to once per 90s, but
+            // even that's too eager during active playback — flushes happen
+            // at most every ~750ms here, and the inner refresh skips if it
+            // ran recently.
+            try? TasteProfileService.refresh(in: context)
+            self.pendingEventFlushTask = nil
+        }
     }
 
     private func recordExitEventIfNeeded(replacingWith nextEpisode: Episode) {

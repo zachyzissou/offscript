@@ -1,9 +1,11 @@
 import SwiftUI
+import TipKit
 
 struct MiniPlayer: View {
     @ObservedObject private var player = PlaybackController.shared
     @ObservedObject private var timePublisher = PlaybackTimePublisher.shared
     @State private var swipeDismissOffset: CGFloat = 0
+    private let swipeTip = MiniPlayerSwipeTip()
 
     var body: some View {
         if let episode = player.currentEpisode {
@@ -26,9 +28,13 @@ struct MiniPlayer: View {
                                 .frame(width: 44, height: 44)
 
                                 if player.isPlaying {
-                                    WaveformIndicator()
-                                        .frame(width: 18, height: 12)
-                                        .transition(.opacity.animation(.easeInOut(duration: 0.25)))
+                                    Image(systemName: "waveform")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(Color.offscriptAccent)
+                                        .padding(4)
+                                        .background(Color.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                                        .symbolEffect(.variableColor.iterative.reversing, options: .repeating)
+                                        .transition(.opacity.combined(with: .scale))
                                 }
                             }
 
@@ -64,8 +70,8 @@ struct MiniPlayer: View {
                                 .font(.body.weight(.bold))
                                 .foregroundStyle(.black)
                                 .frame(width: 36, height: 36)
-                                .background(Color.offscriptAccent)
-                                .clipShape(Circle())
+                                .background(Color.offscriptAccent, in: Circle())
+                                .contentTransition(.symbolEffect(.replace.downUp))
                         }
                         .buttonStyle(.plain)
                         .sensoryFeedback(.impact(flexibility: .soft), trigger: player.isPlaying)
@@ -77,6 +83,7 @@ struct MiniPlayer: View {
                                 .font(.callout.weight(.semibold))
                                 .foregroundStyle(Color.offscriptTextSecondary)
                                 .frame(width: 36, height: 36)
+                                .symbolEffect(.bounce, value: timePublisher.currentTime)
                         }
                         .buttonStyle(.plain)
                     }
@@ -84,14 +91,20 @@ struct MiniPlayer: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
             }
-            .background(
-                Color.offscriptCardRaised.opacity(0.98)
+            .background {
+                Rectangle()
+                    .fill(.clear)
+                    .offscriptGlass(in: Rectangle())
+                    .overlay {
+                        // Subtle warm tint so the glass picks up the editorial palette
+                        Rectangle().fill(Color.offscriptCardRaised.opacity(0.32))
+                    }
                     .overlay(alignment: .top) {
                         Rectangle()
                             .fill(Color.offscriptHairline)
                             .frame(height: 0.5)
                     }
-            )
+            }
             .offset(x: swipeDismissOffset)
             .opacity(swipeDismissOpacity)
             .gesture(dismissGesture)
@@ -99,6 +112,10 @@ struct MiniPlayer: View {
             .contentShape(Rectangle())
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Now playing: \(episode.title)")
+            .popoverTip(swipeTip, arrowEdge: .bottom)
+            .task {
+                MiniPlayerSwipeTip.miniPlayerPresentations += 1
+            }
         }
     }
 
@@ -170,27 +187,3 @@ struct MiniPlayer: View {
     }
 }
 
-private struct WaveformIndicator: View {
-    @State private var animate = false
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(0..<3) { index in
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Color.offscriptAccent)
-                    .frame(width: 3)
-                    .scaleEffect(y: animate ? CGFloat.random(in: 0.4...1.0) : 0.3, anchor: .bottom)
-                    .animation(
-                        .easeInOut(duration: Double.random(in: 0.3...0.6))
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(index) * 0.15),
-                        value: animate
-                    )
-            }
-        }
-        .padding(3)
-        .background(Color.black.opacity(0.55))
-        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-        .onAppear { animate = true }
-    }
-}

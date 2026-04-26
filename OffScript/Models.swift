@@ -150,17 +150,19 @@ final class Episode {
 
     var chapters: [EpisodeChapter] {
         get {
-            Self.decodeJSON([EpisodeChapter].self, from: chaptersStorage) ?? []
+            EpisodeJSONCache.chapters(forKey: chaptersStorage)
         }
         set {
             let normalized = EpisodeChapterParser.normalize(newValue, duration: duration)
-            chaptersStorage = Self.encodeJSON(normalized)
+            let json = Self.encodeJSON(normalized)
+            chaptersStorage = json
+            EpisodeJSONCache.cacheChapters(normalized, forKey: json)
         }
     }
 
     var transcriptReferences: [EpisodeTranscriptReference] {
         get {
-            Self.decodeJSON([EpisodeTranscriptReference].self, from: transcriptReferencesStorage) ?? []
+            EpisodeJSONCache.transcripts(forKey: transcriptReferencesStorage)
         }
         set {
             let normalized = newValue
@@ -170,7 +172,9 @@ final class Episode {
                     }
                     return (lhs.language ?? "") < (rhs.language ?? "")
                 }
-            transcriptReferencesStorage = Self.encodeJSON(normalized)
+            let json = Self.encodeJSON(normalized)
+            transcriptReferencesStorage = json
+            EpisodeJSONCache.cacheTranscripts(normalized, forKey: json)
         }
     }
 
@@ -180,8 +184,15 @@ final class Episode {
         return EpisodeChapterParser.chapters(from: summary, duration: duration)
     }
 
+    /// True if the audio enclosure points at a video file (mp4/m4v/mov/webm).
+    /// Used by PlayerView to swap album art for an inline video surface.
+    var isLikelyVideo: Bool {
+        let ext = audioURL.pathExtension.lowercased()
+        return ["mp4", "m4v", "mov", "webm", "mkv"].contains(ext)
+    }
+
     private static func encodeJSON<T: Encodable>(_ value: T) -> String {
-        guard let data = try? JSONEncoder().encode(value),
+        guard let data = try? EpisodeJSONCache.sharedEncoder.encode(value),
               let string = String(data: data, encoding: .utf8) else {
             return ""
         }
@@ -190,7 +201,7 @@ final class Episode {
 
     private static func decodeJSON<T: Decodable>(_ type: T.Type, from storage: String) -> T? {
         guard !storage.isEmpty, let data = storage.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(type, from: data)
+        return try? EpisodeJSONCache.sharedDecoder.decode(type, from: data)
     }
 }
 
@@ -390,6 +401,28 @@ struct HomeFeedSection: Identifiable {
 
     func explanation(for episode: Episode) -> String {
         scoredEpisodes.first(where: { $0.episode.id == episode.id })?.explanation ?? "Picked for you"
+    }
+}
+
+/// User-saved timestamps with optional notes — works like a bookmark in a
+/// book. Created from the Player's bookmark button or by long-pressing the
+/// scrubber.
+@Model
+final class Bookmark {
+    var id: UUID = UUID()
+    var createdAt: Date = Date()
+    var position: TimeInterval = 0
+    var note: String?
+
+    @Relationship(deleteRule: .nullify)
+    var episode: Episode?
+
+    init(id: UUID = UUID(), episode: Episode, position: TimeInterval, note: String? = nil) {
+        self.id = id
+        self.episode = episode
+        self.position = position
+        self.note = note
+        self.createdAt = .now
     }
 }
 

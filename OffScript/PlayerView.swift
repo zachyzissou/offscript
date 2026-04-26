@@ -1,4 +1,5 @@
 import AVKit
+import CoreSpotlight
 import SwiftData
 import SwiftUI
 
@@ -8,9 +9,14 @@ struct PlayerView: View {
     @ObservedObject private var player = PlaybackController.shared
     @ObservedObject private var timePublisher = PlaybackTimePublisher.shared
     @Query private var queueItems: [QueueItem]
+    @State private var bookmarksSheetPresented = false
+    @State private var bookmarkPulse = 0
+    /// Cached sort — only the first queue item is actually used (Up Next),
+    /// so we recompute on @Query mutations rather than every body eval.
+    @State private var orderedQueueItems: [QueueItem] = []
 
-    private var orderedQueueItems: [QueueItem] {
-        queueItems.sorted { lhs, rhs in
+    private func recomputeOrderedQueueItems() {
+        orderedQueueItems = queueItems.sorted { lhs, rhs in
             if lhs.position == rhs.position {
                 return lhs.createdAt < rhs.createdAt
             }
@@ -32,11 +38,27 @@ struct PlayerView: View {
 
                         ScrollView {
                             VStack(spacing: 18) {
-                                OffScriptArtworkView(
-                                    url: episode.artworkURL ?? episode.podcast.artworkURL,
-                                    cornerRadius: OffScriptTheme.Radius.large
-                                )
-                                .frame(width: artworkSize, height: artworkSize)
+                                if episode.isLikelyVideo {
+                                    OffScriptVideoPlayerView(player: player.player)
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: artworkSize * 0.75)
+                                        .background(Color.black)
+                                        .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.large, style: .continuous))
+                                        .shadow(color: .black.opacity(0.5), radius: 30, y: 16)
+                                        .padding(.horizontal, 8)
+                                } else {
+                                    OffScriptArtworkView(
+                                        url: episode.artworkURL ?? episode.podcast.artworkURL,
+                                        cornerRadius: OffScriptTheme.Radius.large
+                                    )
+                                    .frame(width: artworkSize, height: artworkSize)
+                                    .shadow(color: .black.opacity(0.45), radius: 24, y: 14)
+                                    .scrollTransition(.interactive, axis: .vertical) { content, phase in
+                                        content
+                                            .scaleEffect(1 + phase.value * 0.03)
+                                            .opacity(1 - abs(phase.value) * 0.15)
+                                    }
+                                }
 
                                 VStack(spacing: 8) {
                                     Text(episode.title)
@@ -72,6 +94,14 @@ struct PlayerView: View {
                                         }
                                     }
 
+                                }
+
+                                SmartTakeStrip(episode: episode)
+                                    .frame(maxWidth: 440)
+
+                                if !chapters.isEmpty {
+                                    PlayerChapterStrip(chapters: chapters)
+                                        .frame(maxWidth: 440)
                                 }
 
                                 VStack(spacing: 8) {
@@ -132,7 +162,7 @@ struct PlayerView: View {
                                 }
 
                                 if !transcripts.isEmpty {
-                                    PlayerTranscriptSection(transcripts: transcripts)
+                                    PlayerTranscriptSection(transcripts: transcripts, episodeTitle: episode.title)
                                         .frame(maxWidth: 440)
                                 }
 
@@ -193,6 +223,24 @@ struct PlayerView: View {
                                     AirPlayRouteButton()
                                         .frame(width: 44, height: 36)
 
+                                    Button {
+                                        addBookmark(at: episode)
+                                    } label: {
+                                        Image(systemName: "bookmark")
+                                            .symbolEffect(.bounce, value: bookmarkPulse)
+                                    }
+                                    .buttonStyle(SecondaryPillButtonStyle())
+                                    .accessibilityLabel("Save bookmark at current time")
+                                    .sensoryFeedback(.impact(flexibility: .soft), trigger: bookmarkPulse)
+
+                                    Button {
+                                        bookmarksSheetPresented = true
+                                    } label: {
+                                        Image(systemName: "bookmark.square")
+                                    }
+                                    .buttonStyle(SecondaryPillButtonStyle())
+                                    .accessibilityLabel("View saved bookmarks")
+
                                     ShareLink(item: episode.audioURL) {
                                         Image(systemName: "square.and.arrow.up")
                                     }
@@ -226,11 +274,51 @@ struct PlayerView: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .onAppear { recomputeOrderedQueueItems() }
+        .onChange(of: queueItems) { _, _ in recomputeOrderedQueueItems() }
+        .sheet(isPresented: $bookmarksSheetPresented) {
+            if let episode = player.currentEpisode {
+                EpisodeBookmarksSheet(episode: episode)
+                    .presentationDetents([.medium, .large])
+            }
+        }
+        .userActivity("com.offscript.app.playing", isActive: player.currentEpisode != nil) { activity in
+            guard let episode = player.currentEpisode else { return }
+            activity.title = episode.title
+            activity.isEligibleForHandoff = true
+            activity.isEligibleForSearch = true
+            activity.isEligibleForPrediction = true
+            activity.persistentIdentifier = episode.id.uuidString
+            activity.userInfo = [
+                "episodeID": episode.id.uuidString,
+                "podcastID": episode.podcast.id.uuidString
+            ]
+            activity.requiredUserInfoKeys = ["episodeID"]
+            activity.webpageURL = URL(string: "https://offscript.app/episode/\(episode.id.uuidString)")
+            activity.contentAttributeSet?.title = episode.title
+            activity.contentAttributeSet?.contentDescription = episode.podcast.title
+        }
     }
 
     private var remainingTime: String {
         let remaining = max(timePublisher.duration - timePublisher.currentTime, 0)
         return "-\(time(remaining))"
+    }
+
+    private func addBookmark(at episode: Episode) {
+        let bookmark = Bookmark(
+            episode: episode,
+            position: timePublisher.currentTime,
+            note: nil
+        )
+        modelContext.insert(bookmark)
+        try? modelContext.save()
+        bookmarkPulse += 1
+        TelemetryService.track(
+            "bookmark_added",
+            metadata: ["episode": episode.title, "position_s": "\(Int(timePublisher.currentTime))"],
+            in: modelContext
+        )
     }
 
     private func time(_ interval: TimeInterval) -> String {
@@ -254,6 +342,172 @@ private struct AirPlayRouteButton: UIViewRepresentable {
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
 }
 
+private struct PlayerChapterStrip: View {
+    let chapters: [EpisodeChapter]
+    @ObservedObject private var timePublisher = PlaybackTimePublisher.shared
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button {
+                if let target = previousChapterStart {
+                    PlaybackController.shared.seek(to: target)
+                }
+            } label: {
+                Image(systemName: "backward.end.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(previousChapterStart == nil ? Color.offscriptTextMuted.opacity(0.5) : Color.offscriptTextPrimary)
+                    .frame(width: 32, height: 32)
+                    .background(Capsule().fill(.clear).offscriptGlass(in: Capsule()))
+            }
+            .buttonStyle(.plain)
+            .disabled(previousChapterStart == nil)
+            .accessibilityLabel("Previous chapter")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("CHAPTER \(currentChapterNumber) OF \(chapters.count)")
+                    .font(.offscriptMicro.weight(.semibold))
+                    .foregroundStyle(Color.offscriptAccent)
+                Text(currentChapter?.title ?? "—")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.offscriptTextPrimary)
+                    .lineLimit(1)
+                    .contentTransition(.opacity)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                if let target = nextChapterStart {
+                    PlaybackController.shared.seek(to: target)
+                }
+            } label: {
+                Image(systemName: "forward.end.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(nextChapterStart == nil ? Color.offscriptTextMuted.opacity(0.5) : Color.offscriptTextPrimary)
+                    .frame(width: 32, height: 32)
+                    .background(Capsule().fill(.clear).offscriptGlass(in: Capsule()))
+            }
+            .buttonStyle(.plain)
+            .disabled(nextChapterStart == nil)
+            .accessibilityLabel("Next chapter")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(
+            Capsule(style: .continuous)
+                .fill(.clear)
+                .offscriptGlass(in: Capsule(style: .continuous))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(Color.offscriptHairline, lineWidth: 0.5)
+        )
+    }
+
+    private var currentChapterIndex: Int {
+        let now = timePublisher.currentTime
+        for index in chapters.indices.reversed() {
+            if chapters[index].startTime <= now { return index }
+        }
+        return 0
+    }
+
+    private var currentChapter: EpisodeChapter? {
+        chapters.indices.contains(currentChapterIndex) ? chapters[currentChapterIndex] : nil
+    }
+
+    private var currentChapterNumber: Int { currentChapterIndex + 1 }
+
+    private var previousChapterStart: TimeInterval? {
+        let idx = currentChapterIndex
+        guard idx >= 0, idx < chapters.count else { return nil }
+        let now = timePublisher.currentTime
+        // If we're more than 4 seconds into the current chapter, "previous"
+        // restarts the current one — same UX as a CD player.
+        if now - chapters[idx].startTime > 4 {
+            return chapters[idx].startTime
+        }
+        return idx > 0 ? chapters[idx - 1].startTime : nil
+    }
+
+    private var nextChapterStart: TimeInterval? {
+        let next = currentChapterIndex + 1
+        guard next < chapters.count else { return nil }
+        return chapters[next].startTime
+    }
+}
+
+private struct SmartTakeStrip: View {
+    @Environment(\.modelContext) private var modelContext
+    let episode: Episode
+
+    @State private var take: String?
+    @State private var generationTask: Task<Void, Never>?
+
+    var body: some View {
+        // Always render the container so the view stays in the hierarchy and
+        // the onAppear task always fires. Crossfade content based on state.
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.offscriptAccent)
+                .padding(.top, 2)
+
+            Text(take ?? "Reading the room…")
+                .font(.system(.subheadline, design: .serif).italic())
+                .foregroundStyle(take == nil ? Color.offscriptTextMuted : Color.offscriptTextPrimary)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentTransition(.opacity)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous)
+                .fill(Color.offscriptAccentSecondaryMuted)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous)
+                .stroke(Color.offscriptAccentSecondary.opacity(0.18), lineWidth: 0.5)
+        )
+        .onAppear { kickOffLoad() }
+        .onChange(of: episode.id) { _, _ in
+            take = nil
+            kickOffLoad()
+        }
+        .onDisappear {
+            // Cancel in-flight FoundationModels work when the player is dismissed.
+            // Without this, rapid episode-tap cycles stack pending requests.
+            generationTask?.cancel()
+            generationTask = nil
+        }
+    }
+
+    private func kickOffLoad() {
+        // Cancel any prior request first so only the latest episode's take wins.
+        generationTask?.cancel()
+
+        if let cached = SmartTakeService.shared.cached(for: episode) {
+            withAnimation(.easeInOut(duration: 0.4)) { take = cached }
+            return
+        }
+
+        generationTask = Task { @MainActor in
+            // Show heuristic immediately so something is visible — then upgrade
+            // to the FoundationModels-generated take when it returns.
+            let immediate = SmartTakeService.shared.heuristicTakePublic(for: episode)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.3)) { take = immediate }
+
+            let generated = await SmartTakeService.shared.generate(for: episode, in: modelContext)
+            guard !Task.isCancelled else { return }
+            if let generated, generated != immediate {
+                withAnimation(.easeInOut(duration: 0.4)) { take = generated }
+            }
+        }
+    }
+}
+
 private struct PlayerCircleButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -271,12 +525,27 @@ private struct PlayerCircleButton: View {
                 .font(.system(size: isPrimary ? 28 : 22, weight: .semibold))
                 .foregroundStyle(isPrimary ? Color.black : Color.offscriptTextPrimary)
                 .frame(width: size, height: size)
-                .background(isPrimary ? Color.offscriptAccent : Color.offscriptFillLight)
-                .clipShape(Circle())
+                .background {
+                    if isPrimary {
+                        Circle()
+                            .fill(Color.offscriptAccent)
+                            .shadow(color: Color.offscriptAccent.opacity(0.55), radius: 24, y: 10)
+                            .shadow(color: Color.offscriptAccent.opacity(0.18), radius: 4, y: 1)
+                    } else {
+                        Circle()
+                            .fill(.clear)
+                            .offscriptGlass(in: Circle())
+                    }
+                }
                 .overlay(
                     Circle()
-                        .stroke(isPrimary ? Color.clear : Color.offscriptHairline, lineWidth: 1)
+                        .stroke(isPrimary ? Color.clear : Color.offscriptHairline, lineWidth: 0.5)
                 )
+                .contentTransition(.symbolEffect(.replace.downUp))
+                // Phase animator: a quick pulse + counter-rotation when the
+                // play/pause symbol changes. Subtle but it makes the primary
+                // button feel responsive and alive.
+                .modifier(PrimaryButtonPhaseAnimation(systemImage: systemImage, enabled: isPrimary && !reduceMotion))
                 .scaleEffect(reduceMotion ? 1.0 : (isPressed ? 0.9 : 1.0))
                 .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.6), value: isPressed)
         }
@@ -287,6 +556,36 @@ private struct PlayerCircleButton: View {
                 .onChanged { _ in if !reduceMotion { isPressed = true } }
                 .onEnded { _ in isPressed = false }
         )
+    }
+}
+
+private struct PrimaryButtonPhaseAnimation: ViewModifier {
+    let systemImage: String
+    let enabled: Bool
+
+    enum Phase: CaseIterable {
+        case rest, pulse, settle
+    }
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .phaseAnimator([Phase.rest, .pulse, .settle], trigger: systemImage) { view, phase in
+                    view
+                        .scaleEffect(phase == .pulse ? 1.08 : (phase == .settle ? 0.97 : 1.0))
+                } animation: { phase in
+                    switch phase {
+                    case .pulse:
+                        return .spring(response: 0.22, dampingFraction: 0.5)
+                    case .settle:
+                        return .spring(response: 0.32, dampingFraction: 0.62)
+                    case .rest:
+                        return .spring(response: 0.4, dampingFraction: 0.85)
+                    }
+                }
+        } else {
+            content
+        }
     }
 }
 
@@ -446,45 +745,107 @@ private struct PlayerSuggestionRow: View {
 
 private struct PlayerChaptersSection: View {
     let chapters: [EpisodeChapter]
+    @ObservedObject private var timePublisher = PlaybackTimePublisher.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Chapters")
-                .font(.offscriptSectionTitle)
-                .foregroundStyle(Color.offscriptTextPrimary)
+            HStack {
+                Text("Chapters")
+                    .font(.offscriptSectionTitle)
+                    .foregroundStyle(Color.offscriptTextPrimary)
+                Spacer()
+                Text("\(chapters.count)")
+                    .font(.offscriptMicro.weight(.semibold))
+                    .foregroundStyle(Color.offscriptAccent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.offscriptAccentSoft, in: Capsule())
+            }
 
             VStack(spacing: 10) {
-                ForEach(chapters) { chapter in
+                ForEach(Array(chapters.enumerated()), id: \.element.id) { index, chapter in
+                    let isCurrent = currentChapterIndex == index
+                    let isPast = currentChapterIndex.map { $0 > index } ?? false
+                    let endTime = nextStartTime(after: index) ?? max(timePublisher.duration, chapter.startTime + 60)
+                    let progress: Double = isCurrent ? chapterProgress(start: chapter.startTime, end: endTime) : (isPast ? 1.0 : 0.0)
+
                     Button {
                         PlaybackController.shared.seek(to: chapter.startTime)
                     } label: {
                         HStack(spacing: 12) {
-                            Text(Self.timestamp(chapter.startTime))
-                                .font(.offscriptMeta.monospacedDigit())
-                                .foregroundStyle(Color.offscriptAccent)
-                                .frame(width: 46, alignment: .leading)
+                            ZStack {
+                                Circle()
+                                    .stroke(Color.offscriptHairline, lineWidth: 2)
+                                    .frame(width: 28, height: 28)
+                                Circle()
+                                    .trim(from: 0, to: progress)
+                                    .stroke(Color.offscriptAccent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                                    .frame(width: 28, height: 28)
+                                    .rotationEffect(.degrees(-90))
+                                Text("\(index + 1)")
+                                    .font(.system(.caption2, design: .monospaced).weight(.bold))
+                                    .foregroundStyle(isCurrent ? Color.offscriptAccent : Color.offscriptTextMuted)
+                            }
+                            .animation(.easeOut(duration: 0.4), value: progress)
 
-                            Text(chapter.title)
-                                .font(.offscriptBody)
-                                .foregroundStyle(Color.offscriptTextPrimary)
-                                .multilineTextAlignment(.leading)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(chapter.title)
+                                    .font(isCurrent ? .offscriptCardTitle : .offscriptBody)
+                                    .foregroundStyle(isCurrent ? Color.offscriptTextPrimary : Color.offscriptTextSecondary)
+                                    .multilineTextAlignment(.leading)
+                                Text(Self.timestamp(chapter.startTime))
+                                    .font(.offscriptMicro)
+                                    .foregroundStyle(Color.offscriptTextMuted)
+                            }
 
                             Spacer()
 
-                            Image(systemName: "chevron.right")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(Color.offscriptTextMuted)
+                            Image(systemName: isCurrent ? "waveform" : "play.circle")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(isCurrent ? Color.offscriptAccent : Color.offscriptTextMuted)
+                                .symbolEffect(.variableColor.iterative.reversing, options: isCurrent ? .repeating : .nonRepeating)
                         }
                         .padding(14)
-                        .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
+                        .background {
+                            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous)
+                                .fill(isCurrent ? Color.offscriptAccentSoft : Color.offscriptCardUtility)
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous)
+                                .stroke(isCurrent ? Color.offscriptAccent.opacity(0.4) : Color.offscriptHairline, lineWidth: isCurrent ? 1.0 : 0.5)
+                        }
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Jump to \(chapter.title) at \(Self.timestamp(chapter.startTime))")
+                    .accessibilityValue(isCurrent ? "Currently playing" : "")
                 }
             }
         }
         .padding(18)
         .offscriptSurface()
+    }
+
+    private var currentChapterIndex: Int? {
+        let now = timePublisher.currentTime
+        for index in chapters.indices.reversed() {
+            if chapters[index].startTime <= now {
+                return index
+            }
+        }
+        return nil
+    }
+
+    private func nextStartTime(after index: Int) -> TimeInterval? {
+        let next = index + 1
+        guard next < chapters.count else { return nil }
+        return chapters[next].startTime
+    }
+
+    private func chapterProgress(start: TimeInterval, end: TimeInterval) -> Double {
+        let now = timePublisher.currentTime
+        guard end > start else { return 0 }
+        let raw = (now - start) / (end - start)
+        return min(max(raw, 0), 1)
     }
 
     private static func timestamp(_ seconds: TimeInterval) -> String {
@@ -501,23 +862,35 @@ private struct PlayerChaptersSection: View {
 
 private struct PlayerTranscriptSection: View {
     let transcripts: [EpisodeTranscriptReference]
-    @State private var transcriptURL: URL? = nil
+    let episodeTitle: String
+    @State private var presentedTranscript: EpisodeTranscriptReference?
+    @State private var fallbackURL: URL? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Transcript")
-                .font(.offscriptSectionTitle)
-                .foregroundStyle(Color.offscriptTextPrimary)
+            HStack {
+                Text("Transcript")
+                    .font(.offscriptSectionTitle)
+                    .foregroundStyle(Color.offscriptTextPrimary)
+                Spacer()
+                Text("Synced reader")
+                    .font(.offscriptMicro.weight(.semibold))
+                    .foregroundStyle(Color.offscriptAccent.opacity(0.85))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.offscriptAccentSoft, in: Capsule())
+            }
 
             VStack(spacing: 10) {
                 ForEach(transcripts) { transcript in
                     Button {
-                        transcriptURL = transcript.url
+                        presentedTranscript = transcript
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "captions.bubble.fill")
                                 .font(.body)
                                 .foregroundStyle(Color.offscriptAccent)
+                                .symbolEffect(.bounce, value: presentedTranscript?.id == transcript.id)
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(transcript.displayTitle)
@@ -540,15 +913,26 @@ private struct PlayerTranscriptSection: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Open \(transcript.displayTitle) transcript")
-                    .accessibilityHint("Opens transcript in browser")
+                    .accessibilityHint("Opens the synced transcript reader")
+                    .contextMenu {
+                        Button {
+                            fallbackURL = transcript.url
+                        } label: {
+                            Label("Open in browser", systemImage: "safari")
+                        }
+                    }
                 }
             }
         }
         .padding(18)
         .offscriptSurface()
+        .sheet(item: $presentedTranscript) { transcript in
+            TranscriptReaderSheet(transcript: transcript, episodeTitle: episodeTitle)
+                .presentationDetents([.large])
+        }
         .sheet(item: Binding(
-            get: { transcriptURL.map { IdentifiableURL(url: $0) } },
-            set: { transcriptURL = $0?.url }
+            get: { fallbackURL.map { IdentifiableURL(url: $0) } },
+            set: { fallbackURL = $0?.url }
         )) { item in
             SafariView(url: item.url)
                 .ignoresSafeArea()
@@ -559,32 +943,74 @@ private struct PlayerTranscriptSection: View {
 private struct PlayerAtmosphereBackground: View {
     let url: URL?
     @State private var breathe = false
+    @State private var meshPhase: CGFloat = 0
+    @State private var palette: ArtworkColorExtractor.Palette?
+
+    private let fallbackWarm = Color(red: 0.96, green: 0.52, blue: 0.19)
+    private let fallbackCream = Color(red: 0.92, green: 0.84, blue: 0.68)
+    private let fallbackPlum = Color(red: 0.30, green: 0.18, blue: 0.32)
+    private let fallbackInk = Color(red: 0.04, green: 0.04, blue: 0.06)
+
+    private func animatedMesh(at date: Date) -> some View {
+        let t = date.timeIntervalSinceReferenceDate
+        let drift = Float(sin(t * 0.18)) * 0.06
+        let drift2 = Float(cos(t * 0.21)) * 0.06
+
+        let points: [SIMD2<Float>] = [
+            SIMD2(0.0, 0.0),         SIMD2(0.5, 0.0 + drift),  SIMD2(1.0, 0.0),
+            SIMD2(0.0 - drift, 0.5), SIMD2(0.5 + drift2, 0.5 + drift), SIMD2(1.0 + drift, 0.5),
+            SIMD2(0.0, 1.0),         SIMD2(0.5, 1.0 - drift2), SIMD2(1.0, 1.0)
+        ]
+
+        let deep = palette?.deep ?? fallbackInk
+        let midA = palette?.midPrimary ?? fallbackPlum
+        let midB = palette?.midSecondary ?? fallbackWarm
+        let accent = palette?.accent ?? fallbackCream
+
+        let colors: [Color] = [
+            deep, midA.opacity(0.55), deep,
+            midB.opacity(0.32), accent.opacity(0.18), midB.opacity(0.30),
+            deep, deep, deep
+        ]
+
+        return MeshGradient(width: 3, height: 3, points: points, colors: colors)
+    }
 
     var body: some View {
         ZStack {
             OffScriptBackgroundView()
                 .ignoresSafeArea()
 
+            // Animated mesh gradient — gives the player a living atmosphere
+            // even before the blurred artwork loads. Cap to ~12fps; the drift
+            // is so subtle the eye can't tell vs 30fps and we save power.
+            TimelineView(.animation(minimumInterval: 1.0 / 12.0, paused: false)) { context in
+                animatedMesh(at: context.date)
+                    .ignoresSafeArea()
+                    .opacity(0.85)
+            }
+
             AsyncImage(url: url) { phase in
                 if let image = phase.image {
                     image
                         .resizable()
                         .scaledToFill()
-                        .blur(radius: 90)
-                        .opacity(0.22)
+                        .blur(radius: 110)
+                        .opacity(0.28)
                         .ignoresSafeArea()
-                        .saturation(0.7)
+                        .saturation(0.85)
                         .scaleEffect(breathe ? 1.04 : 1.0)
                         .animation(.easeInOut(duration: 8).repeatForever(autoreverses: true), value: breathe)
                         .onAppear { breathe = true }
+                        .blendMode(.plusLighter)
                 }
             }
 
-            // Top region: lighter wash for artwork area
+            // Bottom wash to anchor controls
             LinearGradient(
                 colors: [
-                    Color.black.opacity(0.12),
-                    Color.offscriptBackground.opacity(0.55),
+                    Color.clear,
+                    Color.offscriptBackground.opacity(0.45),
                     Color.offscriptBackground.opacity(0.85),
                     Color.offscriptBackground
                 ],
@@ -592,6 +1018,13 @@ private struct PlayerAtmosphereBackground: View {
                 endPoint: .bottom
             )
             .ignoresSafeArea()
+        }
+        .task(id: url) {
+            palette = ArtworkColorExtractor.shared.cached(for: url)
+            let extracted = await ArtworkColorExtractor.shared.extract(from: url)
+            withAnimation(.easeInOut(duration: 0.8)) {
+                palette = extracted
+            }
         }
     }
 }

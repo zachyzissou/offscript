@@ -6,6 +6,16 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		2C2C34B7601B89D09EE82CB5 /* NowPlayingLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14D8C31CB64C11A87C024C83 /* NowPlayingLiveActivity.swift */; };
+		44C0E0AC6482591A4EAFD10D /* OffScriptWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46ADA531EEBA740D491A0EA5 /* OffScriptWidgetBundle.swift */; };
+		6917557BC559768F09817986 /* SharedNowPlayingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54CC165660C224E0219F4F5 /* SharedNowPlayingState.swift */; };
+		6DCC23E4633856CF92C2ABD4 /* NowPlayingAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73249578598D789646ACD0D4 /* NowPlayingAttributes.swift */; };
+		A08F1C7D3D74DE1EDBE0EA4D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AB4D8606F3D405715C6826B3 /* Foundation.framework */; };
+		AC28DCFB100FE151D5E4762B /* SharedPlaybackIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AFD41091290824FFDC3651F /* SharedPlaybackIntents.swift */; };
+		C8E3C88D2DC43B7D0A0AFB95 /* NowPlayingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08B322406FFDB999787FDC8A /* NowPlayingWidget.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		1B9A23412F68C21700788880 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -23,10 +33,32 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		0EDA7A9C80232ED1A4BCEB36 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		08B322406FFDB999787FDC8A /* NowPlayingWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NowPlayingWidget.swift; path = OffScriptWidgets/NowPlayingWidget.swift; sourceTree = "<group>"; };
+		14D8C31CB64C11A87C024C83 /* NowPlayingLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NowPlayingLiveActivity.swift; path = OffScriptWidgets/NowPlayingLiveActivity.swift; sourceTree = "<group>"; };
 		1B9A23312F68C21600788880 /* OffScript.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OffScript.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B9A23402F68C21700788880 /* OffScriptTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OffScriptTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B9A234A2F68C21700788880 /* OffScriptUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OffScriptUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		46ADA531EEBA740D491A0EA5 /* OffScriptWidgetBundle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OffScriptWidgetBundle.swift; path = OffScriptWidgets/OffScriptWidgetBundle.swift; sourceTree = "<group>"; };
+		4AFD41091290824FFDC3651F /* SharedPlaybackIntents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedPlaybackIntents.swift; path = OffScript/SharedPlaybackIntents.swift; sourceTree = "<group>"; };
+		73249578598D789646ACD0D4 /* NowPlayingAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NowPlayingAttributes.swift; path = OffScript/NowPlayingAttributes.swift; sourceTree = "<group>"; };
+		792817EA9DBB1BCEE61D071E /* OffScriptWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OffScriptWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		9C3ED1BF591385AF749D8E18 /* OffScriptWidgets */ = {isa = PBXFileReference; includeInIndex = 1; path = OffScriptWidgets; sourceTree = SOURCE_ROOT; };
+		A54CC165660C224E0219F4F5 /* SharedNowPlayingState.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedNowPlayingState.swift; path = OffScript/SharedNowPlayingState.swift; sourceTree = "<group>"; };
+		AB4D8606F3D405715C6826B3 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -50,17 +82,29 @@
 		};
 		1B9A23432F68C21700788880 /* OffScriptTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = OffScriptTests;
 			sourceTree = "<group>";
 		};
 		1B9A234D2F68C21700788880 /* OffScriptUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = OffScriptUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		1685B24C799211D653981470 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A08F1C7D3D74DE1EDBE0EA4D /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		1B9A232E2F68C21600788880 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -92,6 +136,14 @@
 				1B9A23432F68C21700788880 /* OffScriptTests */,
 				1B9A234D2F68C21700788880 /* OffScriptUITests */,
 				1B9A23322F68C21600788880 /* Products */,
+				98187DA847C36CFA36038FF3 /* Frameworks */,
+				9C3ED1BF591385AF749D8E18 /* OffScriptWidgets */,
+				14D8C31CB64C11A87C024C83 /* NowPlayingLiveActivity.swift */,
+				08B322406FFDB999787FDC8A /* NowPlayingWidget.swift */,
+				46ADA531EEBA740D491A0EA5 /* OffScriptWidgetBundle.swift */,
+				73249578598D789646ACD0D4 /* NowPlayingAttributes.swift */,
+				4AFD41091290824FFDC3651F /* SharedPlaybackIntents.swift */,
+				A54CC165660C224E0219F4F5 /* SharedNowPlayingState.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -101,8 +153,25 @@
 				1B9A23312F68C21600788880 /* OffScript.app */,
 				1B9A23402F68C21700788880 /* OffScriptTests.xctest */,
 				1B9A234A2F68C21700788880 /* OffScriptUITests.xctest */,
+				792817EA9DBB1BCEE61D071E /* OffScriptWidgets.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		2EA27F5E92C3AECA55F316AE /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				AB4D8606F3D405715C6826B3 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+		98187DA847C36CFA36038FF3 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				2EA27F5E92C3AECA55F316AE /* iOS */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -115,6 +184,7 @@
 				1B9A232D2F68C21600788880 /* Sources */,
 				1B9A232E2F68C21600788880 /* Frameworks */,
 				1B9A232F2F68C21600788880 /* Resources */,
+				0EDA7A9C80232ED1A4BCEB36 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
@@ -124,8 +194,6 @@
 				1B9A23332F68C21600788880 /* OffScript */,
 			);
 			name = OffScript;
-			packageProductDependencies = (
-			);
 			productName = OffScript;
 			productReference = 1B9A23312F68C21600788880 /* OffScript.app */;
 			productType = "com.apple.product-type.application";
@@ -147,8 +215,6 @@
 				1B9A23432F68C21700788880 /* OffScriptTests */,
 			);
 			name = OffScriptTests;
-			packageProductDependencies = (
-			);
 			productName = OffScriptTests;
 			productReference = 1B9A23402F68C21700788880 /* OffScriptTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -170,11 +236,26 @@
 				1B9A234D2F68C21700788880 /* OffScriptUITests */,
 			);
 			name = OffScriptUITests;
-			packageProductDependencies = (
-			);
 			productName = OffScriptUITests;
 			productReference = 1B9A234A2F68C21700788880 /* OffScriptUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		3422507B6FA5E48789A1B6AE /* OffScriptWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DCCD30730C5F3A1BB5E8FE22 /* Build configuration list for PBXNativeTarget "OffScriptWidgets" */;
+			buildPhases = (
+				F718C114F9392AC60367BC23 /* Sources */,
+				1685B24C799211D653981470 /* Frameworks */,
+				C7A8600DF559C33106DABA38 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OffScriptWidgets;
+			productName = OffScriptWidgets;
+			productReference = 792817EA9DBB1BCEE61D071E /* OffScriptWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -188,6 +269,8 @@
 				TargetAttributes = {
 					1B9A23302F68C21600788880 = {
 						CreatedOnToolsVersion = 26.3;
+						DevelopmentTeam = 363TRR79UG;
+						ProvisioningStyle = Automatic;
 					};
 					1B9A233F2F68C21700788880 = {
 						CreatedOnToolsVersion = 26.3;
@@ -196,6 +279,10 @@
 					1B9A23492F68C21700788880 = {
 						CreatedOnToolsVersion = 26.3;
 						TestTargetID = 1B9A23302F68C21600788880;
+					};
+					3422507B6FA5E48789A1B6AE = {
+						DevelopmentTeam = 363TRR79UG;
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -216,6 +303,7 @@
 				1B9A23302F68C21600788880 /* OffScript */,
 				1B9A233F2F68C21700788880 /* OffScriptTests */,
 				1B9A23492F68C21700788880 /* OffScriptUITests */,
+				3422507B6FA5E48789A1B6AE /* OffScriptWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -236,6 +324,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		1B9A23482F68C21700788880 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C7A8600DF559C33106DABA38 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -263,6 +358,19 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F718C114F9392AC60367BC23 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2C2C34B7601B89D09EE82CB5 /* NowPlayingLiveActivity.swift in Sources */,
+				C8E3C88D2DC43B7D0A0AFB95 /* NowPlayingWidget.swift in Sources */,
+				44C0E0AC6482591A4EAFD10D /* OffScriptWidgetBundle.swift in Sources */,
+				6DCC23E4633856CF92C2ABD4 /* NowPlayingAttributes.swift in Sources */,
+				AC28DCFB100FE151D5E4762B /* SharedPlaybackIntents.swift in Sources */,
+				6917557BC559768F09817986 /* SharedNowPlayingState.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -403,7 +511,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = OffScript/OffScript.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = 363TRR79UG;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -413,11 +521,10 @@
 				INFOPLIST_FILE = OffScript/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OffScript;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = NO;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = NO;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				INFOPLIST_KEY_UIBackgroundModes = "audio fetch";
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
@@ -425,7 +532,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -447,8 +554,9 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = OffScript/OffScript.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = 363TRR79UG;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -458,11 +566,10 @@
 				INFOPLIST_FILE = OffScript/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OffScript;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = NO;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = NO;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				INFOPLIST_KEY_UIBackgroundModes = "audio fetch";
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
@@ -470,7 +577,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -494,7 +601,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -517,7 +624,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -539,7 +646,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -561,7 +668,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -573,6 +680,61 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = OffScript;
+			};
+			name = Release;
+		};
+		B135C36144E6614AB8BB64CB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = OffScriptWidgets/OffScriptWidgets.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 20;
+				DEVELOPMENT_TEAM = 363TRR79UG;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OffScriptWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "OffScript Widgets";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "WIDGET_EXTENSION $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		E8F7E8853A63A82F1ED16A30 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = OffScriptWidgets/OffScriptWidgets.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 20;
+				DEVELOPMENT_TEAM = 363TRR79UG;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OffScriptWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "OffScript Widgets";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "WIDGET_EXTENSION $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
@@ -611,6 +773,15 @@
 			buildConfigurations = (
 				1B9A235B2F68C21700788880 /* Debug */,
 				1B9A235C2F68C21700788880 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		DCCD30730C5F3A1BB5E8FE22 /* Build configuration list for PBXNativeTarget "OffScriptWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E8F7E8853A63A82F1ED16A30 /* Release */,
+				B135C36144E6614AB8BB64CB /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -6,6 +6,7 @@
 //
 
 import BackgroundTasks
+import CarPlay
 import CloudKit
 import Foundation
 import OSLog
@@ -23,6 +24,20 @@ final class OffScriptAppDelegate: NSObject, UIApplicationDelegate {
             DownloadService.shared.backgroundCompletionHandler = completionHandler
         }
     }
+
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        if connectingSceneSession.role == .carTemplateApplication {
+            let config = UISceneConfiguration(name: "CarPlay", sessionRole: .carTemplateApplication)
+            config.delegateClass = OffScriptCarPlaySceneDelegate.self
+            return config
+        }
+        let config = UISceneConfiguration(name: "Default", sessionRole: connectingSceneSession.role)
+        return config
+    }
 }
 
 @main
@@ -32,6 +47,7 @@ struct OffScriptApp: App {
 
     init() {
         AppSettings.applyLaunchOverridesIfNeeded()
+        OffScriptTips.configureIfNeeded()
 
         let tabBarAppearance = UITabBarAppearance()
         tabBarAppearance.configureWithOpaqueBackground()
@@ -46,7 +62,7 @@ struct OffScriptApp: App {
     // Uses VersionedSchema + SchemaMigrationPlan for safe migrations.
     // Falls back to destructive reset only if the migration plan itself fails.
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema(versionedSchema: SchemaV1.self)
+        let schema = Schema(versionedSchema: SchemaV2.self)
         do {
             return try Self.makeModelContainer(schema: schema)
         } catch {
@@ -67,6 +83,25 @@ struct OffScriptApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .task {
+                    let container = sharedModelContainer
+                    ModelContainerRef.shared = container
+
+                    // Validate Apple ID first — fast and may flip cloudSync off
+                    // before any other launch work touches CloudKit.
+                    await AppleAccountMonitor.shared.validateOnLaunch()
+
+                    // Defer the heavy launch chores to a low-priority Task so
+                    // they never block the first frame. Spotlight reindex
+                    // touches every subscribed podcast + most-recent episodes
+                    // and used to add a perceptible launch hitch.
+                    Task(priority: .utility) {
+                        try? await Task.sleep(for: .seconds(2))
+                        let context = ModelContext(container)
+                        SpotlightIndexer.shared.reindex(in: context)
+                        BackgroundEnrichmentService.shared.backfill(in: context)
+                    }
+                }
         }
         .modelContainer(sharedModelContainer)
         .backgroundTask(.appRefresh(BackgroundFeedRefresh.taskIdentifier)) {
@@ -88,7 +123,6 @@ struct OffScriptApp: App {
                 logger.info("CloudKit sync enabled — creating ModelContainer with iCloud backing")
                 return try ModelContainer(
                     for: schema,
-                    migrationPlan: OffScriptMigrationPlan.self,
                     configurations: [cloudConfig]
                 )
             } catch {
@@ -105,7 +139,6 @@ struct OffScriptApp: App {
         logger.info("Using local-only ModelContainer")
         return try ModelContainer(
             for: schema,
-            migrationPlan: OffScriptMigrationPlan.self,
             configurations: [localConfig]
         )
     }

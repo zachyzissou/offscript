@@ -1,6 +1,50 @@
 import SwiftData
 import SwiftUI
 
+/// Value-typed wrapper used as the `NavigationLink(value:)` payload for an
+/// `Episode`. SwiftData @Model classes are reference types and can become
+/// stale across navigation events; carrying the stable UUID instead lets the
+/// destination re-fetch from the model context, which is both safer and
+/// dramatically faster than mounting one navigationDestination per card.
+struct EpisodeNavigation: Hashable {
+    let id: UUID
+    init(episode: Episode) { self.id = episode.id }
+}
+
+extension View {
+    /// Registers a single Episode-typed destination on the enclosing
+    /// `NavigationStack`. Call this once at the root of each tab's stack so
+    /// every card-driven push routes through the same handler instead of
+    /// mounting per-card destinations (which is what caused the
+    /// podcast-detail tap-to-freeze on devices with large libraries).
+    func registerEpisodeNavigation() -> some View {
+        navigationDestination(for: EpisodeNavigation.self) { nav in
+            EpisodeNavigationDestination(navigation: nav)
+        }
+    }
+}
+
+private struct EpisodeNavigationDestination: View {
+    @Environment(\.modelContext) private var modelContext
+    let navigation: EpisodeNavigation
+
+    var body: some View {
+        let id = navigation.id
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.id == id }
+        )
+        if let episode = (try? modelContext.fetch(descriptor))?.first {
+            EpisodeDetailView(episode: episode)
+        } else {
+            ContentUnavailableView(
+                "Episode not found",
+                systemImage: "waveform.slash",
+                description: Text("It may have been removed from the feed.")
+            )
+        }
+    }
+}
+
 // MARK: - Shared Episode Card Components
 // Unified card system: EpisodeVerticalCard (rails), EpisodeCompactCard (lists), HeroEpisodeCard (lead).
 
@@ -8,14 +52,25 @@ import SwiftUI
 
 /// Card for horizontal scroll rails. Fixed 200pt width, artwork on top.
 /// Used in: Home rails, Library "Fresh Episodes" rail, Library "Continue Listening" rail.
-struct EpisodeVerticalCard: View {
+struct EpisodeVerticalCard: View, Equatable {
     @Environment(\.modelContext) private var modelContext
 
     let episode: Episode
     var explanationTag: String? = nil
     var onTap: (() -> Void)? = nil
 
-    @State private var navigateToDetail = false
+    /// SwiftUI's diff: two cards are "equal" (skip-redraw eligible) when the
+    /// underlying episode identity, progress, and queue/play flags match.
+    /// That's what changes most often during a session — anything else (title,
+    /// summary, podcast metadata) is effectively stable.
+    static func == (lhs: EpisodeVerticalCard, rhs: EpisodeVerticalCard) -> Bool {
+        lhs.episode.id == rhs.episode.id
+            && lhs.episode.playedPosition == rhs.episode.playedPosition
+            && lhs.episode.isPlayed == rhs.episode.isPlayed
+            && lhs.episode.isQueued == rhs.episode.isQueued
+            && lhs.episode.downloadProgress == rhs.episode.downloadProgress
+            && lhs.explanationTag == rhs.explanationTag
+    }
 
     private var progressValue: Double {
         guard let duration = episode.duration, duration > 0 else { return 0 }
@@ -24,21 +79,16 @@ struct EpisodeVerticalCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Artwork zone — tappable for navigation
-            Button {
-                if let onTap {
-                    onTap()
-                } else {
-                    navigateToDetail = true
-                }
-            } label: {
+            // Artwork zone — tappable for navigation. Uses a value-based
+            // NavigationLink so the destination is registered once on the
+            // enclosing stack rather than per-card.
+            tapTarget {
                 OffScriptArtworkView(
                     url: episode.artworkURL ?? episode.podcast.artworkURL,
                     cornerRadius: 0
                 )
                 .frame(width: 200, height: 150)
             }
-            .buttonStyle(.plain)
 
             // Text + buttons zone
             VStack(alignment: .leading, spacing: 8) {
@@ -51,20 +101,13 @@ struct EpisodeVerticalCard: View {
                     .foregroundStyle(Color.offscriptAccent)
                     .lineLimit(1)
 
-                Button {
-                    if let onTap {
-                        onTap()
-                    } else {
-                        navigateToDetail = true
-                    }
-                } label: {
+                tapTarget {
                     Text(episode.title)
                         .font(.offscriptCardTitle)
                         .foregroundStyle(Color.offscriptTextPrimary)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
-                .buttonStyle(.plain)
 
                 Text(metadata)
                     .font(.offscriptMeta)
@@ -107,6 +150,36 @@ struct EpisodeVerticalCard: View {
                     .accessibilityLabel(episode.isQueued ? "Already queued" : "Add to queue")
 
                     Spacer()
+
+                    Menu {
+                        Button {
+                            registerSignal(.moreLikeThis)
+                        } label: {
+                            Label("More like this", systemImage: "arrow.up.heart")
+                        }
+                        Button {
+                            registerSignal(.like)
+                        } label: {
+                            Label("Like", systemImage: "hand.thumbsup")
+                        }
+                        Button(role: .destructive) {
+                            registerSignal(.lessLikeThis)
+                        } label: {
+                            Label("Less like this", systemImage: "hand.thumbsdown")
+                        }
+                        Button(role: .destructive) {
+                            registerSignal(.notInterested)
+                        } label: {
+                            Label("Not interested", systemImage: "xmark.circle")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(Color.offscriptTextMuted)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("Adjust this recommendation")
                 }
             }
             .padding(12)
@@ -128,11 +201,23 @@ struct EpisodeVerticalCard: View {
                 .stroke(Color.offscriptHairline, lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.2), radius: 12, y: 6)
-        .navigationDestination(isPresented: $navigateToDetail) {
-            EpisodeDetailView(episode: episode)
-        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(episode.title) from \(episode.podcast.title)\(explanationTag.map { ". \($0)" } ?? "")")
+    }
+
+    @ViewBuilder
+    private func tapTarget<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if let onTap {
+            Button {
+                onTap()
+            } label: { content() }
+            .buttonStyle(.plain)
+        } else {
+            NavigationLink(value: EpisodeNavigation(episode: episode)) {
+                content()
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var metadata: String {
@@ -154,13 +239,25 @@ struct EpisodeVerticalCard: View {
     private var playIcon: String {
         isCurrentlyPlaying ? "pause.fill" : "play.fill"
     }
+
+    private func registerSignal(_ action: PreferenceSignal.Action) {
+        modelContext.insert(PreferenceSignal(action: action, episode: episode))
+        try? modelContext.save()
+        TelemetryService.track(
+            "preference_signal",
+            metadata: ["action": "\(action)", "source": "rail_card", "episode": episode.title],
+            in: modelContext
+        )
+        // Refresh the user's taste profile so future recommendations adjust right away.
+        try? TasteProfileService.refresh(in: modelContext)
+    }
 }
 
 // MARK: - EpisodeCompactCard
 
 /// Card for vertical lists and detail pages. Full width, horizontal layout.
 /// Used in: Queue items, podcast detail episode list, search results.
-struct EpisodeCompactCard: View {
+struct EpisodeCompactCard: View, Equatable {
     @Environment(\.modelContext) private var modelContext
 
     let episode: Episode
@@ -169,7 +266,15 @@ struct EpisodeCompactCard: View {
     var rank: Int? = nil
     var showPodcastTitle: Bool = true
 
-    @State private var navigateToDetail = false
+    static func == (lhs: EpisodeCompactCard, rhs: EpisodeCompactCard) -> Bool {
+        lhs.episode.id == rhs.episode.id
+            && lhs.episode.playedPosition == rhs.episode.playedPosition
+            && lhs.episode.isPlayed == rhs.episode.isPlayed
+            && lhs.episode.isQueued == rhs.episode.isQueued
+            && lhs.episode.downloadProgress == rhs.episode.downloadProgress
+            && lhs.rank == rhs.rank
+            && lhs.showPodcastTitle == rhs.showPodcastTitle
+    }
 
     var body: some View {
         HStack(spacing: 14) {
@@ -185,28 +290,15 @@ struct EpisodeCompactCard: View {
                     )
             }
 
-            Button {
-                if let onTap {
-                    onTap()
-                } else {
-                    navigateToDetail = true
-                }
-            } label: {
+            tapTarget {
                 OffScriptArtworkView(
                     url: episode.artworkURL ?? episode.podcast.artworkURL,
                     cornerRadius: OffScriptTheme.Radius.small
                 )
                 .frame(width: 56, height: 56)
             }
-            .buttonStyle(.plain)
 
-            Button {
-                if let onTap {
-                    onTap()
-                } else {
-                    navigateToDetail = true
-                }
-            } label: {
+            tapTarget {
                 VStack(alignment: .leading, spacing: 4) {
                     if showPodcastTitle {
                         Text(episode.podcast.title.uppercased())
@@ -227,7 +319,6 @@ struct EpisodeCompactCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .buttonStyle(.plain)
 
             // Play circle
             Button {
@@ -260,11 +351,27 @@ struct EpisodeCompactCard: View {
         }
         .padding(16)
         .offscriptUtilitySurface()
-        .navigationDestination(isPresented: $navigateToDetail) {
-            EpisodeDetailView(episode: episode)
-        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(episode.title) from \(episode.podcast.title)")
+    }
+
+    /// One value-based NavigationLink per card; the destination is registered
+    /// once on the enclosing NavigationStack via `.navigationDestination(for:)`.
+    /// This avoids creating one navigationDestination modifier per row, which
+    /// stalls the main thread when a podcast has dozens of episodes.
+    @ViewBuilder
+    private func tapTarget<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if let onTap {
+            Button {
+                onTap()
+            } label: { content() }
+            .buttonStyle(.plain)
+        } else {
+            NavigationLink(value: EpisodeNavigation(episode: episode)) {
+                content()
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var metadata: String {

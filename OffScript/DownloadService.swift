@@ -25,6 +25,7 @@ final class DownloadService: NSObject, ObservableObject {
     private var modelContext: ModelContext?
     private var taskToEpisodeID: [Int: UUID] = [:]
     private var episodeIDToTask: [UUID: URLSessionDownloadTask] = [:]
+    private var lastPersistedProgress: [UUID: Double] = [:]
     private var hasReconciledPersistedState = false
 
     private override init() {
@@ -287,7 +288,14 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
             guard let episode = self.episode(for: episodeID) else { return }
             episode.downloadState = .downloading
             episode.downloadProgress = progress
-            try? self.modelContext?.save()
+            // didWriteData fires dozens of times per second on a fast network.
+            // Only persist crossings of 5% so we're not running SQLite writes
+            // on the main thread continuously.
+            let last = self.lastPersistedProgress[episodeID] ?? -1
+            if progress >= 1.0 || abs(progress - last) >= 0.05 {
+                self.lastPersistedProgress[episodeID] = progress
+                try? self.modelContext?.save()
+            }
         }
     }
 

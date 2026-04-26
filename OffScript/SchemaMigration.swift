@@ -1,12 +1,22 @@
 import SwiftData
 
-// MARK: - Schema V1 (baseline)
-// Captures the current state of all persisted model types.
-// Future schema changes should add a new SchemaVN enum and a corresponding
-// MigrationStage in OffScriptMigrationPlan.stages.
+// MARK: - Current schema
+//
+// SwiftData uses the schema's *content* to compute a checksum that identifies
+// it on disk. When V1 and V2 share the same model class set with only an
+// added entity, both schemas can hash to the same checksum and trigger
+// "Duplicate version checksums detected." For lightweight, additive changes
+// (new entity, new optional property), SwiftData will silently migrate the
+// existing store as long as we present the **single current schema** without
+// an explicit migration plan. We do that here.
+//
+// When a future change is *not* lightweight (renaming, removing, or
+// transforming columns), introduce a new VersionedSchema with a clearly
+// different checksum (e.g. add an `@Attribute(originalName:)` on a renamed
+// property) and reintroduce a `SchemaMigrationPlan` with explicit stages.
 
-enum SchemaV1: VersionedSchema {
-    static var versionIdentifier: Schema.Version = Schema.Version(1, 0, 0)
+enum SchemaV2: VersionedSchema {
+    static var versionIdentifier: Schema.Version = Schema.Version(2, 0, 0)
 
     static var models: [any PersistentModel.Type] {
         [
@@ -18,19 +28,7 @@ enum SchemaV1: VersionedSchema {
             EpisodeProfile.self,
             UserTasteProfile.self,
             TelemetryEvent.self,
+            Bookmark.self,
         ]
-    }
-}
-
-// MARK: - Migration Plan
-
-enum OffScriptMigrationPlan: SchemaMigrationPlan {
-    static var schemas: [any VersionedSchema.Type] {
-        [SchemaV1.self]
-    }
-
-    static var stages: [MigrationStage] {
-        // No stages needed yet — SchemaV1 is the only version.
-        []
     }
 }

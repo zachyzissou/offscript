@@ -21,7 +21,15 @@ struct DownloadButton: View {
                 }
             }
         } label: {
-            Label(downloadLabel, systemImage: downloadIcon)
+            Label {
+                Text(downloadLabel)
+                    .contentTransition(.numericText())
+            } icon: {
+                Image(systemName: downloadIcon)
+                    .symbolEffect(.variableColor.iterative.reversing, options: episode.downloadState == .downloading ? .repeating : .nonRepeating)
+                    .symbolEffect(.bounce, value: episode.downloadState == .downloaded)
+                    .contentTransition(.symbolEffect(.replace))
+            }
         }
         .buttonStyle(SecondaryPillButtonStyle())
         .accessibilityLabel(downloadAccessibilityLabel)

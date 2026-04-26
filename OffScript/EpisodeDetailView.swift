@@ -7,7 +7,20 @@ struct EpisodeDetailView: View {
     @ObservedObject private var downloadService = DownloadService.shared
     @State private var feedbackGiven: PreferenceSignal.Action? = nil
     @State private var transcriptURL: URL? = nil
+    @State private var presentedTranscript: EpisodeTranscriptReference?
+    @State private var showBookmarks = false
+    @State private var smartTake: String?
+    @Query private var bookmarks: [Bookmark]
     let episode: Episode
+
+    init(episode: Episode) {
+        self.episode = episode
+        let episodeID = episode.id
+        _bookmarks = Query(
+            filter: #Predicate<Bookmark> { $0.episode?.id == episodeID },
+            sort: [SortDescriptor(\Bookmark.position, order: .forward)]
+        )
+    }
 
     private var progressValue: Double {
         guard let duration = episode.duration, duration > 0 else { return 0 }
@@ -165,7 +178,7 @@ struct EpisodeDetailView: View {
 
                         ForEach(transcriptReferences) { transcript in
                             Button {
-                                transcriptURL = transcript.url
+                                presentedTranscript = transcript
                             } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: "captions.bubble.fill")
@@ -186,6 +199,56 @@ struct EpisodeDetailView: View {
                                     Image(systemName: "doc.text")
                                         .font(.footnote.weight(.semibold))
                                         .foregroundStyle(Color.offscriptTextMuted)
+                                }
+                                .padding(14)
+                                .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button {
+                                    transcriptURL = transcript.url
+                                } label: {
+                                    Label("Open in browser", systemImage: "safari")
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+                }
+
+                if !bookmarks.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Your bookmarks")
+                                .font(.offscriptSectionTitle)
+                                .foregroundStyle(Color.offscriptTextPrimary)
+                            Spacer()
+                            Button("View all") { showBookmarks = true }
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Color.offscriptAccent)
+                        }
+                        ForEach(bookmarks.prefix(3)) { bookmark in
+                            Button {
+                                PlaybackController.shared.play(episode, in: modelContext)
+                                PlaybackController.shared.seek(to: bookmark.position)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "bookmark.fill")
+                                        .font(.callout)
+                                        .foregroundStyle(Color.offscriptAccent)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(timestamp(bookmark.position))
+                                            .font(.system(.subheadline, design: .monospaced).monospacedDigit().weight(.semibold))
+                                            .foregroundStyle(Color.offscriptTextPrimary)
+                                        if let note = bookmark.note, !note.isEmpty {
+                                            Text(note)
+                                                .font(.offscriptMeta)
+                                                .foregroundStyle(Color.offscriptTextSecondary)
+                                                .lineLimit(2)
+                                                .multilineTextAlignment(.leading)
+                                        }
+                                    }
+                                    Spacer()
                                 }
                                 .padding(14)
                                 .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
@@ -276,6 +339,14 @@ struct EpisodeDetailView: View {
         )) { item in
             SafariView(url: item.url)
                 .ignoresSafeArea()
+        }
+        .sheet(item: $presentedTranscript) { transcript in
+            TranscriptReaderSheet(transcript: transcript, episodeTitle: episode.title)
+                .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showBookmarks) {
+            EpisodeBookmarksSheet(episode: episode)
+                .presentationDetents([.medium, .large])
         }
         .offscriptPageBackground()
         .navigationTitle("Episode")

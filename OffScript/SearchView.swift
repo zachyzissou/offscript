@@ -18,6 +18,7 @@ struct SearchView: View {
     @State private var importedRecommendation: Episode?
     @State private var importedRecommendationReason: String?
     @State private var navigatedPodcast: Podcast?
+    @State private var showOPMLImport = false
 
     private let searchService = PodcastSearchService()
     private let syncService = FeedSyncService()
@@ -71,6 +72,9 @@ struct SearchView: View {
 
                 if query.isEmpty, !isSearchActive {
                     SearchPromptCard()
+                        .padding(.horizontal, OffScriptTheme.pagePadding)
+
+                    OPMLPromptCard(action: { showOPMLImport = true })
                         .padding(.horizontal, OffScriptTheme.pagePadding)
 
                     if !topicTrails.isEmpty {
@@ -236,6 +240,9 @@ struct SearchView: View {
         }
         .task(id: query) { await search() }
         // Don't auto-load genre results — let the user tap a genre to explore
+        .sheet(isPresented: $showOPMLImport) {
+            OPMLImportView()
+        }
         .sheet(item: $previewResult) { result in
             SearchResultDetailView(
                 result: result,
@@ -454,6 +461,42 @@ private struct SearchPromptCard: View {
         }
         .padding(18)
         .offscriptSurface(radius: OffScriptTheme.Radius.medium, prominent: true)
+    }
+}
+
+private struct OPMLPromptCard: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: "tray.and.arrow.down.fill")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.offscriptAccentSecondary)
+                    .frame(width: 34, height: 34)
+                    .background(Color.offscriptAccentSecondaryMuted, in: Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Already follow shows elsewhere?")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.offscriptTextPrimary)
+                    Text("Import an OPML from Apple Podcasts, Pocket Casts, Overcast, Castro, or Spotify.")
+                        .font(.offscriptMeta)
+                        .foregroundStyle(Color.offscriptTextMuted)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.offscriptTextMuted)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .offscriptUtilitySurface()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Import subscriptions from another podcast app")
     }
 }
 

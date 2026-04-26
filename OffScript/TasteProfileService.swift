@@ -15,11 +15,32 @@ enum TasteProfileService {
         return profile
     }
 
-    static func refresh(in context: ModelContext) throws {
+    /// Refresh is expensive — it fetches every EpisodeProfile + PlaybackEvent +
+    /// PreferenceSignal. Skip when the profile was updated within the last
+    /// 90 seconds unless `force` is set. Each fetch is also bounded to a
+    /// reasonable horizon so the work doesn't grow with library age.
+    static func refresh(in context: ModelContext, force: Bool = false) throws {
         let profile = try loadOrCreate(in: context)
-        let episodeProfiles = try context.fetch(FetchDescriptor<EpisodeProfile>())
-        let playbackEvents = try context.fetch(FetchDescriptor<PlaybackEvent>())
-        let preferenceSignals = try context.fetch(FetchDescriptor<PreferenceSignal>())
+        if !force, Date().timeIntervalSince(profile.lastUpdatedAt) < 90 {
+            return
+        }
+
+        var profilesDescriptor = FetchDescriptor<EpisodeProfile>()
+        profilesDescriptor.fetchLimit = 1500
+        let episodeProfiles = (try? context.fetch(profilesDescriptor)) ?? []
+
+        let cutoff = Calendar.current.date(byAdding: .day, value: -120, to: Date()) ?? .distantPast
+        var playbackDescriptor = FetchDescriptor<PlaybackEvent>(
+            predicate: #Predicate<PlaybackEvent> { $0.date >= cutoff }
+        )
+        playbackDescriptor.fetchLimit = 3000
+        let playbackEvents = (try? context.fetch(playbackDescriptor)) ?? []
+
+        var signalsDescriptor = FetchDescriptor<PreferenceSignal>(
+            predicate: #Predicate<PreferenceSignal> { $0.date >= cutoff }
+        )
+        signalsDescriptor.fetchLimit = 1000
+        let preferenceSignals = (try? context.fetch(signalsDescriptor)) ?? []
 
         let likedEpisodeIDs = Set(
             preferenceSignals

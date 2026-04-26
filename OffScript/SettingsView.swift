@@ -6,13 +6,20 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query private var podcasts: [Podcast]
-    @Query(sort: [SortDescriptor(\TelemetryEvent.createdAt, order: .reverse)]) private var telemetryEvents: [TelemetryEvent]
+    // Cap at 50 most-recent so the diagnostics card never pulls thousands of
+    // rows just to render six. SwiftData's fetchLimit lives on FetchDescriptor
+    // not @Query, so this uses a sliced sort + manual prefix at the call site.
+    @Query(sort: [SortDescriptor(\TelemetryEvent.createdAt, order: .reverse)], animation: .default) private var telemetryEvents: [TelemetryEvent]
     @State private var autoPlayNext = AppSettings.autoPlayNext
     @State private var preferShortEpisodes = AppSettings.preferShortEpisodes
     @State private var downloadedOnly = AppSettings.libraryShowDownloadedOnly
+    @State private var trueBlack = AppSettings.trueBlackMode
     @State private var showGenreEditor = false
     @State private var editingGenres: Set<Genre> = Set(AppSettings.preferredGenres)
     @State private var tasteProfile: UserTasteProfile?
+    @State private var showOPMLImport = false
+    @State private var showInsights = false
+    @State private var signOutConfirmPresented = false
 
     var body: some View {
         NavigationStack {
@@ -59,6 +66,12 @@ struct SettingsView: View {
                             title: "Library defaults to downloads",
                             detail: "Start the library in download-focused mode so offline listening stays one tap away.",
                             isOn: $downloadedOnly
+                        )
+
+                        settingsToggleCard(
+                            title: "True black background",
+                            detail: "Replace the warm gradient with pure black — saves power on OLED screens and lets the artwork glow.",
+                            isOn: $trueBlack
                         )
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -266,22 +279,116 @@ struct SettingsView: View {
                             }
 
                             if cloudSyncActive {
-                                Button {
-                                    triggerCloudSync()
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "arrow.triangle.2.circlepath")
-                                        Text("Sync Now")
-                                            .font(.subheadline.weight(.semibold))
+                                HStack(spacing: 16) {
+                                    Button {
+                                        triggerCloudSync()
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: "arrow.triangle.2.circlepath")
+                                            Text("Sync Now")
+                                                .font(.subheadline.weight(.semibold))
+                                        }
+                                        .foregroundStyle(Color.offscriptAccent)
                                     }
-                                    .foregroundStyle(Color.offscriptAccent)
+                                    .buttonStyle(.plain)
+
+                                    Spacer()
+
+                                    Button(role: .destructive) {
+                                        signOutConfirmPresented = true
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                            Text("Sign Out")
+                                                .font(.subheadline.weight(.semibold))
+                                        }
+                                        .foregroundStyle(Color.offscriptDestructive)
+                                    }
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                         .padding(18)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .offscriptUtilitySurface()
+                    }
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        OffScriptSectionHeader(
+                            title: "Your listening",
+                            subtitle: "How OffScript has been showing up for you lately."
+                        )
+
+                        Button {
+                            showInsights = true
+                        } label: {
+                            HStack(spacing: 14) {
+                                Image(systemName: "chart.bar.fill")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(Color.offscriptAccent)
+                                    .frame(width: 34, height: 34)
+                                    .background(Color.offscriptAccentSoft, in: Circle())
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Open the listening recap")
+                                        .font(.offscriptBody.weight(.semibold))
+                                        .foregroundStyle(Color.offscriptTextPrimary)
+                                    Text("Last 30 days — minutes, top shows, recurring topics, what stalled out.")
+                                        .font(.offscriptMeta)
+                                        .foregroundStyle(Color.offscriptTextMuted)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(Color.offscriptTextMuted)
+                            }
+                            .padding(18)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .offscriptUtilitySurface()
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        OffScriptSectionHeader(
+                            title: "Bring your library over",
+                            subtitle: "Import subscriptions exported as OPML from Apple Podcasts, Pocket Casts, Overcast, Castro, or Spotify."
+                        )
+
+                        Button {
+                            showOPMLImport = true
+                        } label: {
+                            HStack(spacing: 14) {
+                                Image(systemName: "tray.and.arrow.down.fill")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(Color.offscriptAccent)
+                                    .frame(width: 34, height: 34)
+                                    .background(Color.offscriptAccentSoft, in: Circle())
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Import an OPML file")
+                                        .font(.offscriptBody.weight(.semibold))
+                                        .foregroundStyle(Color.offscriptTextPrimary)
+                                    Text("Already follow shows elsewhere? Drop the export here. We'll skip duplicates.")
+                                        .font(.offscriptMeta)
+                                        .foregroundStyle(Color.offscriptTextMuted)
+                                        .multilineTextAlignment(.leading)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(Color.offscriptTextMuted)
+                            }
+                            .padding(18)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .offscriptUtilitySurface()
+                        }
+                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
 
@@ -379,6 +486,26 @@ struct SettingsView: View {
             .padding(.bottom, 32)
             .offscriptPageBackground()
             .navigationTitle("Settings")
+            .sheet(isPresented: $showOPMLImport) {
+                OPMLImportView()
+            }
+            .sheet(isPresented: $showInsights) {
+                ListeningInsightsView()
+            }
+            .confirmationDialog(
+                "Sign out of OffScript?",
+                isPresented: $signOutConfirmPresented,
+                titleVisibility: .visible
+            ) {
+                Button("Sign Out", role: .destructive) {
+                    AppSettings.clearCredential()
+                    AppSettings.cloudSyncEnabled = false
+                    AppSettings.lastCloudSyncDate = nil
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Your library stays on this device. iCloud sync stops until you sign in again.")
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .automatic) {
@@ -394,6 +521,9 @@ struct SettingsView: View {
         }
         .onChange(of: downloadedOnly) { _, newValue in
             AppSettings.libraryShowDownloadedOnly = newValue
+        }
+        .onChange(of: trueBlack) { _, newValue in
+            AppSettings.trueBlackMode = newValue
         }
         .task { loadTasteProfile() }
         .sheet(isPresented: $showGenreEditor) {

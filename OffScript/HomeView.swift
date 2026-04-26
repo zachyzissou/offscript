@@ -3,9 +3,10 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
-    @State private var sections: [HomeFeedSection] = []
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var sections: [HomeFeedSection] = HomeRecommendationCache.shared.sections
     @State private var errorMessage: String?
-    @State private var isLoading = true
+    @State private var isLoading = HomeRecommendationCache.shared.sections.isEmpty
     @State private var discoveryPreviewResult: PodcastSearchResult?
     @State private var importingDiscoveryID: String?
     let onOpenSettings: () -> Void
@@ -55,7 +56,9 @@ struct HomeView: View {
                         OffScriptEmptyState(
                             icon: "waveform.badge.magnifyingglass",
                             headline: "Your feed starts here",
-                            message: "Subscribe to a few shows, listen, and OffScript will learn what you like. The more you play, the sharper your feed gets."
+                            message: "Subscribe to a few shows, listen, and OffScript will learn what you like. The more you play, the sharper your feed gets.",
+                            generatedCopyKey: "home.empty",
+                            generatedCopyPrompt: "Surface: empty Home tab. Write a two-sentence editorial nudge for a podcast app that learns from listening behavior — confident, no apology."
                         )
 
                         NavigationLink("Browse Search") {
@@ -131,8 +134,24 @@ struct HomeView: View {
                 .accessibilityHint("Adjust playback and recommendation preferences")
             }
         }
-        .task { await loadSections() }
-        .refreshable { await loadSections() }
+        .task {
+            // Show whatever's already cached instantly — recompute only if the
+            // cache is stale or there's nothing to show.
+            if sections.isEmpty || HomeRecommendationCache.shared.isStale {
+                await loadSections()
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Re-evaluate when app returns to foreground but only if data has
+            // changed enough to matter. The cache layer decides.
+            if newPhase == .active, HomeRecommendationCache.shared.isStale {
+                Task { await loadSections() }
+            }
+        }
+        .refreshable {
+            HomeRecommendationCache.shared.invalidate()
+            await loadSections()
+        }
         .sheet(item: $discoveryPreviewResult) { result in
             SearchResultDetailView(
                 result: result,
@@ -176,14 +195,19 @@ struct HomeView: View {
         do {
             var loaded = try recommendationService.homeSections(context: modelContext)
 
-            // Append discovery section after existing episode sections
-            if let discovery = await recommendationService.discoverySection(context: modelContext) {
-                loaded.append(discovery)
-            }
-
+            // Append discovery section after existing episode sections.
+            // Discovery hits the network so do it in parallel with the local
+            // sections being made visible.
             sections = loaded
+            HomeRecommendationCache.shared.update(sections: loaded)
             errorMessage = nil
             isLoading = false
+
+            if let discovery = await recommendationService.discoverySection(context: modelContext) {
+                loaded.append(discovery)
+                sections = loaded
+                HomeRecommendationCache.shared.update(sections: loaded)
+            }
         } catch {
             errorMessage = error.localizedDescription
             isLoading = false
@@ -200,12 +224,24 @@ private struct HomeEditorialHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Ready when you are")
-                .font(.offscriptUtilityTitle)
+                .font(.system(.title, design: .serif, weight: .bold))
                 .foregroundStyle(Color.offscriptTextPrimary)
+                .scrollTransition(.interactive, axis: .vertical) { content, phase in
+                    content
+                        .opacity(phase.isIdentity ? 1.0 : 0.45)
+                        .scaleEffect(phase.isIdentity ? 1.0 : 0.92, anchor: .leading)
+                        .blur(radius: phase.isIdentity ? 0 : 1.5)
+                }
 
             Text(dayString.uppercased())
-                .font(.offscriptMeta.weight(.semibold))
-                .foregroundStyle(Color.offscriptTextMuted)
+                .font(.offscriptMeta.weight(.semibold).monospacedDigit())
+                .tracking(1.2)
+                .foregroundStyle(Color.offscriptAccent.opacity(0.85))
+                .scrollTransition(.interactive, axis: .vertical) { content, phase in
+                    content
+                        .opacity(phase.isIdentity ? 1.0 : 0.0)
+                        .offset(y: phase.isIdentity ? 0 : -8)
+                }
         }
         .padding(.horizontal, OffScriptTheme.pagePadding)
     }
@@ -217,8 +253,6 @@ private struct HeroRecommendationCard: View {
     let episode: Episode
     let reason: String
 
-    @State private var navigateToDetail = false
-
     private var progressValue: Double {
         guard let duration = episode.duration, duration > 0 else { return 0 }
         return episode.playedPosition / duration
@@ -227,9 +261,7 @@ private struct HeroRecommendationCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Artwork hero zone — tappable for navigation
-            Button {
-                navigateToDetail = true
-            } label: {
+            NavigationLink(value: EpisodeNavigation(episode: episode)) {
                 ZStack(alignment: .bottomLeading) {
                     OffScriptArtworkView(
                         url: episode.artworkURL ?? episode.podcast.artworkURL,
@@ -271,9 +303,7 @@ private struct HeroRecommendationCard: View {
 
             // Content zone
             VStack(alignment: .leading, spacing: 14) {
-                Button {
-                    navigateToDetail = true
-                } label: {
+                NavigationLink(value: EpisodeNavigation(episode: episode)) {
                     Text(episode.title)
                         .font(.system(.title2, design: .serif, weight: .bold))
                         .foregroundStyle(Color.offscriptTextPrimary)
@@ -351,9 +381,6 @@ private struct HeroRecommendationCard: View {
             .padding(20)
             .padding(.bottom, 4)
         }
-        .navigationDestination(isPresented: $navigateToDetail) {
-            EpisodeDetailView(episode: episode)
-        }
         .background(
             RoundedRectangle(cornerRadius: OffScriptTheme.Radius.large, style: .continuous)
                 .fill(
@@ -413,9 +440,23 @@ private struct RecommendationRail: View {
                             episode: episode,
                             explanationTag: reasonProvider(episode)
                         )
+                        .scrollTransition(.interactive, axis: .horizontal) { content, phase in
+                            content
+                                .opacity(phase.isIdentity ? 1.0 : 0.5)
+                                .scaleEffect(phase.isIdentity ? 1.0 : 0.92)
+                                .blur(radius: phase.isIdentity ? 0 : 2)
+                        }
                     }
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.viewAligned(limitBehavior: .never))
+            .onAppear {
+                // Warm the next several artwork URLs so cards don't pop in.
+                ImageCache.shared.prefetch(
+                    episodes.prefix(8).map { $0.artworkURL ?? $0.podcast.artworkURL }
+                )
             }
         }
     }
@@ -445,10 +486,17 @@ private struct DiscoveryRail: View {
                             onPreview: { onPreview(scored) },
                             onAdd: { onAdd(scored) }
                         )
+                        .scrollTransition(.interactive, axis: .horizontal) { content, phase in
+                            content
+                                .opacity(phase.isIdentity ? 1.0 : 0.55)
+                                .scaleEffect(phase.isIdentity ? 1.0 : 0.93)
+                        }
                     }
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
+                .scrollTargetLayout()
             }
+            .scrollTargetBehavior(.viewAligned(limitBehavior: .never))
         }
     }
 }

@@ -93,24 +93,34 @@ extension Color {
 }
 
 extension Font {
-    // Playfair Display for editorial headlines — high-contrast serif with character
+    // Playfair Display for editorial headlines — high-contrast serif with character.
+    // All sizes use Dynamic Type ramps via `relativeTo` so users with larger
+    // text settings get appropriately scaled type without breaking layouts.
     static let offscriptHero = Font.custom("PlayfairDisplay-Bold", size: 32, relativeTo: .largeTitle)
     static let offscriptDisplay = Font.custom("PlayfairDisplay-Bold", size: 24, relativeTo: .title)
     static let offscriptUtilityTitle = Font.system(.title2, design: .default, weight: .bold)
     static let offscriptSectionTitle = Font.custom("PlayfairDisplay-SemiBold", size: 20, relativeTo: .title3)
     static let offscriptCardTitle = Font.system(.headline, design: .default, weight: .semibold)
     static let offscriptBody = Font.system(.callout, design: .default)
-    static let offscriptMeta = Font.system(.caption, design: .monospaced)
-    static let offscriptMicro = Font.system(.caption2, design: .monospaced)
+    /// Monospaced caption with tabular digits — use everywhere times are shown
+    /// (durations, scrubber, episode lengths) so digit columns line up.
+    static let offscriptMeta = Font.system(.caption, design: .monospaced).monospacedDigit()
+    static let offscriptMicro = Font.system(.caption2, design: .monospaced).monospacedDigit()
 }
 
 struct OffScriptBackgroundView: View {
     var body: some View {
-        LinearGradient(
-            colors: [.offscriptBackgroundTop, .offscriptBackgroundBottom],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        ZStack {
+            if AppSettings.trueBlackMode {
+                Color.black
+            } else {
+                LinearGradient(
+                    colors: [.offscriptBackgroundTop, .offscriptBackgroundBottom],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        }
     }
 }
 
@@ -154,6 +164,7 @@ final class ImageCache: @unchecked Sendable {
             diskCapacity: 200 * 1024 * 1024     // 200 MB disk
         )
         config.requestCachePolicy = .returnCacheDataElseLoad
+        config.timeoutIntervalForRequest = 12
         return URLSession(configuration: config)
     }()
 
@@ -174,6 +185,21 @@ final class ImageCache: @unchecked Sendable {
         let cost = data.count
         memoryCache.setObject(image, forKey: url as NSURL, cost: cost)
         return image
+    }
+
+    /// Warm the cache for a list of URLs in parallel at low priority. Used by
+    /// rails to prefetch the next few cards' artwork before the user scrolls,
+    /// eliminating most of the visible image-pop.
+    func prefetch(_ urls: [URL?]) {
+        let needed = urls.compactMap { $0 }.filter { memoryCache.object(forKey: $0 as NSURL) == nil }
+        guard !needed.isEmpty else { return }
+        Task(priority: .utility) { [weak self] in
+            await withTaskGroup(of: Void.self) { group in
+                for url in needed.prefix(8) {
+                    group.addTask { _ = await self?.loadImage(from: url) }
+                }
+            }
+        }
     }
 }
 
@@ -279,15 +305,26 @@ struct OffScriptEmptyState: View {
     let icon: String
     let headline: String
     let message: String
+    /// Optional Foundation Models prompt — when supplied the message is replaced
+    /// with an editorially-voiced variant generated on device the first time
+    /// the empty state is seen, then cached.
+    var generatedCopyKey: String? = nil
+    var generatedCopyPrompt: String? = nil
+
+    @State private var liveMessage: String?
 
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: icon)
-                .font(.system(size: 36, weight: .light))
-                .foregroundStyle(Color.offscriptAccent.opacity(0.6))
-                .frame(width: 72, height: 72)
-                .background(Color.offscriptAccentSoft)
-                .clipShape(Circle())
+                .font(.system(size: 38, weight: .light))
+                .foregroundStyle(Color.offscriptAccent.opacity(0.7))
+                .frame(width: 76, height: 76)
+                .background {
+                    Circle()
+                        .fill(Color.offscriptAccentSoft)
+                        .shadow(color: Color.offscriptAccent.opacity(0.25), radius: 18, y: 6)
+                }
+                .symbolEffect(.pulse, options: .repeating, isActive: liveMessage == nil)
 
             VStack(spacing: 8) {
                 Text(headline)
@@ -295,16 +332,26 @@ struct OffScriptEmptyState: View {
                     .foregroundStyle(Color.offscriptTextPrimary)
                     .multilineTextAlignment(.center)
 
-                Text(message)
+                Text(liveMessage ?? message)
                     .font(.offscriptBody)
                     .foregroundStyle(Color.offscriptTextSecondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+                    .contentTransition(.opacity)
             }
         }
         .frame(maxWidth: 320)
         .padding(.vertical, 32)
         .frame(maxWidth: .infinity)
+        .task(id: generatedCopyKey) {
+            guard let key = generatedCopyKey, let prompt = generatedCopyPrompt else { return }
+            let generated = await EmptyStateCopyService.shared.copy(
+                for: key,
+                fallback: message,
+                prompt: prompt
+            )
+            withAnimation(.easeInOut(duration: 0.5)) { liveMessage = generated }
+        }
     }
 }
 
