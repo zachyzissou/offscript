@@ -20,6 +20,16 @@ struct SettingsView: View {
     @State private var showOPMLImport = false
     @State private var showInsights = false
     @State private var signOutConfirmPresented = false
+    // Cached counts. Computing these in `var body` triggered a SwiftData
+    // `fetchCount` (or, worse, a full `fetch`) on every render — including
+    // every keystroke in any TextField on this screen. Now they refresh once
+    // on appear and on `podcasts` change.
+    @State private var subscribedCount = 0
+    @State private var episodeCount = 0
+    @State private var unplayedCount = 0
+    @State private var queuedCount = 0
+    @State private var syncIssueCount = 0
+    @State private var failedDownloadCount = 0
 
     var body: some View {
         NavigationStack {
@@ -37,7 +47,7 @@ struct SettingsView: View {
                         alignment: .leading,
                         spacing: 12
                     ) {
-                        statCard("Subscribed", value: "\(podcasts.filter(\.isSubscribed).count)")
+                        statCard("Subscribed", value: "\(subscribedCount)")
                         statCard("Episodes", value: "\(episodeCount)")
                         statCard("Unplayed", value: "\(unplayedCount)")
                         statCard("Queued", value: "\(queuedCount)")
@@ -525,7 +535,11 @@ struct SettingsView: View {
         .onChange(of: trueBlack) { _, newValue in
             AppSettings.trueBlackMode = newValue
         }
-        .task { loadTasteProfile() }
+        .task {
+            loadTasteProfile()
+            refreshCounts()
+        }
+        .onChange(of: podcasts) { _, _ in refreshCounts() }
         .sheet(isPresented: $showGenreEditor) {
             GenreEditorSheet(
                 selectedGenres: $editingGenres,
@@ -595,36 +609,33 @@ struct SettingsView: View {
         .offscriptUtilitySurface()
     }
 
-    // Use fetchCount to avoid loading all episodes into memory just for stats
-    private var episodeCount: Int {
-        (try? modelContext.fetchCount(FetchDescriptor<Episode>(
+    /// Refresh the cached stat counts. Called from `.task` and from
+    /// `onChange(of: podcasts)` — never from body. Uses `fetchCount` so we
+    /// pay for a SQL COUNT, not a full row materialization.
+    private func refreshCounts() {
+        subscribedCount = podcasts.lazy.filter(\.isSubscribed).count
+        syncIssueCount = podcasts.lazy.filter { $0.syncStatus == "failed" || $0.syncErrorMessage != nil }.count
+
+        episodeCount = (try? modelContext.fetchCount(FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { $0.podcast.isSubscribed == true }
         ))) ?? 0
-    }
 
-    private var unplayedCount: Int {
-        (try? modelContext.fetchCount(FetchDescriptor<Episode>(
+        unplayedCount = (try? modelContext.fetchCount(FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { $0.isPlayed == false && $0.podcast.isSubscribed == true }
         ))) ?? 0
-    }
 
-    private var queuedCount: Int {
-        (try? modelContext.fetchCount(FetchDescriptor<Episode>(
+        queuedCount = (try? modelContext.fetchCount(FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { $0.isQueued == true }
         ))) ?? 0
-    }
 
-    private var syncIssueCount: Int {
-        podcasts.filter { $0.syncStatus == "failed" || $0.syncErrorMessage != nil }.count
-    }
-
-    // TODO: downloadState is a computed property over private downloadStateRawValue,
-    // so we cannot express download state filters (failed/downloaded) via #Predicate.
-    // We use the isDownloaded stored Bool for offline-ready count.
-    // For failed downloads, we fall back to fetching all episodes (N+1 remains here).
-    private var failedDownloadCount: Int {
-        let allEpisodes = (try? modelContext.fetch(FetchDescriptor<Episode>())) ?? []
-        return allEpisodes.filter { $0.downloadState == .failed }.count
+        // `downloadState` is a computed wrapper over a private raw String, so
+        // we can't express `== .failed` in #Predicate. Cap the fetch at 1000
+        // so a 100k-episode store never reads its whole episode table for a
+        // diagnostics tile that lives offscreen most of the time.
+        var failedDescriptor = FetchDescriptor<Episode>()
+        failedDescriptor.fetchLimit = 1000
+        let sample = (try? modelContext.fetch(failedDescriptor)) ?? []
+        failedDownloadCount = sample.lazy.filter { $0.downloadState == .failed }.count
     }
 
     private var offlineReadyCount: Int {

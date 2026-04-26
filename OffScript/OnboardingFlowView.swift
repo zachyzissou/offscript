@@ -1,5 +1,6 @@
 import AuthenticationServices
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct OnboardingFlowView: View {
     let onComplete: (() -> Void)?
@@ -7,6 +8,10 @@ struct OnboardingFlowView: View {
     @State private var selectedGenres: Set<Genre> = []
     @State private var selectedPodcasts: [PodcastSearchResult] = []
     @State private var signInError: String?
+    // Bring-your-shows step state.
+    @State private var importerPresented = false
+    @State private var importGuideSource: ImportSource?
+    @State private var pendingImportURL: URL?
 
     init(onComplete: (() -> Void)? = nil) {
         self.onComplete = onComplete
@@ -41,22 +46,20 @@ struct OnboardingFlowView: View {
                         removal: .move(edge: .leading).combined(with: .opacity)
                     ))
             case 1:
-                GenrePickerView(
-                    selectedGenres: $selectedGenres,
+                BringYourShowsStep(
                     onContinue: { withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { step = 2 } },
-                    onBack: { withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { step = 0 } }
+                    onBack: { withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { step = 0 } },
+                    onPickFile: { importerPresented = true },
+                    onShowGuide: { source in importGuideSource = source }
                 )
                 .transition(.asymmetric(
                     insertion: .move(edge: .trailing).combined(with: .opacity),
                     removal: .move(edge: .leading).combined(with: .opacity)
                 ))
             case 2:
-                PodcastPickerView(
-                    selectedGenres: selectedGenres,
-                    onContinue: { podcasts in
-                        selectedPodcasts = podcasts
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { step = 3 }
-                    },
+                GenrePickerView(
+                    selectedGenres: $selectedGenres,
+                    onContinue: { withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { step = 3 } },
                     onBack: { withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { step = 1 } }
                 )
                 .transition(.asymmetric(
@@ -64,6 +67,19 @@ struct OnboardingFlowView: View {
                     removal: .move(edge: .leading).combined(with: .opacity)
                 ))
             case 3:
+                PodcastPickerView(
+                    selectedGenres: selectedGenres,
+                    onContinue: { podcasts in
+                        selectedPodcasts = podcasts
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { step = 4 }
+                    },
+                    onBack: { withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { step = 2 } }
+                )
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .move(edge: .leading).combined(with: .opacity)
+                ))
+            case 4:
                 ImportProgressView(
                     podcasts: selectedPodcasts,
                     selectedGenres: selectedGenres,
@@ -81,6 +97,40 @@ struct OnboardingFlowView: View {
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: step)
+        .fileImporter(
+            isPresented: $importerPresented,
+            allowedContentTypes: bringYourShowsContentTypes,
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                pendingImportURL = url
+            }
+        }
+        .sheet(item: $importGuideSource) { source in
+            ImportSourceGuideSheet(source: source, onPickFile: nil)
+        }
+        .sheet(item: Binding<PendingURL?>(
+            get: { pendingImportURL.map(PendingURL.init) },
+            set: { pendingImportURL = $0?.url }
+        )) { wrapped in
+            // After the user finishes (or cancels) the import sheet, advance
+            // them to the genre picker so the flow doesn't strand them on
+            // the bring-your-shows step.
+            OPMLImportView(initialURL: wrapped.url)
+                .onDisappear {
+                    pendingImportURL = nil
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        if step == 1 { step = 2 }
+                    }
+                }
+        }
+    }
+
+    private var bringYourShowsContentTypes: [UTType] {
+        var types: [UTType] = [.xml, .data]
+        if let opml = UTType("org.opml.opml") { types.insert(opml, at: 0) }
+        if let byExt = UTType(filenameExtension: "opml") { types.insert(byExt, at: 0) }
+        return types
     }
 
     private var welcomeScreen: some View {
@@ -143,6 +193,11 @@ struct OnboardingFlowView: View {
             .padding(.horizontal, 24)
         }
     }
+}
+
+private struct PendingURL: Identifiable {
+    let id = UUID()
+    let url: URL
 }
 
 // MARK: - Animated Title

@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var selectedTab = 0
     @State private var isSettingsPresented = false
     @State private var networkMonitor = NetworkMonitor.shared
+    @State private var pendingOPMLImport: PendingOPMLImport?
     @Query private var queueItems: [QueueItem]
 
     var body: some View {
@@ -87,11 +88,32 @@ struct ContentView: View {
                 break
             }
         }
+        .sheet(item: $pendingOPMLImport) { item in
+            OPMLImportView(initialURL: item.url)
+        }
     }
+}
+
+/// Lightweight wrapper so `.sheet(item:)` has a stable `Identifiable` to track
+/// (URL itself is not Identifiable in stdlib and we don't want to retroactively
+/// conform it across the app).
+private struct PendingOPMLImport: Identifiable {
+    let id = UUID()
+    let url: URL
 }
 
 private extension ContentView {
     func handleDeepLink(_ url: URL) {
+        // OPML files shared from other podcast apps (Apple Podcasts, Overcast,
+        // Pocket Casts, Castro) come in as `file://…/something.opml`. Route
+        // them straight into the import sheet so the user lands on the
+        // dedupe-aware review screen, not the file picker.
+        if url.isFileURL,
+           url.pathExtension.lowercased() == "opml" || (url.pathExtension.lowercased() == "xml" && url.lastPathComponent.lowercased().contains("subscriptions")) {
+            pendingOPMLImport = PendingOPMLImport(url: url)
+            return
+        }
+
         guard url.scheme == "offscript" else { return }
         let host = url.host()
         let pathComponent = url.pathComponents.dropFirst().first

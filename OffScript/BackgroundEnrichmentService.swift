@@ -29,12 +29,16 @@ final class BackgroundEnrichmentService {
     /// Drains episodes that don't yet have an EpisodeProfile.summary. Useful
     /// to call on app launch in case prior enrichment got cut off.
     func backfill(in context: ModelContext) {
-        let descriptor = FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { $0.profile == nil || $0.profile?.summary == nil }
+        // `fetchLimit` lives on FetchDescriptor so the underlying SQL
+        // returns at most 20 rows. Previously we fetched every unenriched
+        // episode (potentially tens of thousands) just to take the first 20.
+        var descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.profile == nil || $0.profile?.summary == nil },
+            sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
         )
+        descriptor.fetchLimit = 20
         guard let unenriched = try? context.fetch(descriptor) else { return }
-        // Cap the backfill so we don't burn FoundationModels budget on every launch.
-        queue(episodeIDs: unenriched.prefix(20).map(\.id))
+        queue(episodeIDs: unenriched.map(\.id))
     }
 
     private func startIfNeeded() {

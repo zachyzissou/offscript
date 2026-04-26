@@ -15,6 +15,16 @@ struct LibraryView: View {
     @State private var focusFilter: LibraryFocusFilter = .all
     @State private var librarySearch = ""
     @State private var librarySearchMatches: [Episode] = []
+    // Derived state — populated in `recomputeDerived()`. Computing these in
+    // `var body` forced an O(n) scan over every @Query refresh × every render,
+    // which became the main launch hitch at 500+ podcasts / 100k episodes.
+    @State private var subscribedPodcasts: [Podcast] = []
+    @State private var inProgressEpisodes: [Episode] = []
+    @State private var freshEpisodes: [Episode] = []
+    @State private var downloadedEpisodes: [Episode] = []
+    @State private var downloadActivityEpisodes: [Episode] = []
+    @State private var unplayedCountByPodcast: [UUID: Int] = [:]
+    @State private var inProgressCountByPodcast: [UUID: Int] = [:]
     let onOpenSettings: () -> Void
 
     enum LibraryFocusFilter: String, CaseIterable, Identifiable {
@@ -38,50 +48,86 @@ struct LibraryView: View {
         }
     }
 
-    private var subscribedPodcasts: [Podcast] {
-        podcasts
-            .filter(\.isSubscribed)
-            .sorted(by: comparePodcasts)
-    }
+    /// Single pass over `episodes` + `podcasts`, called from `.task` and from
+    /// `onChange` of the inputs. Replaces six body-time computed properties
+    /// that each scanned the full episode list every render.
+    private func recomputeDerived() {
+        // Pre-bucket episodes by podcast.id once. The library sort below uses
+        // this for O(1) lookups instead of filtering the full episode array
+        // inside the comparator (previously O(n²) when sorting by recently
+        // played).
+        var episodesByPodcast: [UUID: [Episode]] = [:]
+        var lastPlayedByPodcast: [UUID: Date] = [:]
+        var inProgress: [Episode] = []
+        var fresh: [Episode] = []
+        var downloaded: [Episode] = []
+        var downloadActivity: [Episode] = []
+        var unplayedCounts: [UUID: Int] = [:]
+        var inProgressCounts: [UUID: Int] = [:]
 
-    private var inProgressEpisodes: [Episode] {
-        episodes
-            .filter { $0.playedPosition > 0 && !$0.isPlayed }
-            .filter { !showDownloadedOnly || $0.downloadState == .downloaded }
-            .sorted { ($0.lastPlayedAt ?? .distantPast) > ($1.lastPlayedAt ?? .distantPast) }
-    }
+        for episode in episodes {
+            let podcastID = episode.podcast.id
+            episodesByPodcast[podcastID, default: []].append(episode)
 
-    private var freshEpisodes: [Episode] {
-        episodes
-            .filter { !$0.isPlayed }
-            .filter { !showDownloadedOnly || $0.downloadState == .downloaded }
-            .sorted { $0.pubDate > $1.pubDate }
-    }
-
-    private var downloadedEpisodes: [Episode] {
-        episodes
-            .filter { $0.downloadState == .downloaded }
-            .sorted { ($0.downloadCompletedAt ?? .distantPast) > ($1.downloadCompletedAt ?? .distantPast) }
-    }
-
-    private var downloadActivityEpisodes: [Episode] {
-        episodes
-            .filter { $0.downloadState == .queued || $0.downloadState == .downloading || $0.downloadState == .failed }
-            .sorted { lhs, rhs in
-                let lhsDate = lhs.downloadRequestedAt ?? lhs.pubDate
-                let rhsDate = rhs.downloadRequestedAt ?? rhs.pubDate
-                return lhsDate > rhsDate
+            if let played = episode.lastPlayedAt {
+                if played > (lastPlayedByPodcast[podcastID] ?? .distantPast) {
+                    lastPlayedByPodcast[podcastID] = played
+                }
             }
-    }
 
-    /// Pre-computed podcast-to-count dictionaries so the ForEach below is O(1) per row
-    /// instead of O(podcasts * episodes).
-    private var unplayedCountByPodcast: [UUID: Int] {
-        var counts: [UUID: Int] = [:]
-        for episode in freshEpisodes {
-            counts[episode.podcast.id, default: 0] += 1
+            let passesDownloadFilter = !showDownloadedOnly || episode.downloadState == .downloaded
+
+            if !episode.isPlayed && passesDownloadFilter {
+                fresh.append(episode)
+                unplayedCounts[podcastID, default: 0] += 1
+            }
+
+            if episode.playedPosition > 0 && !episode.isPlayed && passesDownloadFilter {
+                inProgress.append(episode)
+                inProgressCounts[podcastID, default: 0] += 1
+            }
+
+            switch episode.downloadState {
+            case .downloaded:
+                downloaded.append(episode)
+            case .queued, .downloading, .failed:
+                downloadActivity.append(episode)
+            case .notDownloaded:
+                break
+            }
         }
-        return counts
+
+        // Sorts are over already-filtered subsets, not the whole episode list.
+        inProgress.sort { ($0.lastPlayedAt ?? .distantPast) > ($1.lastPlayedAt ?? .distantPast) }
+        fresh.sort { $0.pubDate > $1.pubDate }
+        downloaded.sort { ($0.downloadCompletedAt ?? .distantPast) > ($1.downloadCompletedAt ?? .distantPast) }
+        downloadActivity.sort { lhs, rhs in
+            let lhsDate = lhs.downloadRequestedAt ?? lhs.pubDate
+            let rhsDate = rhs.downloadRequestedAt ?? rhs.pubDate
+            return lhsDate > rhsDate
+        }
+
+        let subscribed = podcasts.filter(\.isSubscribed)
+        let sorted = subscribed.sorted { lhs, rhs in
+            switch sortMode {
+            case .newest:
+                return (lhs.latestPubDate ?? .distantPast) > (rhs.latestPubDate ?? .distantPast)
+            case .oldest:
+                return (lhs.latestPubDate ?? .distantFuture) < (rhs.latestPubDate ?? .distantFuture)
+            case .recentlyPlayed:
+                let l = lastPlayedByPodcast[lhs.id] ?? .distantPast
+                let r = lastPlayedByPodcast[rhs.id] ?? .distantPast
+                return l > r
+            }
+        }
+
+        self.subscribedPodcasts = sorted
+        self.inProgressEpisodes = inProgress
+        self.freshEpisodes = fresh
+        self.downloadedEpisodes = downloaded
+        self.downloadActivityEpisodes = downloadActivity
+        self.unplayedCountByPodcast = unplayedCounts
+        self.inProgressCountByPodcast = inProgressCounts
     }
 
     /// Recompute the search matches from the episodes list. Called from
@@ -143,14 +189,6 @@ struct LibraryView: View {
         }
     }
 
-    private var inProgressCountByPodcast: [UUID: Int] {
-        var counts: [UUID: Int] = [:]
-        for episode in inProgressEpisodes {
-            counts[episode.podcast.id, default: 0] += 1
-        }
-        return counts
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
@@ -173,124 +211,10 @@ struct LibraryView: View {
                 }
 
                 if subscribedPodcasts.isEmpty {
-                    VStack(spacing: 20) {
-                        ContentUnavailableView("Your library is empty", systemImage: "books.vertical", description: Text("Use Search to bring in shows, then OffScript will keep them fresh here."))
-
-                        NavigationLink("Find Shows") {
-                            SearchView()
-                        }
-                        .buttonStyle(PrimaryPillButtonStyle())
-                    }
-                    .padding(.horizontal, OffScriptTheme.pagePadding)
-                    .padding(.top, 24)
+                    emptyLibraryState
                 } else {
-                    if focusFilter == .all || focusFilter == .inProgress {
-                        if !inProgressEpisodes.isEmpty {
-                            LibraryEpisodeRail(
-                                title: "Continue Listening",
-                                subtitle: "Pick up where you left off.",
-                                episodes: Array(inProgressEpisodes.prefix(focusFilter == .inProgress ? 30 : 8)),
-                                reasonProvider: { episode in
-                                    if let duration = episode.duration {
-                                        return "\(EpisodeDurationFormatter.short(max(duration - episode.playedPosition, 0))) left"
-                                    }
-                                    return "In progress"
-                                }
-                            )
-                        }
-                    }
-
-                    if focusFilter == .all || focusFilter == .fresh {
-                        if !freshEpisodes.isEmpty {
-                            LibraryEpisodeRail(
-                                title: "Fresh Episodes",
-                                subtitle: "Recent drops from the shows you already trust.",
-                                episodes: Array(freshEpisodes.prefix(focusFilter == .fresh ? 30 : 10)),
-                                reasonProvider: { episode in
-                                    if let duration = episode.duration {
-                                        return "Fresh • \(EpisodeDurationFormatter.short(duration))"
-                                    }
-                                    return "Fresh"
-                                }
-                            )
-                        }
-                    }
-
-                    if focusFilter == .all || focusFilter == .downloads {
-                        if !downloadActivityEpisodes.isEmpty {
-                            LibraryDownloadActivitySection(episodes: downloadActivityEpisodes)
-                        }
-
-                        if !downloadedEpisodes.isEmpty {
-                            LibraryEpisodeRail(
-                                title: "Downloaded",
-                                subtitle: "Ready when the signal drops.",
-                                episodes: Array(downloadedEpisodes.prefix(focusFilter == .downloads ? 30 : 10)),
-                                reasonProvider: { episode in
-                                    if let duration = episode.duration {
-                                        return "Offline • \(EpisodeDurationFormatter.short(duration))"
-                                    }
-                                    return "Offline"
-                                }
-                            )
-                        }
-
-                        if focusFilter == .downloads, downloadedEpisodes.isEmpty, downloadActivityEpisodes.isEmpty {
-                            OffScriptEmptyState(
-                                icon: "arrow.down.circle",
-                                headline: "Nothing downloaded yet",
-                                message: "Tap the download icon on any episode to keep it offline.",
-                                generatedCopyKey: "library.downloads.empty",
-                                generatedCopyPrompt: "Surface: empty Downloads filter on a podcast app's Library tab. Write a two-sentence prompt to download something for offline listening."
-                            )
-                            .padding(.horizontal, OffScriptTheme.pagePadding)
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 14) {
-                        OffScriptSectionHeader(
-                            title: "Shows",
-                            subtitle: "Your subscribed collection."
-                        )
-                        .padding(.horizontal, OffScriptTheme.pagePadding)
-
-                        LazyVStack(spacing: 14) {
-                            ForEach(subscribedPodcasts) { podcast in
-                                NavigationLink {
-                                    PodcastDetailView(podcast: podcast)
-                                } label: {
-                                    PodcastShelfCard(
-                                        podcast: podcast,
-                                        unplayedCount: unplayedCountByPodcast[podcast.id] ?? 0,
-                                        inProgressCount: inProgressCountByPodcast[podcast.id] ?? 0
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                                .padding(.horizontal, OffScriptTheme.pagePadding)
-                                .contextMenu {
-                                    Button {
-                                        markAllPlayed(podcast)
-                                    } label: {
-                                        Label("Mark all played", systemImage: "checkmark.circle")
-                                    }
-                                    Button {
-                                        Task { await syncSingle(podcast) }
-                                    } label: {
-                                        Label("Refresh feed", systemImage: "arrow.clockwise")
-                                    }
-                                    ShareLink(item: podcast.feedURL) {
-                                        Label("Share feed URL", systemImage: "square.and.arrow.up")
-                                    }
-                                    Divider()
-                                    Button(role: .destructive) {
-                                        unsubscribe(podcast)
-                                    } label: {
-                                        Label("Unsubscribe", systemImage: "xmark.bin")
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    librarySectionsForCurrentFilter
+                    shelfSection
                 }
             }
             .padding(.top, 16)
@@ -353,12 +277,168 @@ struct LibraryView: View {
         }
         .task {
             sortMode = AppSettings.librarySortMode
+            recomputeDerived()
         }
+        .onChange(of: episodes) { _, _ in recomputeDerived() }
+        .onChange(of: podcasts) { _, _ in recomputeDerived() }
         .onChange(of: showDownloadedOnly) { _, newValue in
             AppSettings.libraryShowDownloadedOnly = newValue
+            recomputeDerived()
         }
         .onChange(of: sortMode) { _, newValue in
             AppSettings.librarySortMode = newValue
+            recomputeDerived()
+        }
+    }
+
+    // MARK: - Body subviews
+    // Splitting the body into named computed views keeps the SwiftUI
+    // type-checker under its complexity budget — the original chained
+    // if/else over four filter modes ran out of solver budget after the
+    // @State refactor.
+
+    @ViewBuilder
+    private var emptyLibraryState: some View {
+        VStack(spacing: 20) {
+            ContentUnavailableView(
+                "Your library is empty",
+                systemImage: "books.vertical",
+                description: Text("Use Search to bring in shows, then OffScript will keep them fresh here.")
+            )
+            NavigationLink("Find Shows") { SearchView() }
+                .buttonStyle(PrimaryPillButtonStyle())
+        }
+        .padding(.horizontal, OffScriptTheme.pagePadding)
+        .padding(.top, 24)
+    }
+
+    @ViewBuilder
+    private var librarySectionsForCurrentFilter: some View {
+        if focusFilter == .all || focusFilter == .inProgress, !inProgressEpisodes.isEmpty {
+            inProgressRail
+        }
+        if focusFilter == .all || focusFilter == .fresh, !freshEpisodes.isEmpty {
+            freshRail
+        }
+        if focusFilter == .all || focusFilter == .downloads {
+            downloadsSections
+        }
+    }
+
+    private var inProgressLimit: Int { focusFilter == .inProgress ? 30 : 8 }
+    private var freshLimit: Int { focusFilter == .fresh ? 30 : 10 }
+    private var downloadsLimit: Int { focusFilter == .downloads ? 30 : 10 }
+
+    private var inProgressRail: some View {
+        LibraryEpisodeRail(
+            title: "Continue Listening",
+            subtitle: "Pick up where you left off.",
+            episodes: Array(inProgressEpisodes.prefix(inProgressLimit)),
+            reasonProvider: inProgressReason
+        )
+    }
+
+    private var freshRail: some View {
+        LibraryEpisodeRail(
+            title: "Fresh Episodes",
+            subtitle: "Recent drops from the shows you already trust.",
+            episodes: Array(freshEpisodes.prefix(freshLimit)),
+            reasonProvider: freshReason
+        )
+    }
+
+    @ViewBuilder
+    private var downloadsSections: some View {
+        if !downloadActivityEpisodes.isEmpty {
+            LibraryDownloadActivitySection(episodes: downloadActivityEpisodes)
+        }
+        if !downloadedEpisodes.isEmpty {
+            LibraryEpisodeRail(
+                title: "Downloaded",
+                subtitle: "Ready when the signal drops.",
+                episodes: Array(downloadedEpisodes.prefix(downloadsLimit)),
+                reasonProvider: downloadedReason
+            )
+        }
+        if focusFilter == .downloads, downloadedEpisodes.isEmpty, downloadActivityEpisodes.isEmpty {
+            OffScriptEmptyState(
+                icon: "arrow.down.circle",
+                headline: "Nothing downloaded yet",
+                message: "Tap the download icon on any episode to keep it offline.",
+                generatedCopyKey: "library.downloads.empty",
+                generatedCopyPrompt: "Surface: empty Downloads filter on a podcast app's Library tab. Write a two-sentence prompt to download something for offline listening."
+            )
+            .padding(.horizontal, OffScriptTheme.pagePadding)
+        }
+    }
+
+    private func inProgressReason(_ episode: Episode) -> String {
+        if let duration = episode.duration {
+            let remaining = max(duration - episode.playedPosition, 0)
+            return "\(EpisodeDurationFormatter.short(remaining)) left"
+        }
+        return "In progress"
+    }
+
+    private func freshReason(_ episode: Episode) -> String {
+        if let duration = episode.duration {
+            return "Fresh • \(EpisodeDurationFormatter.short(duration))"
+        }
+        return "Fresh"
+    }
+
+    private func downloadedReason(_ episode: Episode) -> String {
+        if let duration = episode.duration {
+            return "Offline • \(EpisodeDurationFormatter.short(duration))"
+        }
+        return "Offline"
+    }
+
+    private var shelfSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            OffScriptSectionHeader(
+                title: "Shows",
+                subtitle: "Your subscribed collection."
+            )
+            .padding(.horizontal, OffScriptTheme.pagePadding)
+
+            LazyVStack(spacing: 14) {
+                ForEach(subscribedPodcasts) { podcast in
+                    shelfRow(for: podcast)
+                }
+            }
+        }
+    }
+
+    private func shelfRow(for podcast: Podcast) -> some View {
+        NavigationLink {
+            PodcastDetailView(podcast: podcast)
+        } label: {
+            PodcastShelfCard(
+                podcast: podcast,
+                unplayedCount: unplayedCountByPodcast[podcast.id] ?? 0,
+                inProgressCount: inProgressCountByPodcast[podcast.id] ?? 0
+            )
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, OffScriptTheme.pagePadding)
+        .contextMenu { shelfContextMenu(for: podcast) }
+    }
+
+    @ViewBuilder
+    private func shelfContextMenu(for podcast: Podcast) -> some View {
+        Button { markAllPlayed(podcast) } label: {
+            Label("Mark all played", systemImage: "checkmark.circle")
+        }
+        Button { Task { await syncSingle(podcast) } } label: {
+            Label("Refresh feed", systemImage: "arrow.clockwise")
+        }
+        ShareLink(item: podcast.feedURL) {
+            Label("Share feed URL", systemImage: "square.and.arrow.up")
+        }
+        Divider()
+        Button(role: .destructive) { unsubscribe(podcast) } label: {
+            Label("Unsubscribe", systemImage: "xmark.bin")
         }
     }
 
@@ -417,23 +497,6 @@ struct LibraryView: View {
         }
     }
 
-    private func comparePodcasts(_ lhs: Podcast, _ rhs: Podcast) -> Bool {
-        switch sortMode {
-        case .newest:
-            return (lhs.latestPubDate ?? .distantPast) > (rhs.latestPubDate ?? .distantPast)
-        case .oldest:
-            return (lhs.latestPubDate ?? .distantFuture) < (rhs.latestPubDate ?? .distantFuture)
-        case .recentlyPlayed:
-            return lastPlayedDate(for: lhs) > lastPlayedDate(for: rhs)
-        }
-    }
-
-    private func lastPlayedDate(for podcast: Podcast) -> Date {
-        episodes
-            .filter { $0.podcast.id == podcast.id }
-            .compactMap(\.lastPlayedAt)
-            .max() ?? .distantPast
-    }
 }
 
 struct PodcastDetailView: View {

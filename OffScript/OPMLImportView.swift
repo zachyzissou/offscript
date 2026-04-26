@@ -10,6 +10,11 @@ struct OPMLImportView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
+    /// When set (e.g. routed from `.onOpenURL` after the user shares an OPML
+    /// file from another podcast app), the picker stage is skipped and the
+    /// file is parsed straight into the review stage.
+    let initialURL: URL?
+
     @State private var stage: Stage = .picker
     @State private var importerPresented = false
     @State private var candidates: [OPMLImportService.CandidateFeed] = []
@@ -19,6 +24,10 @@ struct OPMLImportView: View {
     @State private var errorMessage: String?
 
     private let service = OPMLImportService()
+
+    init(initialURL: URL? = nil) {
+        self.initialURL = initialURL
+    }
 
     private var opmlContentTypes: [UTType] {
         var types: [UTType] = [.xml, .text, .data]
@@ -61,6 +70,14 @@ struct OPMLImportView: View {
             allowsMultipleSelection: false
         ) { result in
             handlePickerResult(result)
+        }
+        .task {
+            // If we were opened with a file already selected (e.g. routed via
+            // `.onOpenURL` after the user shared an OPML from another app),
+            // skip the picker stage and parse straight into review.
+            if let initialURL, stage == .picker {
+                handlePickerResult(.success([initialURL]))
+            }
         }
     }
 

@@ -33,32 +33,58 @@ final class SpotlightIndexer {
             return
         }
 
-        var items: [CSSearchableItem] = []
-        items.reserveCapacity(podcasts.count * (episodesPerPodcast + 1))
+        // Single episode fetch with podcast prefetched, then bucket by podcast
+        // ID. Replaces N podcasts × `podcast.episodes` faulted relationship
+        // loads (100k+ at scale) with one indexed query.
+        var episodeDescriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast.isSubscribed == true },
+            sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
+        )
+        episodeDescriptor.relationshipKeyPathsForPrefetching = [\Episode.podcast]
 
-        for podcast in podcasts {
-            items.append(makeItem(for: podcast))
-
-            let recent = podcast.episodes
-                .sorted { $0.pubDate > $1.pubDate }
-                .prefix(episodesPerPodcast)
-
-            for episode in recent {
-                items.append(makeItem(for: episode))
-            }
+        let recentEpisodes: [Episode]
+        do {
+            recentEpisodes = try context.fetch(episodeDescriptor)
+        } catch {
+            logger.error("Spotlight reindex failed to fetch episodes: \(String(describing: error), privacy: .public)")
+            recentEpisodes = []
         }
 
+        var seenCountByPodcast: [UUID: Int] = [:]
+        var episodeItems: [CSSearchableItem] = []
+        episodeItems.reserveCapacity(podcasts.count * episodesPerPodcast)
+
+        for episode in recentEpisodes {
+            let podcastID = episode.podcast.id
+            let count = seenCountByPodcast[podcastID, default: 0]
+            guard count < episodesPerPodcast else { continue }
+            seenCountByPodcast[podcastID] = count + 1
+            episodeItems.append(makeItem(for: episode))
+        }
+
+        var items: [CSSearchableItem] = []
+        items.reserveCapacity(podcasts.count + episodeItems.count)
+        items.append(contentsOf: podcasts.map(makeItem(for:)))
+        items.append(contentsOf: episodeItems)
+
+        // Wrap delete + add in beginBatch/endBatch so Spotlight commits a
+        // single transaction instead of a per-item write per call.
+        session.beginBatch()
         session.deleteSearchableItems(withDomainIdentifiers: [podcastDomain, episodeDomain]) { [weak self] error in
             if let error {
                 self?.logger.error("Spotlight delete failed: \(String(describing: error), privacy: .public)")
             }
-
-            session.indexSearchableItems(items) { error in
-                if let error {
-                    self?.logger.error("Spotlight index failed: \(String(describing: error), privacy: .public)")
-                } else {
-                    self?.logger.info("Indexed \(items.count, privacy: .public) Spotlight items")
-                }
+        }
+        session.indexSearchableItems(items) { [weak self] error in
+            if let error {
+                self?.logger.error("Spotlight index failed: \(String(describing: error), privacy: .public)")
+            }
+        }
+        session.endBatch(withClientState: Data()) { [weak self] error in
+            if let error {
+                self?.logger.error("Spotlight endBatch failed: \(String(describing: error), privacy: .public)")
+            } else {
+                self?.logger.info("Indexed \(items.count, privacy: .public) Spotlight items")
             }
         }
     }
