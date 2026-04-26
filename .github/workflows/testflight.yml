@@ -33,7 +33,7 @@ permissions:
 jobs:
   testflight:
     name: Build, Upload, And Annotate TestFlight
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 90
 
     env:
@@ -52,9 +52,22 @@ jobs:
       - name: Select active Xcode
         run: |
           set -euo pipefail
+          for candidate in \
+            /Applications/Xcode_26.4.1.app/Contents/Developer \
+            /Applications/Xcode_26.4.app/Contents/Developer \
+            /Applications/Xcode_26.4.0.app/Contents/Developer \
+            /Applications/Xcode_26.3.app/Contents/Developer \
+            /Applications/Xcode.app/Contents/Developer
+          do
+            if [[ -d "$candidate" ]]; then
+              sudo xcode-select -s "$candidate"
+              break
+            fi
+          done
           echo "DEVELOPER_DIR=$(xcode-select -p)" >> "$GITHUB_ENV"
           echo "ASC_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
           xcodebuild -version
+          xcodebuild -showsdks
 
       - name: Install App Store Connect script dependencies
         run: |
