@@ -1,0 +1,211 @@
+name: TestFlight Beta
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      marketing_version:
+        description: "Optional MARKETING_VERSION override, for example 1.1"
+        required: false
+        type: string
+      build_number:
+        description: "Optional CURRENT_PROJECT_VERSION override. Leave blank for an auto-generated build number."
+        required: false
+        type: string
+      summary:
+        description: "Short release summary for the generated changelog."
+        required: false
+        type: string
+      what_to_test:
+        description: "Extra TestFlight What to Test notes."
+        required: false
+        type: string
+
+concurrency:
+  group: testflight-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    name: Build, Upload, And Annotate TestFlight
+    runs-on: macos-latest
+    timeout-minutes: 90
+
+    env:
+      ASC_BUNDLE_ID: com.offscript.app
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_TYPE: team
+      ASC_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+      TEST_DESTINATION: platform=iOS Simulator,OS=latest,name=iPhone 17 Pro
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select active Xcode
+        run: |
+          set -euo pipefail
+          echo "DEVELOPER_DIR=$(xcode-select -p)" >> "$GITHUB_ENV"
+          xcodebuild -version
+
+      - name: Install App Store Connect script dependencies
+        run: python3 -m pip install --user PyJWT requests
+
+      - name: Validate required TestFlight secrets
+        run: |
+          set -euo pipefail
+          test -n "${ASC_KEY_ID}" || { echo "Missing secret ASC_KEY_ID"; exit 1; }
+          test -n "${ASC_ISSUER_ID}" || { echo "Missing secret ASC_ISSUER_ID. CI xcodebuild upload requires a team API key issuer ID."; exit 1; }
+          test -n "${ASC_KEY_P8_BASE64:-}" || { echo "Missing secret ASC_KEY_P8_BASE64"; exit 1; }
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+
+      - name: Materialize App Store Connect API key
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$ASC_KEY_PATH"
+          test -s "$ASC_KEY_PATH"
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+
+      - name: Compute release metadata
+        id: metadata
+        run: |
+          set -euo pipefail
+          INPUT_VERSION="${{ github.event.inputs.marketing_version || '' }}"
+          INPUT_BUILD="${{ github.event.inputs.build_number || '' }}"
+
+          if [[ -n "$INPUT_VERSION" ]]; then
+            MARKETING_VERSION="$INPUT_VERSION"
+          else
+            MARKETING_VERSION="$(xcodebuild -project OffScript.xcodeproj -scheme OffScript -configuration Release -showBuildSettings | awk -F '= ' '/MARKETING_VERSION = / { print $2; exit }')"
+          fi
+
+          if [[ -n "$INPUT_BUILD" ]]; then
+            BUILD_NUMBER="$INPUT_BUILD"
+          else
+            BUILD_NUMBER="$(date -u +%Y%m%d)${GITHUB_RUN_NUMBER}${GITHUB_RUN_ATTEMPT}"
+          fi
+
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            REVISION_RANGE="${{ github.event.before }}..${{ github.sha }}"
+          else
+            REVISION_RANGE="$(git describe --tags --abbrev=0 2>/dev/null || echo HEAD~20)..${{ github.sha }}"
+          fi
+
+          {
+            echo "marketing_version=$MARKETING_VERSION"
+            echo "build_number=$BUILD_NUMBER"
+            echo "revision_range=$REVISION_RANGE"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "MARKETING_VERSION=$MARKETING_VERSION" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "REVISION_RANGE=$REVISION_RANGE" >> "$GITHUB_ENV"
+
+      - name: Resolve simulator destination
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import json
+          import subprocess
+
+          preferred = [
+              "iPhone 17 Pro",
+              "iPhone 16 Pro",
+              "iPhone 15 Pro",
+              "iPhone 17",
+              "iPhone 16",
+              "iPhone 15",
+          ]
+          data = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
+          names = []
+          for runtime, devices in data.get("devices", {}).items():
+              if "iOS" not in runtime:
+                  continue
+              for device in devices:
+                  name = device.get("name", "")
+                  if device.get("isAvailable") and name.startswith("iPhone") and name not in names:
+                      names.append(name)
+
+          for name in preferred:
+              if name in names:
+                  print(f"TEST_DESTINATION=platform=iOS Simulator,OS=latest,name={name}")
+                  break
+          else:
+              if not names:
+                  raise SystemExit("No available iPhone simulator found")
+              print(f"TEST_DESTINATION=platform=iOS Simulator,OS=latest,name={names[0]}")
+          PY
+
+      - name: Generate changelog and What to Test notes
+        run: |
+          set -euo pipefail
+          scripts/generate_testflight_notes.py \
+            --range "$REVISION_RANGE" \
+            --version "$MARKETING_VERSION" \
+            --build "$BUILD_NUMBER" \
+            --summary "${{ github.event.inputs.summary || '' }}" \
+            --what-to-test "${{ github.event.inputs.what_to_test || '' }}" \
+            --output-dir build/TestFlight/notes
+
+          {
+            echo "## TestFlight Beta ${MARKETING_VERSION} (${BUILD_NUMBER})"
+            echo
+            cat build/TestFlight/notes/WHAT_TO_TEST.md
+            echo
+            echo "## Changelog"
+            sed -n '1,80p' build/TestFlight/notes/CHANGELOG.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Validate TestFlight export policy
+        run: scripts/upload_testflight.sh --validate-only
+
+      - name: Run tests
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project OffScript.xcodeproj \
+            -scheme OffScript \
+            -destination "$TEST_DESTINATION" \
+            -resultBundlePath build/TestFlight/TestResults.xcresult
+
+      - name: Upload to TestFlight
+        run: scripts/upload_testflight.sh
+
+      - name: Wait for processing and publish TestFlight notes
+        run: |
+          set -euo pipefail
+          scripts/app_store_connect.py wait-build \
+            --build "$BUILD_NUMBER" \
+            --require-valid \
+            --timeout 2400 \
+            --poll 30 \
+            --id-file build/TestFlight/notes/build-id.txt
+
+          scripts/app_store_connect.py set-beta-notes \
+            --build-id "$(cat build/TestFlight/notes/build-id.txt)" \
+            --notes-file build/TestFlight/notes/testflight-notes.txt \
+            --locale en-US
+
+          scripts/app_store_connect.py sync-latest --apply
+          scripts/app_store_connect.py status --limit 5 > build/TestFlight/notes/app-store-connect-status.txt
+
+      - name: Upload release artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-${{ steps.metadata.outputs.marketing_version }}-${{ steps.metadata.outputs.build_number }}
+          path: |
+            build/TestFlight/notes
+            build/TestFlight/TestResults.xcresult
+          if-no-files-found: warn
