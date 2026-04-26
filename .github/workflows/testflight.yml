@@ -57,7 +57,12 @@ jobs:
           xcodebuild -version
 
       - name: Install App Store Connect script dependencies
-        run: python3 -m pip install --user PyJWT requests
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/asc-venv"
+          "$RUNNER_TEMP/asc-venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/asc-venv/bin/python" -m pip install PyJWT requests
+          echo "$RUNNER_TEMP/asc-venv/bin" >> "$GITHUB_PATH"
 
       - name: Validate required TestFlight secrets
         run: |
