@@ -74,7 +74,7 @@ jobs:
           set -euo pipefail
           python3 -m venv "$RUNNER_TEMP/asc-venv"
           "$RUNNER_TEMP/asc-venv/bin/python" -m pip install --upgrade pip
-          "$RUNNER_TEMP/asc-venv/bin/python" -m pip install PyJWT requests
+          "$RUNNER_TEMP/asc-venv/bin/python" -m pip install PyJWT cryptography requests
           echo "$RUNNER_TEMP/asc-venv/bin" >> "$GITHUB_PATH"
 
       - name: Validate required TestFlight secrets
