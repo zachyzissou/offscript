@@ -41,6 +41,7 @@ jobs:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_KEY_TYPE: team
+      DEVELOPMENT_TEAM: 363TRR79UG
       TEST_DESTINATION: platform=iOS Simulator,OS=latest,name=iPhone 17 Pro
 
     steps:

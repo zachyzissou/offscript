@@ -13,6 +13,7 @@ VALIDATE_ONLY="false"
 ASC_SCRIPT="$ROOT_DIR/scripts/app_store_connect.py"
 BUILD_NUMBER="${BUILD_NUMBER:-}"
 MARKETING_VERSION="${MARKETING_VERSION:-}"
+DEVELOPMENT_TEAM="${DEVELOPMENT_TEAM:-363TRR79UG}"
 ENV_FILES=(
 	"$ROOT_DIR/.env.appstoreconnect"
 	"$ROOT_DIR/Config/.env.appstoreconnect"
@@ -87,6 +88,7 @@ prepare_xcode_args() {
 
 	[[ -z "$MARKETING_VERSION" ]] || BUILD_SETTINGS+=("MARKETING_VERSION=$MARKETING_VERSION")
 	[[ -z "$BUILD_NUMBER" ]] || BUILD_SETTINGS+=("CURRENT_PROJECT_VERSION=$BUILD_NUMBER")
+	[[ -z "$DEVELOPMENT_TEAM" ]] || BUILD_SETTINGS+=("DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM" "CODE_SIGN_STYLE=Automatic")
 
 	if [[ -n "${ASC_KEY_PATH:-}" ]]; then
 		[[ -n "${ASC_KEY_ID:-}" ]] || fail "ASC_KEY_ID is required when ASC_KEY_PATH is set"
