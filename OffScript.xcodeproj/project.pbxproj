@@ -10,6 +10,7 @@
 		2C2C34B7601B89D09EE82CB5 /* NowPlayingLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14D8C31CB64C11A87C024C83 /* NowPlayingLiveActivity.swift */; };
 		44C0E0AC6482591A4EAFD10D /* OffScriptWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46ADA531EEBA740D491A0EA5 /* OffScriptWidgetBundle.swift */; };
 		6917557BC559768F09817986 /* SharedNowPlayingState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54CC165660C224E0219F4F5 /* SharedNowPlayingState.swift */; };
+		6C3CF6005A36F76125FF1145 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 3A8C904416C8040BCEC2C7A6 /* Sentry */; };
 		6DCC23E4633856CF92C2ABD4 /* NowPlayingAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73249578598D789646ACD0D4 /* NowPlayingAttributes.swift */; };
 		A08F1C7D3D74DE1EDBE0EA4D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AB4D8606F3D405715C6826B3 /* Foundation.framework */; };
 		AC28DCFB100FE151D5E4762B /* SharedPlaybackIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AFD41091290824FFDC3651F /* SharedPlaybackIntents.swift */; };
@@ -56,6 +57,7 @@
 		4AFD41091290824FFDC3651F /* SharedPlaybackIntents.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedPlaybackIntents.swift; path = OffScript/SharedPlaybackIntents.swift; sourceTree = "<group>"; };
 		73249578598D789646ACD0D4 /* NowPlayingAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NowPlayingAttributes.swift; path = OffScript/NowPlayingAttributes.swift; sourceTree = "<group>"; };
 		792817EA9DBB1BCEE61D071E /* OffScriptWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = OffScriptWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		79D354393C57E3AB6D46A96C /* Secrets.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Secrets.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		9C3ED1BF591385AF749D8E18 /* OffScriptWidgets */ = {isa = PBXFileReference; includeInIndex = 1; path = OffScriptWidgets; sourceTree = SOURCE_ROOT; };
 		A54CC165660C224E0219F4F5 /* SharedNowPlayingState.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SharedNowPlayingState.swift; path = OffScript/SharedNowPlayingState.swift; sourceTree = "<group>"; };
 		AB4D8606F3D405715C6826B3 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
@@ -109,6 +111,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6C3CF6005A36F76125FF1145 /* Sentry in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -144,6 +147,7 @@
 				73249578598D789646ACD0D4 /* NowPlayingAttributes.swift */,
 				4AFD41091290824FFDC3651F /* SharedPlaybackIntents.swift */,
 				A54CC165660C224E0219F4F5 /* SharedNowPlayingState.swift */,
+				816C21B5DC5E48AA734647F0 /* Config */,
 			);
 			sourceTree = "<group>";
 		};
@@ -164,6 +168,15 @@
 				AB4D8606F3D405715C6826B3 /* Foundation.framework */,
 			);
 			name = iOS;
+			sourceTree = "<group>";
+		};
+		816C21B5DC5E48AA734647F0 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				79D354393C57E3AB6D46A96C /* Secrets.xcconfig */,
+			);
+			name = Config;
+			path = Config;
 			sourceTree = "<group>";
 		};
 		98187DA847C36CFA36038FF3 /* Frameworks */ = {
@@ -194,6 +207,9 @@
 				1B9A23332F68C21600788880 /* OffScript */,
 			);
 			name = OffScript;
+			packageProductDependencies = (
+				3A8C904416C8040BCEC2C7A6 /* Sentry */,
+			);
 			productName = OffScript;
 			productReference = 1B9A23312F68C21600788880 /* OffScript.app */;
 			productType = "com.apple.product-type.application";
@@ -295,6 +311,9 @@
 			);
 			mainGroup = 1B9A23282F68C21600788880;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E1D9ADB2F78DC4A4989EDDFC /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1B9A23322F68C21600788880 /* Products */;
 			projectDirPath = "";
@@ -506,6 +525,7 @@
 		};
 		1B9A23552F68C21700788880 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 79D354393C57E3AB6D46A96C /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -550,6 +570,7 @@
 		};
 		1B9A23562F68C21700788880 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 79D354393C57E3AB6D46A96C /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -787,6 +808,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E1D9ADB2F78DC4A4989EDDFC /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.39.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		3A8C904416C8040BCEC2C7A6 /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E1D9ADB2F78DC4A4989EDDFC /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 1B9A23292F68C21600788880 /* Project object */;
 }

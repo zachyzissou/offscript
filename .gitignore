@@ -4,9 +4,10 @@ out/
 .DS_Store
 *.log
 
-# Local secrets — App Store Connect API keys
+# Local secrets — App Store Connect API keys, Sentry DSN, etc.
 .env.appstoreconnect
 *.p8
+Config/Secrets.xcconfig
 
 # Build artifacts
 build/

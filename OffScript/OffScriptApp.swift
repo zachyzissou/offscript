@@ -46,6 +46,12 @@ struct OffScriptApp: App {
     private static let logger = Logger(subsystem: "OffScript", category: "SwiftData")
 
     init() {
+        // Boot crash + perf telemetry as the very first thing so anything
+        // that explodes during the rest of init still lands in Sentry.
+        // Both calls are no-ops if the DSN is missing (CI builds, forks).
+        CrashReporter.configure()
+        MetricKitReporter.shared.configure()
+
         AppSettings.applyLaunchOverridesIfNeeded()
         OffScriptTips.configureIfNeeded()
 
