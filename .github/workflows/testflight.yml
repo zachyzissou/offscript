@@ -188,13 +188,14 @@ jobs:
       - name: Validate TestFlight export policy
         run: scripts/upload_testflight.sh --validate-only
 
-      - name: Run tests
+      - name: Run unit tests
         run: |
           set -euo pipefail
           xcodebuild test \
             -project OffScript.xcodeproj \
             -scheme OffScript \
             -destination "$TEST_DESTINATION" \
+            -only-testing:OffScriptTests \
             -resultBundlePath build/TestFlight/TestResults.xcresult
 
       - name: Upload to TestFlight

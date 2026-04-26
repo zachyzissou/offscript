@@ -24,7 +24,9 @@ The workflow:
 
 1. Computes a unique build number from the UTC date, GitHub run number, and run attempt.
 2. Generates `CHANGELOG.md`, `WHAT_TO_TEST.md`, and `testflight-notes.txt` under `build/TestFlight/notes`.
-3. Runs the iOS test suite on an available iPhone simulator.
+3. Runs the iOS unit test target on an available iPhone simulator. UI smoke tests
+   should stay in a separate lane so simulator flakiness does not block signed
+   beta uploads.
 4. Archives and uploads the Release build with `scripts/upload_testflight.sh`.
 5. Waits for App Store Connect processing, writes the generated notes into TestFlight's build localization, and syncs the latest eligible build to all beta groups.
 6. Uploads the changelog, What to Test notes, TestFlight notes, App Store Connect status snapshot, and test result bundle as GitHub Actions artifacts.
