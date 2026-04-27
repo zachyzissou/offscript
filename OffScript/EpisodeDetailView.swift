@@ -42,6 +42,15 @@ struct EpisodeDetailView: View {
                 }
                 actionRow
                 summarySection
+                // Apple-native AI surfaces — all on-device, all hidden when
+                // unavailable for the device/episode. Order intentional:
+                // Translation gates the rest if the source language differs
+                // from the user's locale; Briefing is the highest-leverage
+                // pre-listen surface; SpeechTranscriptionPanel is the
+                // power-user fallback for episodes without published transcripts.
+                EpisodeTranslationView(episode: episode)
+                EpisodeBriefingView(episode: episode)
+                SpeechTranscriptionPanel(episode: episode)
                 feedbackSection
                 channelChip
             }

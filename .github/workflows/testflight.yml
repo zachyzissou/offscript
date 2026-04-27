@@ -1,6 +1,28 @@
 name: TestFlight Beta
 
+# Three trigger modes, in order of preference:
+#
+#   1. release: published
+#      The canonical curated path. Cut a GitHub Release with a SemVer tag
+#      (vX.Y.Z), expert-crafted release notes in the body, and optionally
+#      mark it as a pre-release. The workflow:
+#        - Uses the tag as MARKETING_VERSION (strips the leading "v")
+#        - Uses the release body as TestFlight What-To-Test
+#        - Builds, uploads, attaches notes, and pings external testers
+#      Use this for everything that should ship with intentional notes.
+#
+#   2. push: main
+#      The fast path for direct merges. Auto-pushes to TestFlight using
+#      git-log-derived notes, then auto-cuts a prerelease GitHub Release
+#      tagged "testflight-X.Y.Z-build.N" so every ship has a permanent,
+#      browsable artifact. The prerelease flag signals this isn't an App
+#      Store release; users can later cut a curated vX.Y.Z release.
+#
+#   3. workflow_dispatch
+#      Manual override path with explicit version + notes inputs.
 on:
+  release:
+    types: [published]
   push:
     branches:
       - main
@@ -28,7 +50,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write  # required so the release-cut step can push tags + create GitHub Releases
 
 jobs:
   testflight:
@@ -117,15 +139,32 @@ jobs:
 
       - name: Compute release metadata
         id: metadata
+        env:
+          # Release-trigger fields. Empty when triggered by push or
+          # workflow_dispatch — handled gracefully below.
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_BODY: ${{ github.event.release.body }}
         run: |
           set -euo pipefail
           INPUT_VERSION="${{ github.event.inputs.marketing_version || '' }}"
           INPUT_BUILD="${{ github.event.inputs.build_number || '' }}"
 
+          # Precedence: explicit workflow_dispatch input > release tag > xcodeproj.
+          # Release tags are normalized "vX.Y.Z" → "X.Y.Z" so MARKETING_VERSION
+          # stays SemVer-clean for ASC.
           if [[ -n "$INPUT_VERSION" ]]; then
             MARKETING_VERSION="$INPUT_VERSION"
+          elif [[ -n "${RELEASE_TAG:-}" ]]; then
+            MARKETING_VERSION="${RELEASE_TAG#v}"
           else
             MARKETING_VERSION="$(xcodebuild -project OffScript.xcodeproj -scheme OffScript -configuration Release -showBuildSettings | awk -F '= ' '/MARKETING_VERSION = / { print $2; exit }')"
+          fi
+
+          # Stash the release body for the notes step. We base64 it so any
+          # newlines / shell-meta survive the env round-trip cleanly.
+          if [[ -n "${RELEASE_BODY:-}" ]]; then
+            printf '%s' "$RELEASE_BODY" | base64 > /tmp/release_body.b64
+            echo "release_body_b64_path=/tmp/release_body.b64" >> "$GITHUB_OUTPUT"
           fi
 
           if [[ -n "$INPUT_BUILD" ]]; then
@@ -186,14 +225,34 @@ jobs:
           PY
 
       - name: Generate changelog and What to Test notes
+        env:
+          # When triggered by a published GitHub Release, prefer the release
+          # body verbatim — it's the human-curated source of truth.
+          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_NAME: ${{ github.event.release.name }}
         run: |
           set -euo pipefail
+          # Resolve summary + what-to-test in this precedence order:
+          #   1. workflow_dispatch explicit input
+          #   2. release body (when triggered by release: published)
+          #   3. empty (let generate_testflight_notes.py fall back to git log)
+          SUMMARY="${{ github.event.inputs.summary || '' }}"
+          WHAT_TO_TEST="${{ github.event.inputs.what_to_test || '' }}"
+          if [[ -z "$SUMMARY" && -n "${RELEASE_NAME:-}" ]]; then
+            SUMMARY="$RELEASE_NAME"
+          fi
+          if [[ -z "$WHAT_TO_TEST" && -n "${RELEASE_BODY:-}" ]]; then
+            # Use the release body verbatim — release authors are expected to
+            # write expert TestFlight-shaped notes there.
+            WHAT_TO_TEST="$RELEASE_BODY"
+          fi
+
           scripts/generate_testflight_notes.py \
             --range "$REVISION_RANGE" \
             --version "$MARKETING_VERSION" \
             --build "$BUILD_NUMBER" \
-            --summary "${{ github.event.inputs.summary || '' }}" \
-            --what-to-test "${{ github.event.inputs.what_to_test || '' }}" \
+            --summary "$SUMMARY" \
+            --what-to-test "$WHAT_TO_TEST" \
             --output-dir build/TestFlight/notes
 
           {
@@ -248,3 +307,51 @@ jobs:
             build/TestFlight/notes
             build/TestFlight/TestResults.xcresult
           if-no-files-found: warn
+
+      # Cut a GitHub Release for push-triggered runs so every TestFlight ship
+      # leaves a permanent, browsable artifact on the Releases page.
+      #
+      # We only cut here for push events because release-triggered runs were
+      # already initiated by an existing release (cutting again would loop).
+      # Push-triggered releases are tagged with the build number to make them
+      # globally unique even when the marketing version hasn't changed
+      # between commits — the user can still curate the marketing release
+      # later by editing the release on the Releases page.
+      - name: Cut GitHub Release (push-triggered TestFlight ships only)
+        if: github.event_name == 'push' && success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="testflight-${MARKETING_VERSION}-build.${BUILD_NUMBER}"
+          NOTES_FILE="build/TestFlight/notes/CHANGELOG.md"
+          WHAT_FILE="build/TestFlight/notes/WHAT_TO_TEST.md"
+
+          BODY_FILE="$(mktemp)"
+          {
+            echo "## TestFlight Beta · ${MARKETING_VERSION} (${BUILD_NUMBER})"
+            echo
+            if [ -f "$WHAT_FILE" ]; then
+              echo "### What to Test"
+              cat "$WHAT_FILE"
+              echo
+            fi
+            if [ -f "$NOTES_FILE" ]; then
+              echo "### Changelog"
+              cat "$NOTES_FILE"
+            fi
+          } > "$BODY_FILE"
+
+          # --prerelease because TestFlight builds aren't App Store releases.
+          # When the user is ready to ship to the App Store, they cut a fresh
+          # vX.Y.Z release manually with curated notes — that release-trigger
+          # path takes over.
+          gh release create "$TAG" \
+            --title "TestFlight ${MARKETING_VERSION} (${BUILD_NUMBER})" \
+            --notes-file "$BODY_FILE" \
+            --prerelease \
+            --target "${GITHUB_SHA}" \
+            build/TestFlight/notes/testflight-notes.txt \
+            build/TestFlight/notes/CHANGELOG.md \
+            build/TestFlight/notes/WHAT_TO_TEST.md
+          echo "::notice::Cut GitHub Release $TAG"

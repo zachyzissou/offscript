@@ -316,6 +316,9 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
                     metadata: ["episode": episode.title, "podcast": episode.podcast.title],
                     in: self.modelContext
                 )
+                // Opportunistic background transcription. Service decides
+                // whether to actually run based on Wi-Fi + power state.
+                BackgroundTranscriptionService.shared.didFinishDownload(episodeID: episodeID)
             } catch {
                 episode.downloadState = .failed
                 episode.downloadErrorMessage = error.localizedDescription

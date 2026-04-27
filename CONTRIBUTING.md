@@ -25,4 +25,59 @@ These live in [`CLAUDE.md`](CLAUDE.md), but the most important ones:
 
 ## Releasing
 
-Push to `main` triggers `.github/workflows/testflight.yml`, which archives, runs unit tests, uploads to TestFlight, waits for ASC processing, and writes the release notes from the commit log. No manual steps.
+OffScript ships through three TestFlight pathways. Pick the one that matches the
+intent of the change:
+
+### 1. Curated release — preferred (cut a GitHub Release)
+
+Use this for anything that should ship with intentional, human-written notes
+(features, design refreshes, UX improvements, anything you'd want a tester to
+*understand* before opening the app).
+
+1. Bump `MARKETING_VERSION` in the project to the new SemVer, e.g. `2.3.0`.
+   Commit + merge to `main` first so the version is the source of truth.
+2. On GitHub: **Releases → Draft a new release**.
+3. **Tag**: `vX.Y.Z` matching the marketing version (e.g. `v2.3.0`). The leading
+   `v` is stripped automatically by the workflow.
+4. **Title**: short, expert phrasing — "OffScript 2.3 — Apple Intelligence + Live
+   Activity" beats "Release 2.3.0".
+5. **Body**: write the actual TestFlight What-To-Test notes here. The workflow
+   uses the release body verbatim as TestFlight notes, so:
+   - Lead with the headline change in one sentence
+   - Group fixes / additions / known issues with H3 headings
+   - Reference issue / PR numbers where relevant
+   - Avoid marketing words ("revolutionary", "must-try"); state what's there
+6. Mark **Pre-release** while it's a TestFlight beta. Convert to a final release
+   when you actually ship to the App Store.
+7. **Publish release**. The `release: published` trigger on
+   `.github/workflows/testflight.yml` takes over: it builds, uploads to
+   TestFlight, attaches the release body as TestFlight notes, and pings external
+   testers automatically.
+
+### 2. Fast path — push to `main`
+
+Use this for hotfixes, dependency bumps, or small iterative pushes that don't
+warrant manual notes.
+
+Push (or merge a PR) to `main`. The workflow:
+- Builds + uploads to TestFlight (notes auto-generated from the commit log)
+- Cuts a GitHub Release tagged `testflight-X.Y.Z-build.N` and marked as
+  pre-release, with the auto-generated notes attached
+- The release stays editable on the Releases page if you want to clean up the
+  notes after the fact
+
+### 3. Manual override — `workflow_dispatch`
+
+Run the workflow from the **Actions** tab when you need explicit control:
+- Custom `marketing_version` / `build_number`
+- Custom summary + What-To-Test text
+- Useful for re-running a build without a code change
+
+### Versioning + the changelog
+
+- `MARKETING_VERSION` is SemVer; the git tag matches (`v2.3.0`).
+- TestFlight build numbers are `YYYYMMDD<run-number><attempt>` (auto-generated).
+- `CHANGELOG.md` should grow a new `## [X.Y.Z] — DATE` block in the same PR that
+  lands the version bump. The release body and the changelog block don't have
+  to be word-for-word identical — the changelog is the durable record, the
+  release body is what testers see.

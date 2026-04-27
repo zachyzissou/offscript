@@ -33,10 +33,13 @@ final class PlaybackController: ObservableObject {
         modelContext = context
     }
 
+    /// True once `configure(context:)` has been called. App Intents running
+    /// in-process should check this before supplying a new context so they
+    /// don't replace the live app context with an intent-scoped one.
+    var isModelContextConfigured: Bool { modelContext != nil }
+
     func play(_ episode: Episode, in context: ModelContext? = nil) {
-        if let context {
-            configure(context: context)
-        }
+        prepareItem(for: episode, in: context)
 
         // Re-activate the audio session immediately before starting playback.
         // The init-time activation can fail silently (no audio queued yet, or
@@ -45,6 +48,26 @@ final class PlaybackController: ObservableObject {
         // setActive(true) right before player.play() is the supported pattern
         // for AVPlayer-backed apps.
         activateAudioSession()
+        player.play()
+        player.rate = playbackRate
+        isPlaying = true
+    }
+
+    /// Load an episode into the player WITHOUT starting playback. Used by
+    /// `DeepLinkRouter` for the "open the player but don't auto-play" path —
+    /// e.g. tapping a Spotlight result, where the user may just want to look
+    /// at the episode before deciding to play.
+    func load(_ episode: Episode, in context: ModelContext? = nil) {
+        prepareItem(for: episode, in: context)
+        isPlaying = false
+    }
+
+    /// Shared setup for `play()` and `load()`: configures context, installs
+    /// the AVPlayerItem, restores saved position, and opens the player UI.
+    private func prepareItem(for episode: Episode, in context: ModelContext?) {
+        if let context {
+            configure(context: context)
+        }
 
         currentEpisode = episode
         let url = episode.localFileURL ?? episode.audioURL
@@ -58,9 +81,6 @@ final class PlaybackController: ObservableObject {
             currentTime = 0
         }
 
-        player.play()
-        player.rate = playbackRate
-        isPlaying = true
         isPlayerPresented = true
         updateNowPlaying(episode: episode)
     }
