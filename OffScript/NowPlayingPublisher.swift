@@ -51,13 +51,20 @@ final class NowPlayingPublisher {
     /// Schedule a snapshot write. `force` skips the throttle (used on real
     /// state changes); time-tick callers use force=false to coalesce.
     private func scheduleWrite(force: Bool) {
+        // Always cancel any previously-scheduled task. Without this, a forced
+        // state-change write (isPlaying flip) leaves a pending time-tick task
+        // running behind it — the task fires a few seconds later and produces
+        // a redundant write/reload burst that can exceed ActivityKit's
+        // update-frequency budget.
+        pendingWriteTask?.cancel()
+        pendingWriteTask = nil
+
         let elapsed = Date().timeIntervalSince(lastWriteAt)
         if force || elapsed >= writeThrottle {
             performWrite()
             return
         }
 
-        pendingWriteTask?.cancel()
         let remaining = writeThrottle - elapsed
         pendingWriteTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(remaining))

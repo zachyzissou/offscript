@@ -63,8 +63,19 @@ else
   target.file_system_synchronized_groups << sync_group
 
   # 3. Per-config build settings.
+  # DEVELOPMENT_TEAM is intentionally not hardcoded here — it is inherited from
+  # the corresponding host-target configuration so both targets always use the
+  # same team. CI can still override via `xcodebuild DEVELOPMENT_TEAM=…`.
+  # Hardcoding a team ID breaks Automatic signing on machines enrolled under a
+  # different org/team and causes TestFlight CI to pick the wrong profile.
+  host_team_by_config = {}
+  host_target.build_configurations.each do |c|
+    team = c.build_settings.fetch('DEVELOPMENT_TEAM', nil)
+    host_team_by_config[c.name] = team if team
+  end
+
   target.build_configurations.each do |config|
-    config.build_settings.merge!(
+    settings = {
       'PRODUCT_BUNDLE_IDENTIFIER'         => EXTENSION_BUNDLE,
       'PRODUCT_NAME'                      => '$(TARGET_NAME)',
       'INFOPLIST_FILE'                    => INFO_PLIST_FILE,
@@ -75,14 +86,17 @@ else
       'SWIFT_VERSION'                     => '5.0',
       'GENERATE_INFOPLIST_FILE'           => 'NO',
       'CODE_SIGN_STYLE'                   => 'Automatic',
-      'DEVELOPMENT_TEAM'                  => 'TNRU46733N',
       'ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS' => 'NO',
       'LD_RUNPATH_SEARCH_PATHS'           => '$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks',
       'MARKETING_VERSION'                 => '1.0',
       'CURRENT_PROJECT_VERSION'           => '1',
       'INFOPLIST_KEY_NSHumanReadableCopyright' => '',
       'SWIFT_EMIT_LOC_STRINGS'            => 'YES'
-    )
+    }
+    # Mirror the host team for this specific config (Debug→Debug, Release→Release).
+    team = host_team_by_config[config.name] || host_team_by_config.values.first
+    settings['DEVELOPMENT_TEAM'] = team if team
+    config.build_settings.merge!(settings)
   end
 
   # 4. Embed the extension into the host app via "Embed Foundation Extensions".

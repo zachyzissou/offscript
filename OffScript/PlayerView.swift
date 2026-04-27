@@ -704,6 +704,10 @@ private struct PlayerControlStrip: View {
                 .frame(height: 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Without contentShape, the hit area is the rendered pixels only —
+        // AVRoutePickerView (28pt) and DownloadButton are smaller than the
+        // allocated frame, leaving dead zones in the cell corners.
+        .contentShape(Rectangle())
     }
 
     private var hairline: some View {
