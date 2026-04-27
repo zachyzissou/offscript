@@ -96,6 +96,7 @@ struct ContentView: View {
             BackgroundTranscriptionService.shared.configure(context: modelContext)
 
             #if DEBUG
+            configureDebugSeedDataIfNeeded()
             configureDebugSelectedTabIfNeeded()
             configureDebugPlaybackIfNeeded()
             #endif
@@ -226,6 +227,65 @@ private struct TunerTabBar: View {
 
 #if DEBUG
 private extension ContentView {
+    /// One-shot seeder for sim/dev: launch with -offscript.debugSeedSampleData YES
+    /// (and optionally -offscript.hasSeenOnboarding YES) to populate 3 podcasts × 3 episodes
+    /// each so populated-state UI can be audited without onboarding.
+    /// No-ops once data exists.
+    func configureDebugSeedDataIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: "offscript.debugSeedSampleData") else { return }
+
+        let existing = (try? modelContext.fetchCount(FetchDescriptor<Podcast>())) ?? 0
+        guard existing == 0 else { return }
+
+        let samples: [(title: String, author: String, summary: String, feed: String, art: String, categories: [String])] = [
+            ("Conan O'Brien Needs A Friend", "Team Coco", "Long-form chats with Conan and friends.",
+             "https://feeds.simplecast.com/dHoohVNH", "https://image.simplecastcdn.com/images/conan.jpg",
+             ["Comedy", "Interviews"]),
+            ("Lex Fridman Podcast", "Lex Fridman", "Conversations on AI, science, and consciousness.",
+             "https://lexfridman.com/feed/podcast/", "https://image.simplecastcdn.com/images/lex.jpg",
+             ["Science", "Tech"]),
+            ("Radiolab", "WNYC Studios", "Investigating a strange world.",
+             "https://feeds.simplecast.com/EmVW7VGp", "https://image.simplecastcdn.com/images/radiolab.jpg",
+             ["Science", "Storytelling"])
+        ]
+
+        for sample in samples {
+            let pod = Podcast(
+                title: sample.title,
+                author: sample.author,
+                summary: sample.summary,
+                feedURL: URL(string: sample.feed) ?? URL(string: "https://placeholder.invalid")!,
+                artworkURL: URL(string: sample.art),
+                categories: sample.categories,
+                isSubscribed: true
+            )
+            modelContext.insert(pod)
+
+            for i in 0..<3 {
+                let ep = Episode(
+                    guid: "\(sample.title)-\(i)",
+                    title: "\(sample.title) — Episode \(i + 1)",
+                    summary: "Sample episode \(i + 1) for \(sample.title). "
+                        + String(repeating: "Body text. ", count: 12),
+                    pubDate: Calendar.current.date(byAdding: .day, value: -i * 3, to: Date()) ?? Date(),
+                    duration: TimeInterval(1500 + i * 600),
+                    audioURL: URL(string: "https://placeholder.invalid/sample/\(i).mp3")!,
+                    artworkURL: URL(string: sample.art),
+                    podcast: pod
+                )
+                modelContext.insert(ep)
+
+                if i == 0 {
+                    ep.playedPosition = 600
+                    ep.lastPlayedAt = Date()
+                }
+            }
+        }
+
+        try? modelContext.save()
+    }
+
     func configureDebugSelectedTabIfNeeded() {
         let defaults = UserDefaults.standard
         guard let value = defaults.object(forKey: "offscript.debugSelectedTab") as? Int else { return }
