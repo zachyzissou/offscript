@@ -4,6 +4,22 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.3.11] — 2026-04-27
+
+Polish round 4 — performance, race fixes, accessibility hints from a final pre-release audit.
+
+### Fixed — `LibraryView` performance on heavy listeners
+- **`@Query` was fetching every Episode in the database, on every render.** The two derived arrays (`inProgressEpisodes`, `freshEpisodes`) filtered in Swift after a fetch-all. With 30 subscriptions and a 2k-episode back catalog (typical OPML import from a long-time listener), every Library render hydrated 2,000 model objects into memory just to drop most of them.
+- **Now uses two predicate-filtered `@Query` declarations** that push the `isSubscribed && !isPlayed [&& playedPosition > 0]` check down to SQLite. Only the matching rows hydrate.
+- **Per-podcast counts pre-bucketed once** instead of recomputed inside the `ForEach` over subscribed shows. The prior loop was O(N×M) — for each podcast row, it filtered `freshEpisodes` to count that podcast's unplayed episodes. With 30 podcasts and 2k episodes that's 60k iterations per scroll frame. Now O(N+M) total: build a `Dictionary<UUID, Int>` once, look up by podcast id.
+
+### Fixed — race between unsubscribe and currently-playing episode
+- `PodcastUnsubscribeService` deleting downloaded files for an unsubscribed podcast could fire while `AVPlayer` was mid-read on the local file URL — the file got removed from under the player. Now checks whether the currently-playing episode belongs to the podcast being unsubscribed and pauses playback first via the new `PlaybackController.pause()` public method. Without this the symptom was either silent corruption or a crash on some iOS versions.
+
+### Added — accessibility hints
+- PlayerView SPEED Menu — `accessibilityLabel("Playback speed") / accessibilityHint("Pick a speed for this podcast")`. VoiceOver previously announced just the visual label with no context about the Menu's purpose.
+- PlayerView SLEEP Menu — same treatment, with hint that adapts to whether a timer is currently active.
+
 ## [2.3.10] — 2026-04-27
 
 Polish round 3 — cascade cleanup, leaked references, and the residual punch list from a fresh re-audit.

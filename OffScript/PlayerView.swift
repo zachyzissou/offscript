@@ -429,6 +429,8 @@ struct PlayerView: View {
                                       color: hasCustomRate(for: episode) ? .offscriptSignalYellow : .offscriptPaperWhite)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Playback speed")
+                .accessibilityHint("Pick a speed for this podcast")
 
                 if !episode.isQueued {
                     Button {
@@ -477,6 +479,10 @@ struct PlayerView: View {
                                         : .offscriptPaperWhite)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Sleep timer")
+                .accessibilityHint(player.sleepTimerEndDate != nil
+                    ? "Active. Pick a new duration or cancel."
+                    : "Pick a duration to pause playback.")
 
                 Spacer()
             }

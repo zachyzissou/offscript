@@ -246,6 +246,18 @@ final class PlaybackController: ObservableObject {
         updateNowPlaying(episode: episode)
     }
 
+    /// Hard pause — stops playback regardless of current state. Used by
+    /// services that need to take the player offline (e.g. unsubscribe
+    /// flow before deleting the currently-playing file). Doesn't touch
+    /// `currentEpisode` so the UI keeps the strip visible; caller can
+    /// clear that explicitly if needed.
+    func pause() {
+        guard isPlaying else { return }
+        player.pause()
+        isPlaying = false
+        updateNowPlayingPlaybackRate()
+    }
+
     func togglePlayPause() {
         if isPlaying {
             player.pause()

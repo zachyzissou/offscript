@@ -46,7 +46,18 @@ enum PodcastUnsubscribeService {
             unsubscribeLogger.error("Queue cleanup failed: \(error.localizedDescription, privacy: .public)")
         }
 
-        // 3. Delete downloaded audio files for this podcast's episodes.
+        // 3. If the currently-playing episode is from this podcast, stop
+        // playback before we delete its file out from under AVPlayer.
+        // Without this, `removeItem(at:)` can fire while AVPlayer is
+        // mid-read on the local file URL, corrupting playback or
+        // crashing on some iOS versions.
+        let player = PlaybackController.shared
+        if let current = player.currentEpisode,
+           podcast.episodes.contains(where: { $0.id == current.id }) {
+            player.pause()
+        }
+
+        // 4. Delete downloaded audio files for this podcast's episodes.
         for episode in podcast.episodes where episode.isDownloaded {
             DownloadService.shared.deleteDownload(for: episode)
         }

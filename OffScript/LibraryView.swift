@@ -17,7 +17,25 @@ private let libraryLogger = Logger(subsystem: "com.offscript", category: "Librar
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var podcasts: [Podcast]
-    @Query(sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]) private var episodes: [Episode]
+
+    // Predicate-filtered queries push the "isSubscribed && !isPlayed" check
+    // down to SQLite instead of fetching every Episode in the database
+    // and filtering in Swift. On a heavy listener with 30+ subscriptions
+    // and a 2k-episode back catalog, the prior fetch-all approach loaded
+    // every Episode object into memory on every Library render. The
+    // predicate path is O(rows-that-match) at the storage layer.
+    @Query(
+        filter: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed && $0.playedPosition > 0 },
+        sort: [SortDescriptor(\Episode.lastPlayedAt, order: .reverse)]
+    )
+    private var inProgressEpisodes: [Episode]
+
+    @Query(
+        filter: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed },
+        sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]
+    )
+    private var freshEpisodes: [Episode]
+
     let onOpenSettings: () -> Void
 
     private let syncService = FeedSyncService()
@@ -29,16 +47,17 @@ struct LibraryView: View {
             .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
-    private var inProgressEpisodes: [Episode] {
-        episodes
-            .filter { $0.podcast.isSubscribed && $0.playedPosition > 0 && !$0.isPlayed }
-            .sorted { ($0.lastPlayedAt ?? .distantPast) > ($1.lastPlayedAt ?? .distantPast) }
+    /// Per-podcast unplayed counts pre-bucketed once instead of recomputed
+    /// inside the ForEach. The prior call site filtered `freshEpisodes`
+    /// once per visible podcast row — O(N×M) work on every render. With
+    /// 30 podcasts and 2k episodes, that's 60k iterations per scroll
+    /// frame. Now O(N+M) total.
+    private var freshCountsByPodcastID: [UUID: Int] {
+        Dictionary(freshEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +)
     }
 
-    private var freshEpisodes: [Episode] {
-        episodes
-            .filter { $0.podcast.isSubscribed && !$0.isPlayed }
-            .sorted { $0.pubDate > $1.pubDate }
+    private var inProgressCountsByPodcastID: [UUID: Int] {
+        Dictionary(inProgressEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +)
     }
 
     var body: some View {
@@ -149,8 +168,8 @@ struct LibraryView: View {
                         PodcastShelfRow(
                             podcast: podcast,
                             channelNumber: idx + 1,
-                            unplayedCount: freshEpisodes.filter { $0.podcast.id == podcast.id }.count,
-                            inProgressCount: inProgressEpisodes.filter { $0.podcast.id == podcast.id }.count
+                            unplayedCount: freshCountsByPodcastID[podcast.id] ?? 0,
+                            inProgressCount: inProgressCountsByPodcastID[podcast.id] ?? 0
                         )
                     }
                     .buttonStyle(.plain)
