@@ -28,44 +28,43 @@ struct SpeechTranscriptionPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: "waveform.and.mic")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.offscriptAccent)
-                Text("On-Device Transcript".uppercased())
-                    .font(.offscriptMicro.weight(.bold))
-                    .tracking(1.2)
-                    .foregroundStyle(Color.offscriptAccent)
+                TunerLabel(text: "TRANSCRIPT · ON DEVICE", color: .offscriptSignalYellow)
                 Spacer()
                 statusBadge
             }
 
             Text(detailText)
-                .font(.offscriptBody)
-                .foregroundStyle(Color.offscriptTextSecondary)
+                .font(.system(size: 12.5, weight: .regular))
+                .foregroundStyle(Color.offscriptPaperWhite)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
 
             actionButton
 
             if let transcriptText, isExpanded {
                 ScrollView {
                     Text(transcriptText)
-                        .font(.offscriptBody)
-                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(Color.offscriptPaperWhite)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
-                        .padding(14)
+                        .padding(12)
+                        .lineSpacing(2)
                         .background(Color.offscriptFillSubtle)
-                        .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous))
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                 }
                 .frame(maxHeight: 320)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(18)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .offscriptUtilitySurface()
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .top
+        )
         .task(id: episode.id) {
             // Hydrate from persistent cache first (survives app restart),
             // then in-memory cache. Either way the user sees the result
@@ -82,16 +81,14 @@ struct SpeechTranscriptionPanel: View {
         switch status {
         case .idle:
             EmptyView()
-        case .requestingPermission, .transcribing:
-            ProgressView().controlSize(.small).tint(Color.offscriptAccent)
+        case .requestingPermission:
+            TunerLabel(text: "AUTH", color: .offscriptFnInfo)
+        case .transcribing:
+            TunerLabel(text: "● REC", color: .offscriptFnRecord)
         case .ready:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.offscriptAccent)
+            TunerLabel(text: "● READY", color: .offscriptFnMode)
         case .failed:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.offscriptDestructive)
+            TunerLabel(text: "● ERROR", color: .offscriptFnRecord)
         }
     }
 
@@ -112,37 +109,60 @@ struct SpeechTranscriptionPanel: View {
         }
     }
 
+    /// Tuner-direction action button — flat hairline-bordered rectangle,
+    /// mono label. No pill, no shadow, no rounded corners (3pt sharp).
     @ViewBuilder
     private var actionButton: some View {
         switch status {
         case .ready:
-            Button {
+            tunerActionButton(
+                title: isExpanded ? "→ HIDE TRANSCRIPT" : "→ SHOW TRANSCRIPT",
+                color: .offscriptSignalYellow,
+                disabled: false
+            ) {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     isExpanded.toggle()
                 }
-            } label: {
-                Label(isExpanded ? "Hide Transcript" : "Show Transcript",
-                      systemImage: isExpanded ? "chevron.up" : "chevron.down")
             }
-            .buttonStyle(SecondaryPillButtonStyle())
 
         case .transcribing, .requestingPermission:
-            // Disabled spinner row — no further action while in flight.
-            Button { } label: {
-                Label("Transcribing…", systemImage: "waveform")
-            }
-            .buttonStyle(SecondaryPillButtonStyle())
-            .disabled(true)
+            tunerActionButton(
+                title: "● TRANSCRIBING…",
+                color: .offscriptFnRecord,
+                disabled: true
+            ) {}
 
         case .idle, .failed:
-            Button {
+            let canRun = downloadService.localURL(for: episode) != nil
+            tunerActionButton(
+                title: canRun ? "→ GENERATE TRANSCRIPT" : "DOWNLOAD EPISODE FIRST",
+                color: canRun ? .offscriptSignalYellow : .offscriptSoftPaper,
+                disabled: !canRun
+            ) {
                 Task { await runTranscription() }
-            } label: {
-                Label("Generate Transcript", systemImage: "sparkles")
             }
-            .buttonStyle(PrimaryPillButtonStyle())
-            .disabled(downloadService.localURL(for: episode) == nil)
         }
+    }
+
+    @ViewBuilder
+    private func tunerActionButton(
+        title: String,
+        color: Color,
+        disabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack {
+                TunerLabel(text: title, color: color, size: 10)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .overlay(Rectangle().stroke(color.opacity(disabled ? 0.4 : 1.0), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .padding(.top, 4)
     }
 
     @MainActor

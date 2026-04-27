@@ -42,75 +42,77 @@ struct EpisodeBriefingView: View {
         }
     }
 
+    // Tuner spec-sheet section — TunerLabel eyebrow + content + hairline
+    // rule above. Matches summarySection / feedbackSection vocabulary so
+    // the AI cards read as part of the same instrument cluster, not as
+    // foreign rounded panels.
     private var content: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.offscriptAccent)
-                Text("Apple Intelligence Briefing".uppercased())
-                    .font(.offscriptMicro.weight(.bold))
-                    .tracking(1.2)
-                    .foregroundStyle(Color.offscriptAccent)
+                TunerLabel(text: "BRIEFING · APPLE INTELLIGENCE", color: .offscriptSignalYellow)
                 Spacer()
+                TunerLabel(text: "ON DEVICE", color: .offscriptFnInfo)
             }
 
             if !hook.isEmpty {
                 Text(hook)
-                    .font(.offscriptBody.weight(.semibold))
-                    .foregroundStyle(Color.offscriptTextPrimary)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.offscriptPaperWhite)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(bullets.enumerated()), id: \.offset) { _, bullet in
-                    HStack(alignment: .top, spacing: 10) {
-                        RoundedRectangle(cornerRadius: 1.5)
-                            .fill(Color.offscriptAccent)
-                            .frame(width: 3, height: 14)
-                            .padding(.top, 4)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(bullets.enumerated()), id: \.offset) { idx, bullet in
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(String(format: "%02d", idx + 1))
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .tracking(1.0)
+                            .foregroundStyle(Color.offscriptSignalYellow)
+                            .frame(width: 22, alignment: .leading)
                         Text(bullet)
-                            .font(.offscriptBody)
-                            .foregroundStyle(Color.offscriptTextSecondary)
+                            .font(.system(size: 13.5, weight: .regular))
+                            .foregroundStyle(Color.offscriptPaperWhite)
                             .fixedSize(horizontal: false, vertical: true)
+                            .lineSpacing(2)
                     }
                 }
             }
-
-            Text("Generated on-device. Doesn't leave your phone.")
-                .font(.offscriptMicro)
-                .foregroundStyle(Color.offscriptTextMuted)
+            .padding(.top, 4)
         }
-        .padding(18)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .offscriptUtilitySurface()
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .top
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Apple Intelligence briefing: \(hook). " + bullets.joined(separator: ". "))
     }
 
     private var loadingView: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.offscriptAccent)
-                Text("Apple Intelligence Briefing".uppercased())
-                    .font(.offscriptMicro.weight(.bold))
-                    .tracking(1.2)
-                    .foregroundStyle(Color.offscriptAccent)
+                TunerLabel(text: "BRIEFING · APPLE INTELLIGENCE", color: .offscriptSignalYellow)
                 Spacer()
-                ProgressView().controlSize(.small).tint(Color.offscriptAccent)
+                TunerLabel(text: "GENERATING", color: .offscriptSoftPaper)
             }
 
-            ForEach(0..<3, id: \.self) { _ in
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.offscriptFillSubtle)
-                    .frame(height: 12)
+            VStack(spacing: 6) {
+                ForEach(0..<3, id: \.self) { _ in
+                    Rectangle()
+                        .fill(Color.offscriptFillSubtle)
+                        .frame(height: 11)
+                }
             }
+            .padding(.top, 6)
         }
-        .padding(18)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .offscriptUtilitySurface()
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .top
+        )
         .shimmer()
     }
 

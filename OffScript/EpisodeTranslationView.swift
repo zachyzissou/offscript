@@ -43,51 +43,56 @@ struct EpisodeTranslationView: View {
 
     @ViewBuilder
     private func content(sourceLanguage: Locale.Language) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: "character.bubble")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.offscriptAccent)
-                Text("Translate".uppercased())
-                    .font(.offscriptMicro.weight(.bold))
-                    .tracking(1.2)
-                    .foregroundStyle(Color.offscriptAccent)
+                TunerLabel(text: "TRANSLATE · ON DEVICE", color: .offscriptSignalYellow)
                 Spacer()
-                Text(languageLabel(for: sourceLanguage))
-                    .font(.offscriptMicro)
-                    .foregroundStyle(Color.offscriptTextMuted)
+                TunerLabel(text: "SRC \(languageLabel(for: sourceLanguage).uppercased())",
+                           color: .offscriptFnInfo)
             }
 
             if let translatedTitle {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(translatedTitle)
-                        .font(.offscriptBody.weight(.semibold))
-                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.offscriptPaperWhite)
                         .fixedSize(horizontal: false, vertical: true)
                     if let translatedSummary, !translatedSummary.isEmpty {
                         Text(translatedSummary)
-                            .font(.offscriptBody)
-                            .foregroundStyle(Color.offscriptTextSecondary)
+                            .font(.system(size: 13.5, weight: .regular))
+                            .foregroundStyle(Color.offscriptPaperWhite)
                             .fixedSize(horizontal: false, vertical: true)
+                            .lineSpacing(2)
                             .lineLimit(6)
                     }
-                    Text("Translated on-device")
-                        .font(.offscriptMicro)
-                        .foregroundStyle(Color.offscriptTextMuted)
                 }
+                .padding(.top, 2)
             } else {
+                // Tuner-direction CTA — flat hairline-bordered button, mono.
                 Button {
                     configuration = TranslationConfigurationToken()
                     isTranslationConfigured = true
                 } label: {
-                    Label("Translate to \(languageLabel(for: targetLanguage))", systemImage: "sparkles")
+                    HStack(spacing: 8) {
+                        TunerLabel(text: "→ TRANSLATE TO \(languageLabel(for: targetLanguage).uppercased())",
+                                   color: .offscriptSignalYellow,
+                                   size: 10)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                 }
-                .buttonStyle(SecondaryPillButtonStyle())
+                .buttonStyle(.plain)
+                .padding(.top, 4)
             }
         }
-        .padding(18)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .offscriptUtilitySurface()
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .top
+        )
         #if canImport(Translation)
         .translationTask(
             isTranslationConfigured ? makeConfiguration(source: sourceLanguage) : nil
