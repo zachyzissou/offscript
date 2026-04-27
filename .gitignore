@@ -1,0 +1,25 @@
+# Build artifacts
+build/
+DerivedData/
+*.xcarchive
+.swiftpm/
+
+# User-specific Xcode state
+*.xcuserdatad/
+xcuserdata/
+
+# macOS
+.DS_Store
+
+# Secrets — DSN, signing keys, ASC env files
+Config/Secrets.xcconfig
+.env.appstoreconnect
+Config/.env.appstoreconnect
+Config/AppStoreConnect.local.env
+*.p8
+
+# Claude worktrees + agent state
+.claude/worktrees/
+
+# Generated docs preview
+docs/stitch/
