@@ -275,6 +275,57 @@ struct OffScriptExplanationTag: View {
     }
 }
 
+/// Same look as `OffScriptExplanationTag`, but asks Apple Intelligence to
+/// rewrite the templated reason into something more natural. Renders the
+/// fallback synchronously so the rail never blanks; swaps to the AI version
+/// once it lands. On devices without Apple Intelligence, behaves identically
+/// to the static tag.
+///
+/// We allow up to 2 lines for AI text since rephrased copy is often slightly
+/// longer than the templated version.
+struct OffScriptSmartExplanationTag: View {
+    let episodeID: UUID
+    let fallback: String
+
+    @State private var displayText: String
+
+    init(episodeID: UUID, fallback: String) {
+        self.episodeID = episodeID
+        self.fallback = fallback
+        // Seed from cache if present so rails returning from a tab swap don't
+        // briefly flash the templated copy before re-applying the AI rewrite.
+        _displayText = State(initialValue: RecommendationExplainer.cachedReason(for: episodeID) ?? fallback)
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(Color.offscriptAccent)
+                .frame(width: 3, height: 14)
+
+            Text(displayText)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.offscriptAccentSecondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color.offscriptAccentSecondaryMuted)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .task(id: episodeID) {
+            // Skip if we already have AI copy for this card.
+            if RecommendationExplainer.cachedReason(for: episodeID) != nil { return }
+            if let rewritten = await RecommendationExplainer.rephrase(episodeID: episodeID, fallback: fallback) {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    displayText = rewritten
+                }
+            }
+        }
+    }
+}
+
 struct OffScriptEmptyState: View {
     let icon: String
     let headline: String

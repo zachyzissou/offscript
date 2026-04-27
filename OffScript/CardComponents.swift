@@ -43,7 +43,7 @@ struct EpisodeVerticalCard: View {
             // Text + buttons zone
             VStack(alignment: .leading, spacing: 8) {
                 if let tag = explanationTag {
-                    OffScriptExplanationTag(text: tag)
+                    OffScriptSmartExplanationTag(episodeID: episode.id, fallback: tag)
                 }
 
                 Text(episode.podcast.title.uppercased())

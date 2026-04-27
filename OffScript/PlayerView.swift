@@ -404,7 +404,7 @@ private struct PlayerSuggestionRow: View {
             .frame(width: 48, height: 48)
 
             VStack(alignment: .leading, spacing: 4) {
-                OffScriptExplanationTag(text: scored.explanation)
+                OffScriptSmartExplanationTag(episodeID: scored.episode.id, fallback: scored.explanation)
 
                 Text(scored.episode.title)
                     .font(.subheadline.weight(.semibold))
@@ -556,41 +556,56 @@ private struct PlayerTranscriptSection: View {
     }
 }
 
+/// Tuner-direction background: deep studio black with a single horizon
+/// glow tinted from the artwork. No more breathing-blur photo wallpaper —
+/// reads as instrument-cluster, not iOS Music. Hairline grid overlay sells
+/// the "panel" feel without going overboard.
 private struct PlayerAtmosphereBackground: View {
     let url: URL?
-    @State private var breathe = false
 
     var body: some View {
         ZStack {
-            OffScriptBackgroundView()
+            // Solid near-black studio surface.
+            Color.offscriptBackgroundBottom
                 .ignoresSafeArea()
 
-            AsyncImage(url: url) { phase in
-                if let image = phase.image {
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .blur(radius: 90)
-                        .opacity(0.22)
-                        .ignoresSafeArea()
-                        .saturation(0.7)
-                        .scaleEffect(breathe ? 1.04 : 1.0)
-                        .animation(.easeInOut(duration: 8).repeatForever(autoreverses: true), value: breathe)
-                        .onAppear { breathe = true }
-                }
+            // Single horizon glow at the top — sampled from artwork via the
+            // existing image cache. No animation; instrument panels don't breathe.
+            CachedAsyncImage(url: url) { image in
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .blur(radius: 120)
+                    .opacity(0.32)
+                    .frame(height: 360)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .ignoresSafeArea()
+                    .saturation(0.55)
+            } placeholder: {
+                Color.clear
             }
 
-            // Top region: lighter wash for artwork area
+            // Vignette down to true black so the transport sits on a clean panel.
             LinearGradient(
                 colors: [
-                    Color.black.opacity(0.12),
-                    Color.offscriptBackground.opacity(0.55),
-                    Color.offscriptBackground.opacity(0.85),
-                    Color.offscriptBackground
+                    Color.clear,
+                    Color.offscriptBackgroundBottom.opacity(0.55),
+                    Color.offscriptBackgroundBottom.opacity(0.92),
+                    Color.offscriptBackgroundBottom
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
+            .ignoresSafeArea()
+
+            // Hairline horizon line where the glow ends — instrument-panel cue.
+            VStack(spacing: 0) {
+                Spacer().frame(height: 320)
+                Rectangle()
+                    .fill(Color.offscriptHairline)
+                    .frame(height: 0.5)
+                Spacer()
+            }
             .ignoresSafeArea()
         }
     }

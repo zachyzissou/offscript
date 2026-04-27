@@ -250,7 +250,7 @@ private struct HeroRecommendationCard: View {
 
                     // Overlay the explanation tag on the artwork
                     VStack(alignment: .leading, spacing: 8) {
-                        OffScriptExplanationTag(text: reason)
+                        OffScriptSmartExplanationTag(episodeID: episode.id, fallback: reason)
 
                         Text(episode.podcast.title)
                             .font(.offscriptMeta.weight(.semibold))

@@ -110,6 +110,9 @@ struct EpisodeDetailView: View {
                         .padding(.horizontal, OffScriptTheme.pagePadding)
                 }
 
+                EpisodeTranslationView(episode: episode)
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+
                 EpisodeBriefingView(episode: episode)
                     .padding(.horizontal, OffScriptTheme.pagePadding)
 
@@ -159,6 +162,13 @@ struct EpisodeDetailView: View {
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
                 }
+
+                // On-device transcription via Speech framework. Always shown
+                // (even when official transcripts exist) — sometimes a clean
+                // text version of the actual narration is more useful than a
+                // PDF/HTML official transcript.
+                SpeechTranscriptionPanel(episode: episode)
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
 
                 if !transcriptReferences.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {

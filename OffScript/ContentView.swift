@@ -94,6 +94,9 @@ struct ContentView: View {
             PlaybackController.shared.configure(context: modelContext)
             SyncCoordinator.shared.configure(context: modelContext)
             DownloadService.shared.configure(context: modelContext)
+            // Donate subscribed-show episodes to Spotlight so iOS system
+            // search and Siri Suggestions can surface them. Idempotent.
+            SpotlightIndexer.indexEpisodes(in: modelContext)
             #if DEBUG
             configureDebugSelectedTabIfNeeded()
             configureDebugPlaybackIfNeeded()
