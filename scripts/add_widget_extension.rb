@@ -8,7 +8,7 @@
 #     (matches how the main OffScript target consumes its sources)
 #   - Build settings (bundle ID, entitlements, deployment target, etc.)
 #   - Embed Foundation Extensions phase on the host OffScript target
-#   - App Group "group.com.offscript.app" wired into both targets via
+#   - App Group "group.com.offscript.shared" wired into both targets via
 #     entitlement files that already exist in the repo
 #
 # After running this:

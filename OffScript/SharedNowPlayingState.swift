@@ -36,7 +36,10 @@ struct NowPlayingSnapshot: Codable, Equatable {
 /// Shared storage helper used by both the main app (writer) and the widget
 /// extension (reader). Suite must be entitled in both targets via App Groups.
 enum NowPlayingStorage {
-    static let suiteName = "group.com.offscript.app"
+    // Registered in Apple Developer Portal as the shared App Group between
+    // the host app and the OffScriptWidgets extension. Both targets'
+    // entitlements files must declare this same identifier.
+    static let suiteName = "group.com.offscript.shared"
     private static let key = "nowPlayingSnapshot"
 
     static var defaults: UserDefaults? {
