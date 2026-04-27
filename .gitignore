@@ -23,3 +23,8 @@ Config/AppStoreConnect.local.env
 
 # Generated docs preview
 docs/stitch/
+
+# Python bytecode (App Store Connect helper script lives in scripts/)
+__pycache__/
+*.pyc
+*.pyo
