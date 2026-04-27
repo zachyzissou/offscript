@@ -4,6 +4,18 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.2.3] — 2026-04-27
+
+### Added
+- **Now Playing widget** restored — five families: systemSmall, systemMedium, accessoryCircular, accessoryRectangular, accessoryInline. Tap deep-links into the player.
+- **Live Activity / Dynamic Island** restored — compact / expanded / minimal layouts + Lock Screen banner.
+- `OffScriptWidgets` app-extension target back in the project (re-added via `scripts/add_widget_extension.rb`).
+- App Group `group.com.offscript.shared` registered in Apple Developer Portal and bound to `com.offscript.app` + `com.offscript.app.widgets`. Both targets' entitlements + `NowPlayingStorage.suiteName` reference it.
+
+### Notes
+- Original identifier `group.com.offscript.app` was unavailable globally, swapped to `group.com.offscript.shared`. Source updated in lockstep across 5 files in [`8568b61`](https://github.com/zachyzissou/offscript/commit/8568b61).
+- This is the first ship through the new Xcode Cloud pipeline that includes both an app and an app-extension target with shared App Group state. Apple-managed signing handles both bundle IDs automatically.
+
 ## [2.2.2] — 2026-04-27
 
 ### Changed
