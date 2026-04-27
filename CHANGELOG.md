@@ -4,6 +4,16 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.3.8] — 2026-04-27
+
+### Added — cold-start "Start Here" rail
+- **Replaces the dead-end empty state on Home.** Before, a fresh install showed "Add three shows you trust" with a "→ BROWSE SEARCH" button — useful only if the user already knew exactly what they wanted to type. Now Home renders a curated "● START HERE" rail with 14 hand-picked podcasts grouped by category (News & Culture, Tech & Design, Story & Reporting, Ideas & Conversation, Humor). One-tap "+ ADD" subscribes through the same `FeedSyncService.importPodcast` pipeline that Search and OPML import use, so subscribed-state and library display behave identically.
+- **Self-hides as soon as recommendations have data.** The starter rail only renders when `sections.isEmpty` — once the user subscribes to a few shows and the recommendation engine populates the home feed, the curated rail steps aside without ceremony.
+- **`StarterRailService`** holds the curation as a single source of truth — easy to update without touching view code, and easy to swap to a network-backed source later if we want trending picks instead of static curation.
+
+### Curation philosophy
+Picks are well-loved, broadly accessible shows that hold up over years rather than ride-the-charts trendy picks. One per slot in each section so the rail doesn't feel like an algorithmic feed and the user can tell each was deliberately chosen. Five categories, three picks each (humor has two) — a structure that makes "I'll grab one from each" feel like a complete onboarding gesture.
+
 ## [2.3.7] — 2026-04-27
 
 ### Added — OPML export

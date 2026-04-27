@@ -37,7 +37,11 @@ struct HomeView: View {
                 if isLoading {
                     HomeSkeletonStack()
                 } else if sections.isEmpty {
-                    HomeEmptyState()
+                    // Cold start — show curated starter picks instead of a
+                    // dead-end "go search" empty state. Once the user has
+                    // three subscriptions and recommendations have any data
+                    // to work with, `sections` populates and this hides.
+                    HomeStarterRail()
                 } else {
                     if let leadSection = sections.first, let leadEpisode = leadSection.episodes.first {
                         HeroTunerCard(
@@ -178,6 +182,163 @@ private struct HomeErrorRow: View {
     }
 }
 
+/// Cold-start rail rendered when the user has zero subscriptions and the
+/// recommendation engine has nothing to work with. Hand-curated picks
+/// grouped by category, with one-tap subscribe through the same
+/// `FeedSyncService.importPodcast` pipeline used by Search and OPML
+/// import. Replaces the prior dead-end "go to Search" empty state.
+private struct HomeStarterRail: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var subscribed: [Podcast]
+    @State private var importingID: String?
+    @State private var addedIDs: Set<String> = []
+    @State private var errorMessage: String?
+    private let syncService = FeedSyncService()
+
+    private var subscribedFeedURLs: Set<String> {
+        Set(subscribed.filter(\.isSubscribed).map { $0.feedURL.absoluteString })
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            header
+            ForEach(StarterRailService.groupedPicks, id: \.0) { category, picks in
+                section(category: category, picks: picks)
+            }
+            if let errorMessage {
+                errorStrip(message: errorMessage)
+            }
+        }
+        .padding(.horizontal, OffScriptTheme.pagePadding)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                TunerLabel(text: "● START HERE", color: .offscriptSignalYellow)
+                Spacer()
+                TunerLabel(text: "\(subscribed.count(where: \.isSubscribed)) TUNED",
+                           color: .offscriptFnInfo)
+            }
+            Text("Pick a few well-liked channels")
+                .font(.system(size: 22, weight: .semibold))
+                .tracking(-0.3)
+                .foregroundStyle(Color.offscriptPaperWhite)
+            Text("These are widely-loved podcasts to seed your library. Subscribe to a few that look interesting — OffScript will start tailoring your feed once it has signal to work with.")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.offscriptPaperWhite)
+                .lineSpacing(2)
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                .padding(.top, 4)
+        }
+    }
+
+    private func section(category: StarterCategory, picks: [StarterPick]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TunerLabel(text: category.label, color: .offscriptSignalYellow)
+            LazyVStack(spacing: 0) {
+                ForEach(Array(picks.enumerated()), id: \.element.id) { idx, pick in
+                    pickRow(idx: idx, pick: pick)
+                    if idx < picks.count - 1 {
+                        Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .top
+        )
+    }
+
+    private func pickRow(idx: Int, pick: StarterPick) -> some View {
+        let isAdded = addedIDs.contains(pick.id)
+            || subscribedFeedURLs.contains(pick.feedURL.absoluteString)
+        let isImporting = importingID == pick.id
+
+        return HStack(alignment: .top, spacing: 12) {
+            Text(String(format: "%02d", idx + 1))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .tracking(1.0)
+                .foregroundStyle(Color.offscriptSignalYellow)
+                .frame(width: 28, alignment: .leading)
+                .padding(.top, 4)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(pick.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                    .lineLimit(1)
+                TunerLabel(text: pick.author.uppercased(),
+                           color: .offscriptFnInfo, size: 8)
+                    .lineLimit(1)
+                Text(pick.summary)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
+                    .lineSpacing(2)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button {
+                Task { await add(pick) }
+            } label: {
+                TunerLabel(
+                    text: isAdded ? "✓ ADDED"
+                        : (isImporting ? "○ ADDING…" : "+ ADD"),
+                    color: isAdded ? .offscriptFnMode : .offscriptSignalYellow,
+                    size: 10
+                )
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .overlay(Rectangle().stroke(
+                    isAdded ? Color.offscriptFnMode : Color.offscriptSignalYellow,
+                    lineWidth: 1
+                ))
+            }
+            .buttonStyle(.plain)
+            .disabled(isAdded || isImporting)
+        }
+        .padding(.vertical, 10)
+    }
+
+    private func errorStrip(message: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TunerLabel(text: "● COULDN'T ADD", color: .offscriptFnRecord)
+            Text(message)
+                .font(.system(size: 12.5))
+                .foregroundStyle(Color.offscriptPaperWhite)
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(
+            Rectangle().fill(Color.offscriptFnRecord).frame(height: 1),
+            alignment: .top
+        )
+    }
+
+    @MainActor
+    private func add(_ pick: StarterPick) async {
+        importingID = pick.id
+        defer { importingID = nil }
+        errorMessage = nil
+
+        do {
+            let result = StarterRailService.searchResult(for: pick)
+            _ = try await syncService.importPodcast(from: result,
+                                                    into: modelContext,
+                                                    episodeLimit: 25)
+            addedIDs.insert(pick.id)
+        } catch {
+            homeLogger.error("Starter add failed for \(pick.title, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            errorMessage = "Couldn't add \(pick.title) — try Search instead."
+        }
+    }
+}
+
+// Legacy empty state — kept for reference but no longer rendered. Cold
+// start now uses HomeStarterRail above.
 private struct HomeEmptyState: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
