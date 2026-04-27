@@ -1,3 +1,4 @@
+import CoreSpotlight
 import OSLog
 import SwiftData
 import SwiftUI
@@ -86,10 +87,33 @@ struct ContentView: View {
             // SampleDataSeeder was removed in local commit 7ab11e8
             // ("wire up OnboardingFlowView and remove SampleDataSeeder").
             // Real onboarding flow now seeds via Genre + Podcast picker.
+
+            // Donate subscribed-show episodes to Spotlight so iOS system search
+            // and Siri Suggestions can surface them. Idempotent + 24h debounced.
+            SpotlightIndexer.indexEpisodes(in: modelContext)
+            // Bridge PlaybackController state → Now Playing widget + Live Activity.
+            // Idempotent — safe to call multiple times.
+            NowPlayingPublisher.shared.start()
+            // Opportunistic background transcription on Wi-Fi + power. Service
+            // decides per-episode whether to run based on policy gates.
+            BackgroundTranscriptionService.shared.configure(context: modelContext)
+
             #if DEBUG
             configureDebugSelectedTabIfNeeded()
             configureDebugPlaybackIfNeeded()
             #endif
+        }
+        .onOpenURL { url in
+            // offscript:// deep links from widgets, Live Activity, etc.
+            DeepLinkRouter.handle(url, in: modelContext)
+        }
+        .onContinueUserActivity(CSSearchableItemActionType) { activity in
+            // Spotlight result tap. The uniqueIdentifier is the episode UUID
+            // we wrote in SpotlightIndexer; route through the deep-link
+            // handler so the same play-on-open behavior applies.
+            guard let uniqueID = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
+                  let url = URL(string: "offscript://episode/\(uniqueID)") else { return }
+            DeepLinkRouter.handle(url, in: modelContext)
         }
     }
 }
@@ -145,6 +169,7 @@ private extension ContentView {
             EpisodeProfile.self,
             PlaybackEvent.self,
             PreferenceSignal.self,
-            QueueItem.self
+            QueueItem.self,
+            EpisodeTranscriptCache.self
         ], inMemory: true)
 }

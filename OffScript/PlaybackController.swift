@@ -33,6 +33,11 @@ final class PlaybackController: ObservableObject {
         modelContext = context
     }
 
+    /// True once `configure(context:)` has been called. App Intents running
+    /// in-process should check this before supplying a new context so they
+    /// don't replace the live app context with an intent-scoped one.
+    var isModelContextConfigured: Bool { modelContext != nil }
+
     func play(_ episode: Episode, in context: ModelContext? = nil) {
         if let context {
             configure(context: context)
@@ -61,6 +66,33 @@ final class PlaybackController: ObservableObject {
         player.play()
         player.rate = playbackRate
         isPlaying = true
+        isPlayerPresented = true
+        updateNowPlaying(episode: episode)
+    }
+
+    /// Load an episode into the player WITHOUT starting playback. Used by
+    /// `DeepLinkRouter` for the "open the player but don't auto-play" path —
+    /// e.g. tapping a Spotlight result, where the user may just want to look
+    /// at the episode before deciding to play. Mirrors `play()` but stops
+    /// short of `player.play()` / setting `isPlaying = true`.
+    func load(_ episode: Episode, in context: ModelContext? = nil) {
+        if let context {
+            configure(context: context)
+        }
+
+        currentEpisode = episode
+        let url = episode.localFileURL ?? episode.audioURL
+        player.replaceCurrentItem(with: AVPlayerItem(url: url))
+
+        let savedPosition = episode.playedPosition
+        if savedPosition > 0 {
+            player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
+            currentTime = savedPosition
+        } else {
+            currentTime = 0
+        }
+
+        isPlaying = false
         isPlayerPresented = true
         updateNowPlaying(episode: episode)
     }

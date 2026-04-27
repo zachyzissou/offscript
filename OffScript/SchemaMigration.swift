@@ -18,6 +18,7 @@ enum SchemaV1: VersionedSchema {
             EpisodeProfile.self,
             UserTasteProfile.self,
             TelemetryEvent.self,
+            EpisodeTranscriptCache.self,
         ]
     }
 }

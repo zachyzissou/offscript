@@ -17,6 +17,19 @@ struct EpisodeNLP {
     @Guide(description: "A brief, neutral 1–2 sentence summary")
     var summary: String
 }
+
+/// "What you'll learn" briefing — three concrete bullet takeaways, written in
+/// the second person, no marketing fluff, no spoilers framed as questions.
+/// Generated on-device via Apple Intelligence so the user never sees a network
+/// spinner and we never leak the episode summary off-device.
+@Generable(description: "A pre-listen briefing for a podcast episode")
+struct EpisodeBriefing {
+    @Guide(description: "Three concrete bullet takeaways the listener will get from this episode. Each bullet is one short sentence, second-person, no marketing language.", .count(3))
+    var bullets: [String]
+
+    @Guide(description: "A single-sentence hook (≤ 20 words) that captures the central idea.")
+    var hook: String
+}
 #endif
 
 final class TopicExtractionService {
@@ -91,6 +104,45 @@ final class TopicExtractionService {
         if summary != nil { profile.summary = summary }
 
         if existing == nil { context.insert(profile) }
+    }
+
+    /// Generate a pre-listen briefing using on-device Apple Intelligence.
+    /// Returns nil when FoundationModels is unavailable (older devices, region
+    /// not enabled, model still downloading) — callers should hide the section.
+    /// Cache by episode ID at the call site; this method does no caching.
+    func briefing(for episode: Episode) async -> (bullets: [String], hook: String)? {
+        #if canImport(FoundationModels)
+        let model = SystemLanguageModel.default
+        guard model.isAvailable else { return nil }
+
+        let session = LanguageModelSession(
+            instructions: """
+            You write pre-listen briefings for podcast episodes.
+            Be concrete. No marketing words like "fascinating," "incredible," "must-listen."
+            Use second person. No spoilers framed as cliffhanger questions.
+            """
+        )
+
+        let prompt = """
+        Title: \(episode.title)
+        Show: \(episode.podcast.title)
+        Description: \(episode.summary?.strippingHTML ?? "")
+        """
+
+        do {
+            let response = try await session.respond(
+                to: "Write a pre-listen briefing:\n\(prompt)",
+                generating: EpisodeBriefing.self,
+                options: GenerationOptions(temperature: 0.3)
+            )
+            return (response.content.bullets, response.content.hook)
+        } catch {
+            logger.warning("FoundationModels briefing generation failed for \(episode.title, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+        #else
+        return nil
+        #endif
     }
 
     static func heuristicTags(from text: String) -> [String] {
