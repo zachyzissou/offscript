@@ -110,6 +110,9 @@ struct EpisodeDetailView: View {
                         .padding(.horizontal, OffScriptTheme.pagePadding)
                 }
 
+                EpisodeBriefingView(episode: episode)
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+
                 if let summary = episode.summary {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("About this episode")

@@ -160,6 +160,9 @@ struct HomeView: View {
             _ = try await syncService.importPodcast(from: result, into: modelContext)
             try? TasteProfileService.refresh(in: modelContext)
             await recommendationService.discoveryService.invalidateCache()
+            // New podcast brings in 15+ episodes — drop the home cache so they
+            // can compete in the ranking on the next load.
+            RecommendationService.invalidateHomeCache()
             TelemetryService.track(
                 "discovery_imported",
                 metadata: ["podcast": result.title, "source": "home_discovery"],
@@ -392,6 +395,9 @@ private struct HeroRecommendationCard: View {
     private func register(_ action: PreferenceSignal.Action) {
         modelContext.insert(PreferenceSignal(action: action, episode: episode))
         try? modelContext.save()
+        // Direct user feedback — invalidate the cached ranking so the next Home
+        // load reflects the like/dislike instead of returning a stale list.
+        RecommendationService.invalidateHomeCache()
     }
 }
 

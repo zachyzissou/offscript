@@ -55,8 +55,11 @@ struct MiniPlayer: View {
                     }
                     .buttonStyle(.plain)
 
-                    // Transport
-                    HStack(spacing: 2) {
+                    // Transport — 44pt hit targets per HIG. Visible disc stays
+                    // 36pt for visual rhythm, but the tap region matches Apple's
+                    // minimum to stop the "I keep mis-tapping the next-show area"
+                    // problem on the older MiniPlayer.
+                    HStack(spacing: 4) {
                         Button {
                             player.togglePlayPause()
                         } label: {
@@ -66,9 +69,12 @@ struct MiniPlayer: View {
                                 .frame(width: 36, height: 36)
                                 .background(Color.offscriptAccent)
                                 .clipShape(Circle())
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .sensoryFeedback(.impact(flexibility: .soft), trigger: player.isPlaying)
+                        .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
 
                         Button {
                             player.seek(by: 30)
@@ -76,13 +82,40 @@ struct MiniPlayer: View {
                             Image(systemName: "goforward.30")
                                 .font(.callout.weight(.semibold))
                                 .foregroundStyle(Color.offscriptTextSecondary)
-                                .frame(width: 36, height: 36)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Skip forward 30 seconds")
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.vertical, 6)
+
+                // Inline error chip — only shown when AVPlayerItem.status fails
+                // or playback stalls. Auto-clears on next successful load.
+                if let errorMessage = player.playbackError {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(Color.offscriptDestructive)
+
+                        Text(errorMessage)
+                            .font(.offscriptMeta)
+                            .foregroundStyle(Color.offscriptTextSecondary)
+                            .lineLimit(1)
+
+                        Spacer()
+
+                        Button("Dismiss") { player.clearPlaybackError() }
+                            .font(.offscriptMeta.weight(.semibold))
+                            .foregroundStyle(Color.offscriptAccent)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.offscriptDestructive.opacity(0.10))
+                    .transition(.opacity)
+                }
             }
             .background(
                 Color.offscriptCardRaised.opacity(0.98)

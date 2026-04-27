@@ -1,6 +1,7 @@
 import CloudKit
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -228,6 +229,65 @@ struct SettingsView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .offscriptUtilitySurface()
                         }
+
+                        // Version + feedback. TestFlight users had no in-app way to
+                        // tell us which build they were on or to report bugs without
+                        // hunting for an email address. Tap-to-copy + mailto fixes both.
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Version")
+                                        .font(.offscriptCardTitle)
+                                        .foregroundStyle(Color.offscriptTextPrimary)
+                                    Text(buildVersionString)
+                                        .font(.offscriptMeta)
+                                        .foregroundStyle(Color.offscriptTextMuted)
+                                        .textSelection(.enabled)
+                                }
+
+                                Spacer()
+
+                                Button {
+                                    UIPasteboard.general.string = buildVersionString
+                                } label: {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.callout.weight(.semibold))
+                                        .foregroundStyle(Color.offscriptAccent)
+                                        .frame(width: 44, height: 44)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Copy build version")
+                            }
+
+                            Divider().background(Color.offscriptHairline)
+
+                            Button {
+                                openFeedbackEmail()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "envelope")
+                                        .font(.callout.weight(.semibold))
+                                        .foregroundStyle(Color.offscriptAccent)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Send Feedback")
+                                            .font(.offscriptCardTitle)
+                                            .foregroundStyle(Color.offscriptTextPrimary)
+                                        Text("Bugs, ideas, or just say hi.")
+                                            .font(.offscriptMeta)
+                                            .foregroundStyle(Color.offscriptTextMuted)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(Color.offscriptTextMuted)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Opens Mail with build version pre-filled.")
+                        }
+                        .padding(18)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .offscriptUtilitySurface()
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
 
@@ -505,6 +565,42 @@ struct SettingsView: View {
 
     private var downloadStorageBytes: Int64 {
         DownloadService.shared.totalDownloadSizeBytes
+    }
+
+    /// "2.1.0 (20260426.1.1)" — short version + bundle build number.
+    /// Read from the live Info.plist at runtime so we never have to remember
+    /// to bump it in two places.
+    private var buildVersionString: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = info?["CFBundleVersion"] as? String ?? "—"
+        return "\(short) (\(build))"
+    }
+
+    /// Opens Mail with the build version pre-filled in the body so testers
+    /// don't have to retype it. mailto: works without any extra Info.plist
+    /// scheme entries (it's universally allowed).
+    private func openFeedbackEmail() {
+        let subject = "OffScript feedback — \(buildVersionString)"
+        let body = """
+
+
+        ---
+        Version: \(buildVersionString)
+        Device: \(UIDevice.current.model) — iOS \(UIDevice.current.systemVersion)
+        """
+
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = "zachgonser@gmail.com"
+        components.queryItems = [
+            URLQueryItem(name: "subject", value: subject),
+            URLQueryItem(name: "body", value: body)
+        ]
+
+        if let url = components.url {
+            UIApplication.shared.open(url)
+        }
     }
 
     private var downloadStorageLabel: String {

@@ -31,6 +31,11 @@ final class PlaybackController: ObservableObject {
     @Published var isPlayerPresented = false
     @Published private(set) var sleepTimerEndDate: Date?
 
+    /// Surfaced to the UI when an AVPlayerItem fails to load (404, network down, codec, etc).
+    /// MiniPlayer / PlayerView read this to render an inline error chip; ContentView
+    /// uses it for the global toast. Cleared when a new episode starts successfully.
+    @Published private(set) var playbackError: String?
+
     // Preview playback state — streams without persisting to SwiftData
     @Published private(set) var previewEpisodeTitle: String?
     @Published private(set) var previewPodcastTitle: String?
@@ -57,6 +62,9 @@ final class PlaybackController: ObservableObject {
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     private var mediaServicesResetObserver: NSObjectProtocol?
+    private var itemStatusObservation: NSKeyValueObservation?
+    private var itemFailureObserver: NSObjectProtocol?
+    private var itemStallObserver: NSObjectProtocol?
     private var sleepTimerTask: Task<Void, Never>?
     private var modelContext: ModelContext?
     private var isFinishingCurrentEpisode = false
@@ -89,6 +97,8 @@ final class PlaybackController: ObservableObject {
         UserDefaults.standard.set(episode.audioURL.absoluteString, forKey: "offscript.lastEpisodeAudioURL")
         let playableURL = DownloadService.shared.localURL(for: episode) ?? episode.audioURL
         let item = AVPlayerItem(url: playableURL)
+        observeItem(item)
+        playbackError = nil
         player.replaceCurrentItem(with: item)
 
         let savedPosition = episode.playedPosition
@@ -134,6 +144,8 @@ final class PlaybackController: ObservableObject {
         previewArtworkURL = artworkURL
 
         let item = AVPlayerItem(url: audioURL)
+        observeItem(item)
+        playbackError = nil
         player.replaceCurrentItem(with: item)
         player.play()
         player.rate = playbackRate
@@ -247,6 +259,9 @@ final class PlaybackController: ObservableObject {
         currentTime = episode.playedPosition
         duration = max(duration, episode.playedPosition)
         recordPlaybackEvent(kind: .completed, episode: episode, position: currentTime)
+        // Completion is the strongest taste signal we have — drop the Home cache
+        // so the next visit reranks with this completion factored in.
+        RecommendationService.invalidateHomeCache()
         UserDefaults.standard.removeObject(forKey: "offscript.lastEpisodeAudioURL")
         try? modelContext?.save()
         TelemetryService.track(
@@ -291,6 +306,77 @@ final class PlaybackController: ObservableObject {
                 persistPlaybackProgress()
             }
         }
+    }
+
+    /// Reattach KVO + Notification observers to the new AVPlayerItem so we can
+    /// distinguish a clean "ready" from "404/no-network/codec failure/stall."
+    /// Without this, a failed load just leaves the UI in a permanent "playing"
+    /// state with no audio and no signal that anything went wrong.
+    private func observeItem(_ item: AVPlayerItem) {
+        // Drop prior observers — they're tied to the previous item.
+        itemStatusObservation?.invalidate()
+        itemStatusObservation = nil
+        if let observer = itemFailureObserver {
+            NotificationCenter.default.removeObserver(observer)
+            itemFailureObserver = nil
+        }
+        if let observer = itemStallObserver {
+            NotificationCenter.default.removeObserver(observer)
+            itemStallObserver = nil
+        }
+
+        itemStatusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch item.status {
+                case .failed:
+                    let message = item.error?.localizedDescription ?? "Couldn't play this episode."
+                    self.handlePlaybackFailure(message: message)
+                case .readyToPlay:
+                    self.playbackError = nil
+                case .unknown:
+                    break
+                @unknown default:
+                    break
+                }
+            }
+        }
+
+        itemFailureObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] notification in
+            let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+            let message = error?.localizedDescription ?? "Playback stopped unexpectedly."
+            Task { @MainActor [weak self] in
+                self?.handlePlaybackFailure(message: message)
+            }
+        }
+
+        itemStallObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemPlaybackStalled,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                // Stall isn't fatal — just surface an inline note so the user knows
+                // the buffer ran dry. Clears as soon as readyToPlay fires again.
+                self?.playbackError = "Buffering — check your connection."
+            }
+        }
+    }
+
+    private func handlePlaybackFailure(message: String) {
+        player.pause()
+        isPlaying = false
+        playbackError = message
+        updateNowPlayingPlaybackRate()
+    }
+
+    /// Allow the UI to dismiss the inline error after surfacing it.
+    func clearPlaybackError() {
+        playbackError = nil
     }
 
     private func observePlaybackCompletion() {
@@ -479,7 +565,10 @@ final class PlaybackController: ObservableObject {
         let event = PlaybackEvent(kind: kind, position: position, episode: episode)
         modelContext.insert(event)
         try? modelContext.save()
-        try? TasteProfileService.refresh(in: modelContext)
+        // Use the throttled scheduler — playback events fire on every seek and
+        // skip. Calling refresh synchronously here was re-fetching three full
+        // tables 5+ times during normal scrubbing.
+        TasteProfileService.scheduleRefresh(in: modelContext)
         TelemetryService.track(
             "playback_event",
             metadata: [

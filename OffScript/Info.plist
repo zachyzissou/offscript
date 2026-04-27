@@ -6,6 +6,8 @@
 	<array>
 		<string>com.offscript.feed-refresh</string>
 	</array>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>OffScript can generate transcripts on-device for episodes that don't ship one. Audio never leaves your phone.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>PlayfairDisplay-Variable.ttf</string>

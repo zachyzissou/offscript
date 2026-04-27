@@ -3,6 +3,38 @@ import SwiftData
 
 @MainActor
 enum TasteProfileService {
+    /// Coalesces noisy refresh callers (PlaybackController fires this on every
+    /// seek / skip / completion). Without throttling we re-fetch three full
+    /// tables and do a synchronous SwiftData save 5+ times in 10 seconds when
+    /// the user is just scrubbing.
+    private static var lastRefreshAt: Date = .distantPast
+    private static var pendingRefreshTask: Task<Void, Never>?
+    private static let throttleInterval: TimeInterval = 30
+
+    /// Fire-and-forget throttled refresh. Coalesces bursts of callers — at most
+    /// one refresh runs per `throttleInterval`. Use this from playback hot paths.
+    static func scheduleRefresh(in context: ModelContext) {
+        let elapsed = Date().timeIntervalSince(lastRefreshAt)
+        if elapsed >= throttleInterval {
+            // Cooldown expired — run immediately.
+            lastRefreshAt = .now
+            try? refresh(in: context)
+            return
+        }
+
+        // Inside cooldown — schedule one tail-end refresh so we don't lose the
+        // most recent signal, but cancel any earlier pending one so we don't pile up.
+        pendingRefreshTask?.cancel()
+        let remaining = throttleInterval - elapsed
+        pendingRefreshTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(remaining))
+            guard !Task.isCancelled else { return }
+            lastRefreshAt = .now
+            try? refresh(in: context)
+            pendingRefreshTask = nil
+        }
+    }
+
     static func loadOrCreate(in context: ModelContext) throws -> UserTasteProfile {
         let descriptor = FetchDescriptor<UserTasteProfile>()
         if let existing = try context.fetch(descriptor).first {

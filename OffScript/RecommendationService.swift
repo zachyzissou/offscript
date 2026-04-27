@@ -50,6 +50,27 @@ enum RecommendationScorer {
 final class RecommendationService {
     let discoveryService = DiscoveryService()
 
+    // Cap the working set for scoring. Most recent N episodes from subscribed
+    // shows is plenty — the older ones aren't going to score well on recency
+    // anyway. This is the single biggest knob on Home-load latency once a
+    // library hits a few hundred episodes.
+    private let scoringWindowSize = 200
+
+    /// In-memory cache of the last computed home sections. Static so it
+    /// survives RecommendationService instances being recreated per view.
+    /// Invalidated by `invalidateHomeCache()` after writes that could change
+    /// ranking (subscription change, preference signal, completion). Keeps
+    /// tab-switch from re-scoring 200 episodes every time.
+    @MainActor private static var cachedHomeSections: [HomeFeedSection]?
+    @MainActor private static var cachedAt: Date = .distantPast
+    private static let cacheTTL: TimeInterval = 90
+
+    @MainActor
+    static func invalidateHomeCache() {
+        cachedHomeSections = nil
+        cachedAt = .distantPast
+    }
+
     @MainActor
     func discoverySection(context: ModelContext) async -> HomeFeedSection? {
         guard let tasteProfile = try? TasteProfileService.loadOrCreate(in: context) else { return nil }
@@ -79,11 +100,26 @@ final class RecommendationService {
 
     @MainActor
     func homeSections(context: ModelContext, limit: Int = 6) throws -> [HomeFeedSection] {
-        try? TasteProfileService.refresh(in: context)
-        let episodes = try context.fetch(FetchDescriptor<Episode>(
+        // Cache hit — Home tab switches and pull-to-refresh inside the TTL just
+        // return prior result. The ranking inputs barely change minute-to-minute,
+        // and PlaybackController/HomeView call `invalidateHomeCache()` on the
+        // events that actually move things (preference signal, completion, import).
+        if let cached = Self.cachedHomeSections, Date().timeIntervalSince(Self.cachedAt) < Self.cacheTTL {
+            return cached
+        }
+
+        // Note: we deliberately do NOT call TasteProfileService.refresh here.
+        // PlaybackController already throttle-schedules it on real signal —
+        // calling it from Home load was duplicating work on every tab switch.
+
+        // Cap the working set. fetchLimit + recency sort = SQL `LIMIT N` so
+        // SwiftData never materializes the older long tail.
+        var descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { $0.podcast.isSubscribed == true },
             sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
-        ))
+        )
+        descriptor.fetchLimit = scoringWindowSize
+        let episodes = try context.fetch(descriptor)
 
         let profiles = try context.fetch(FetchDescriptor<EpisodeProfile>())
         // Only fetch preference signals from the last 90 days to avoid loading stale history
@@ -170,6 +206,8 @@ final class RecommendationService {
             allSections.insert(bestSection, at: 0)
         }
 
+        Self.cachedHomeSections = allSections
+        Self.cachedAt = .now
         return allSections
     }
 
