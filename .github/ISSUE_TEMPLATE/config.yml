@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: TestFlight feedback (in-app)
+    url: https://testflight.apple.com/
+    about: From TestFlight, screenshot the app and send feedback — it lands directly with the developer along with device info and crash context.
+  - name: Email the maintainer
+    url: mailto:zachgonser@gmail.com
+    about: For sensitive bugs (PII, security, account issues) — please don't file a public issue.
