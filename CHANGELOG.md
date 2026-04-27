@@ -4,6 +4,16 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.3.7] — 2026-04-27
+
+### Added — OPML export
+- **OPML export from the import sheet.** "↑ EXPORT N SUBSCRIPTIONS" key on the menu generates a standards-compliant OPML 2.0 file from every subscribed podcast and presents the system share sheet — Save to Files, AirDrop, Mail, etc. The format matches what Apple Podcasts / Pocket Casts / Overcast / AntennaPod accept, so an OffScript export imports cleanly into any of them. Closes the loop with the OPML import path: users can move out as easily as they moved in.
+- **`PodcastOPMLExporter`** — minimal XML-escape-aware exporter writing `<outline type="rss" text=… title=… xmlUrl=… author=… />` per subscribed podcast. Author attribute is included only when present. Filename includes ISO timestamp.
+
+### Added — Settings playback parity
+- **Default playback rate** picker in Settings → Playback. Sets the rate new podcasts inherit before the user picks something specific in the player (per-podcast picks still win). Same intervals as the player menu (1.0× / 1.1× / 1.25× / 1.5× / 1.75× / 2.0× / 2.5×).
+- **Reset per-podcast rates** action in the same section. Wipes every show's custom playback speed back to the default — escape hatch for "I accidentally tasted everything to 2× and want out."
+
 ## [2.3.6] — 2026-04-27
 
 ### Added — OPML import is now a background process

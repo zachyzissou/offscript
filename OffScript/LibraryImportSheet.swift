@@ -16,6 +16,13 @@ private let importSheetLogger = Logger(subsystem: "com.offscript", category: "Li
 struct LibraryImportSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Query private var allPodcasts: [Podcast]
+
+    private var subscribedPodcasts: [Podcast] {
+        allPodcasts
+            .filter(\.isSubscribed)
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
 
     enum Mode: Hashable, Identifiable {
         case menu
@@ -37,6 +44,8 @@ struct LibraryImportSheet: View {
     @State private var errorMessage: String?
     @State private var importedTitle: String?
     @State private var opmlFilePresenting = false
+    @State private var exportFileURL: URL?
+    @State private var isExportShareSheetPresented = false
     @ObservedObject private var batchImporter = BatchImportService.shared
     private let syncService = FeedSyncService()
 
@@ -85,6 +94,11 @@ struct LibraryImportSheet: View {
             ) { result in
                 handleOPMLPicked(result)
             }
+            .sheet(isPresented: $isExportShareSheetPresented) {
+                if let exportFileURL {
+                    ShareSheet(items: [exportFileURL])
+                }
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -121,7 +135,7 @@ struct LibraryImportSheet: View {
                 .foregroundStyle(Color.offscriptPaperWhite)
                 .lineSpacing(2)
 
-            // Two big Tuner action keys, stacked.
+            // Three Tuner action keys — paste, import OPML, export OPML.
             VStack(spacing: 10) {
                 tunerActionKey(
                     text: "→ PASTE FEED URL",
@@ -137,6 +151,28 @@ struct LibraryImportSheet: View {
                         opmlFilePresenting = true
                     }
                 )
+
+                // Export — closes the loop with the OPML import path so
+                // OffScript users can move out as easily as they moved in.
+                // The exported file matches the format Apple Podcasts /
+                // Pocket Casts / Overcast / AntennaPod accept.
+                if !subscribedPodcasts.isEmpty {
+                    Button {
+                        prepareExport()
+                    } label: {
+                        HStack {
+                            TunerLabel(
+                                text: "↑ EXPORT \(subscribedPodcasts.count) SUBSCRIPTIONS",
+                                color: .offscriptFnInfo, size: 11
+                            )
+                            Spacer()
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 14)
+                        .overlay(Rectangle().stroke(Color.offscriptFnInfo, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.top, 8)
 
@@ -418,6 +454,42 @@ struct LibraryImportSheet: View {
     // sheet dismissal — the user can close this sheet (or the app's
     // current foreground tab) and the import keeps running. Library
     // surfaces ongoing progress via `LibraryBatchImportStrip`.
+
+    // ── Export ───────────────────────────────────────────────────────
+
+    /// Generate an OPML file from the user's subscribed podcasts and
+    /// hand it to the system share sheet. Lands in a temp directory so
+    /// the OS cleans it up; if the user picks "Save to Files" the share
+    /// sheet copies it elsewhere.
+    private func prepareExport() {
+        let data = PodcastOPMLExporter.export(podcasts: subscribedPodcasts)
+        let timestamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("offscript-subscriptions-\(timestamp).opml")
+        do {
+            try data.write(to: url, options: .atomic)
+            exportFileURL = url
+            isExportShareSheetPresented = true
+        } catch {
+            importSheetLogger.error("OPML export write failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = "Couldn't write the export file."
+        }
+    }
+}
+
+/// Thin wrapper around `UIActivityViewController` for sharing the
+/// generated OPML file. SwiftUI's native `ShareLink` works for simple
+/// cases but the explicit URL we want to share is a temp file, and
+/// presenting a UIActivityViewController gives the user the full set
+/// of share targets (Save to Files, AirDrop, Mail, etc.).
+private struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 // MARK: - Per-row status

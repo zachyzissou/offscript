@@ -152,6 +152,65 @@ enum PodcastImportService {
     }
 }
 
+// MARK: - OPML export
+
+enum PodcastOPMLExporter {
+    /// Generate an OPML 2.0 document listing every subscribed podcast.
+    /// Format matches what Apple Podcasts / Pocket Casts / Overcast /
+    /// AntennaPod export, so an OffScript export imports cleanly into
+    /// any of them. Each `<outline>` carries `xmlUrl`, `text`, `title`,
+    /// and `type="rss"` — the union of attributes the major importers
+    /// actually look at.
+    static func export(podcasts: [Podcast]) -> Data {
+        let formatter = ISO8601DateFormatter()
+        let dateCreated = formatter.string(from: Date())
+
+        var xml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <opml version="2.0">
+        <head>
+            <title>OffScript Subscriptions</title>
+            <dateCreated>\(dateCreated)</dateCreated>
+        </head>
+        <body>
+            <outline text="feeds" title="feeds">
+
+        """
+
+        for podcast in podcasts {
+            let title = escape(podcast.title)
+            let url = escape(podcast.feedURL.absoluteString)
+            let author = escape(podcast.author ?? "")
+            xml += "        <outline type=\"rss\" text=\"\(title)\" title=\"\(title)\" xmlUrl=\"\(url)\""
+            if !author.isEmpty {
+                xml += " author=\"\(author)\""
+            }
+            xml += " />\n"
+        }
+
+        xml += """
+            </outline>
+        </body>
+        </opml>
+        """
+
+        return Data(xml.utf8)
+    }
+
+    /// Minimal XML attribute escaping — covers the five reserved
+    /// characters that XML parsers care about. Podcast titles routinely
+    /// contain `&` and quotes; without escaping the OPML wouldn't parse
+    /// in the destination app.
+    private static func escape(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&apos;")
+    }
+}
+
 // MARK: - OPML
 
 struct OPMLFeedEntry: Hashable, Identifiable {

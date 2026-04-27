@@ -140,6 +140,10 @@ struct SettingsView: View {
                     detail: "Push compact episodes and quick wins a little higher in your recommendations.",
                     isOn: $preferShortEpisodes
                 )
+                Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                defaultRateRow
+                Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                resetRatesRow
             }
         }
         .padding(.vertical, 12)
@@ -148,6 +152,95 @@ struct SettingsView: View {
             Rectangle().fill(Color.offscriptHairline).frame(height: 1),
             alignment: .top
         )
+    }
+
+    /// Default playback rate — the rate new podcasts inherit before the
+    /// user picks something specific in the player. Per-podcast overrides
+    /// from the player win over this. Stored in
+    /// `PodcastPlaybackPreferences.globalDefault`.
+    private var defaultRateRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Default playback rate")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                Text("New podcasts inherit this rate. Per-podcast picks from the player override it.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+            }
+            Spacer(minLength: 12)
+            Menu {
+                ForEach([Float(1.0), 1.1, 1.25, 1.5, 1.75, 2.0, 2.5], id: \.self) { rate in
+                    Button {
+                        PodcastPlaybackPreferences.setGlobalDefault(rate)
+                        defaultRateRefresh = UUID()  // force re-read of static
+                    } label: {
+                        HStack {
+                            Text(String(format: "%.2g×", rate))
+                            if abs(currentDefaultRate - rate) < 0.001 {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                TunerLabel(
+                    text: String(format: "%.2g×", currentDefaultRate),
+                    color: .offscriptSignalYellow,
+                    size: 11
+                )
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 10)
+    }
+
+    /// Wipe every per-podcast playback-rate override so all shows
+    /// fall back to the global default. Useful escape hatch when the
+    /// user accidentally fast-tasted everything to 2× and wants out.
+    private var resetRatesRow: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Reset per-podcast rates")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                Text("Clears every show's custom playback speed back to the default.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(2)
+            }
+            Spacer(minLength: 12)
+            Button {
+                UserDefaults.standard.removeObject(forKey: "offscript.podcastRates")
+            } label: {
+                TunerLabel(
+                    text: "× RESET",
+                    color: .offscriptFnRecord,
+                    size: 10
+                )
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 10)
+    }
+
+    /// Force a re-render of the default-rate menu when the user picks a
+    /// new value. UserDefaults isn't an ObservableObject so the View
+    /// won't re-render automatically; bumping this UUID does it.
+    @State private var defaultRateRefresh = UUID()
+    private var currentDefaultRate: Float {
+        // Reference defaultRateRefresh so SwiftUI tracks it as a dep.
+        _ = defaultRateRefresh
+        return PodcastPlaybackPreferences.globalDefault
     }
 
     @ViewBuilder
