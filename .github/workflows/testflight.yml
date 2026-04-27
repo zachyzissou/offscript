@@ -96,6 +96,25 @@ jobs:
         env:
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
 
+      - name: Materialize Sentry DSN into Secrets.xcconfig
+        # SENTRY_DSN is intentionally optional. If the secret isn't set, we
+        # still write a stub xcconfig so the project's base configuration
+        # reference resolves and CrashReporter.configure() simply skips
+        # Sentry init (per the malformed-DSN guard inside CrashReporter).
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p Config
+          if [ -n "${SENTRY_DSN:-}" ]; then
+            printf 'SENTRY_DSN = %s\n' "$SENTRY_DSN" > Config/Secrets.xcconfig
+            echo "Sentry DSN materialized into Config/Secrets.xcconfig"
+          else
+            printf 'SENTRY_DSN =\n' > Config/Secrets.xcconfig
+            echo "::warning::SENTRY_DSN secret is not set; Sentry will be disabled in this build"
+          fi
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+
       - name: Compute release metadata
         id: metadata
         run: |

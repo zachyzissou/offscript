@@ -12,6 +12,12 @@ import UIKit
 @main
 struct OffScriptApp: App {
     init() {
+        // Crash + perf telemetry. Sentry first so its hooks are installed
+        // before anything else can crash; MetricKit forwards diagnostics
+        // into Sentry once Sentry is up.
+        CrashReporter.configure()
+        MetricKitReporter.shared.configure()
+
         let tabBarAppearance = UITabBarAppearance()
         tabBarAppearance.configureWithOpaqueBackground()
         tabBarAppearance.backgroundColor = UIColor(red: 0.06, green: 0.06, blue: 0.08, alpha: 1.0)
