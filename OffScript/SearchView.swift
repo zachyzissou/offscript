@@ -4,6 +4,8 @@ import SwiftUI
 
 private let searchLogger = Logger(subsystem: "com.offscript", category: "Search")
 
+// MARK: - SearchView (Tuner signal scan)
+
 struct SearchView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var podcasts: [Podcast]
@@ -25,20 +27,17 @@ struct SearchView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
+            VStack(alignment: .leading, spacing: 16) {
                 if !isSearchActive {
-                    SearchHeader()
+                    SearchTunerHeader()
                 }
 
                 if query.isEmpty, !isSearchActive {
-                    SearchPromptCard()
-                        .padding(.horizontal, OffScriptTheme.pagePadding)
+                    SearchPromptStrip()
 
                     StarterTopicsSection(
                         topics: starterTopics,
-                        onSelect: { topic in
-                            query = topic
-                        }
+                        onSelect: { topic in query = topic }
                     )
 
                     if !recentSearches.isEmpty {
@@ -51,78 +50,98 @@ struct SearchView: View {
                 }
 
                 if let errorMessage {
-                    SearchErrorCard(message: errorMessage)
-                        .padding(.horizontal, OffScriptTheme.pagePadding)
+                    SearchErrorStrip(message: errorMessage)
                 }
 
                 if isSearching {
-                    VStack(alignment: .leading, spacing: 14) {
-                        ForEach(0..<3, id: \.self) { _ in
-                            HStack(spacing: 16) {
-                                RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                                    .fill(Color.offscriptSurfaceThin)
-                                    .frame(width: 76, height: 76)
-
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Capsule()
-                                        .fill(Color.offscriptSurfaceThin)
-                                        .frame(width: 80, height: 14)
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.offscriptSurfaceThin)
-                                        .frame(width: 160, height: 16)
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .fill(Color.offscriptSurfaceThin)
-                                        .frame(width: 110, height: 12)
-                                }
-
-                                Spacer()
-                            }
-                            .padding(16)
-                            .offscriptUtilitySurface()
-                        }
-                    }
-                    .padding(.horizontal, OffScriptTheme.pagePadding)
-                    .shimmer()
+                    searchSkeleton
                 } else if results.isEmpty, !query.isEmpty {
-                    OffScriptEmptyState(
-                        icon: "magnifyingglass",
-                        headline: "No matches",
-                        message: "Try a different show name, host, or topic. Exact titles work best."
-                    )
-                        .padding(.horizontal, OffScriptTheme.pagePadding)
+                    emptyState
                 } else if !results.isEmpty {
-                    VStack(alignment: .leading, spacing: 14) {
-                        OffScriptSectionHeader(
-                            title: "Results",
-                            subtitle: "Subscribe quickly and let OffScript turn a few good picks into a smarter feed."
-                        )
-                        .padding(.horizontal, OffScriptTheme.pagePadding)
-
-                        LazyVStack(spacing: 14) {
-                            ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
-                                SearchResultCard(
-                                    result: result,
-                                    isAdded: subscribedFeedURLs.contains(result.feedURL.absoluteString),
-                                    isImporting: importingID == result.id,
-                                    onAdd: { Task { await add(result) } }
-                                )
-                                .padding(.horizontal, OffScriptTheme.pagePadding)
-                                .staggeredEntrance(index: index)
-                            }
-                        }
-                    }
+                    resultsSection
                 }
             }
-            .padding(.top, 16)
+            .padding(.horizontal, OffScriptTheme.pagePadding)
+            .padding(.top, 8)
             .padding(.bottom, 90)
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
-        .offscriptPageBackground()
-        .navigationTitle("Search")
+        .background(Color.offscriptStudioBlack.ignoresSafeArea())
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .searchable(text: $query, isPresented: $isSearchActive, prompt: "Search podcasts or hosts")
         .task(id: query) { await search() }
+    }
+
+    private var searchSkeleton: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<3, id: \.self) { idx in
+                HStack(spacing: 12) {
+                    Rectangle().fill(Color.offscriptFillSubtle).frame(width: 56, height: 56)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Rectangle().fill(Color.offscriptFillSubtle).frame(width: 70, height: 9)
+                        Rectangle().fill(Color.offscriptFillSubtle).frame(width: 160, height: 12)
+                        Rectangle().fill(Color.offscriptFillSubtle).frame(width: 110, height: 9)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 12)
+                if idx < 2 {
+                    Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                }
+            }
+        }
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .top
+        )
+        .shimmer()
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+            TunerLabel(text: "● NO MATCHES", color: .offscriptSoftPaper)
+            Text("No matches")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(Color.offscriptPaperWhite)
+            Text("Try a different show name, host, or topic. Exact titles work best.")
+                .font(.system(size: 13.5))
+                .foregroundStyle(Color.offscriptPaperWhite)
+                .lineSpacing(2)
+        }
+        .padding(.top, 8)
+    }
+
+    private var resultsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+            HStack {
+                TunerLabel(text: "RESULTS · SCAN COMPLETE", color: .offscriptSignalYellow)
+                Spacer()
+                TunerLabel(text: "\(results.count) FOUND", color: .offscriptFnInfo)
+            }
+
+            LazyVStack(spacing: 0) {
+                ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
+                    SearchResultRow(
+                        result: result,
+                        rank: index + 1,
+                        isAdded: subscribedFeedURLs.contains(result.feedURL.absoluteString),
+                        isImporting: importingID == result.id,
+                        onAdd: { Task { await add(result) } }
+                    )
+                    if index < results.count - 1 {
+                        Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                    }
+                }
+            }
+            .padding(.top, 4)
+        }
     }
 
     private var recentSearches: [String] {
@@ -184,42 +203,45 @@ struct SearchView: View {
     }
 }
 
-private struct SearchHeader: View {
+// MARK: - Header + sections
+
+private struct SearchTunerHeader: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            OffScriptUtilityHeader(
-                eyebrow: "Search",
-                title: "Find a signal worth following",
-                subtitle: "Start with a show you trust or a topic you want more of. OffScript can work from either."
-            )
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                TunerLabel(text: "SEARCH · SIGNAL SCAN", color: .offscriptSignalYellow)
+                Spacer()
+                TunerLabel(text: "RSS · ITUNES", color: .offscriptFnInfo)
+            }
+            Text("Search")
+                .font(.system(size: 32, weight: .bold))
+                .tracking(-0.5)
+                .foregroundStyle(Color.offscriptPaperWhite)
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                .padding(.top, 4)
         }
-        .padding(.horizontal, OffScriptTheme.pagePadding)
     }
 }
 
-private struct SearchPromptCard: View {
+private struct SearchPromptStrip: View {
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "sparkles")
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(Color.offscriptAccent)
-                .frame(width: 34, height: 34)
-                .background(Color.offscriptAccentSoft)
-                .clipShape(Circle())
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Good starting point")
-                    .font(.offscriptCardTitle)
-                    .foregroundStyle(Color.offscriptTextPrimary)
-
-                Text("Search for three strong inputs: a favorite show, a reliable host, and one topic you want more of.")
-                    .font(.offscriptBody)
-                    .foregroundStyle(Color.offscriptTextSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        VStack(alignment: .leading, spacing: 6) {
+            TunerLabel(text: "● TUNING TIP", color: .offscriptFnInfo)
+            Text("Three strong inputs")
+                .font(.system(size: 16, weight: .semibold))
+                .tracking(-0.2)
+                .foregroundStyle(Color.offscriptPaperWhite)
+            Text("Search for a favorite show, a reliable host, and one topic you want more of. OffScript makes a smart feed from any of them.")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.offscriptPaperWhite)
+                .lineSpacing(2)
         }
-        .padding(16)
-        .offscriptSurface(radius: OffScriptTheme.Radius.medium, prominent: true)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .top
+        )
     }
 }
 
@@ -228,26 +250,28 @@ private struct StarterTopicsSection: View {
     let onSelect: (String) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            OffScriptSectionHeader(
-                title: "Starter Topics",
-                subtitle: "A quick way to seed taste without knowing the exact show name yet."
-            )
-            .padding(.horizontal, OffScriptTheme.pagePadding)
+        VStack(alignment: .leading, spacing: 8) {
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+            TunerLabel(text: "STARTER TOPICS", color: .offscriptSignalYellow)
 
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 120), spacing: 10)],
+                columns: [GridItem(.adaptive(minimum: 120), spacing: 6)],
                 alignment: .leading,
-                spacing: 10
+                spacing: 6
             ) {
                 ForEach(topics, id: \.self) { topic in
-                    Button(topic) {
+                    Button {
                         onSelect(topic)
+                    } label: {
+                        TunerLabel(text: topic.uppercased(), color: .offscriptPaperWhite, size: 10)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 9)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                     }
-                    .buttonStyle(SecondaryPillButtonStyle())
+                    .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, OffScriptTheme.pagePadding)
         }
     }
 }
@@ -258,123 +282,150 @@ private struct RecentSearchesSection: View {
     let onClear: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                OffScriptSectionHeader(
-                    title: "Recent Searches",
-                    subtitle: "Jump back into the topics and shows you were already exploring."
-                )
-
+        VStack(alignment: .leading, spacing: 8) {
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+            HStack {
+                TunerLabel(text: "RECENT SEARCHES", color: .offscriptSignalYellow)
                 Spacer()
-
-                Button("Clear") {
-                    withAnimation { onClear() }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { onClear() }
+                } label: {
+                    TunerLabel(text: "× CLEAR", color: .offscriptFnRecord, size: 9)
                 }
-                .font(.offscriptMeta.weight(.semibold))
-                .foregroundStyle(Color.offscriptDestructive)
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal, OffScriptTheme.pagePadding)
 
-            LazyVStack(spacing: 12) {
-                ForEach(items, id: \.self) { item in
+            LazyVStack(spacing: 0) {
+                ForEach(Array(items.enumerated()), id: \.element) { idx, item in
                     Button {
                         onSelect(item)
                     } label: {
                         HStack {
-                            Image(systemName: "clock.arrow.circlepath")
-                                .foregroundStyle(Color.offscriptTextMuted)
+                            Text(String(format: "%02d", idx + 1))
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .tracking(1.0)
+                                .foregroundStyle(Color.offscriptSignalYellow)
+                                .frame(width: 28, alignment: .leading)
                             Text(item)
-                                .font(.offscriptBody)
-                                .foregroundStyle(Color.offscriptTextPrimary)
+                                .font(.system(size: 14))
+                                .foregroundStyle(Color.offscriptPaperWhite)
                             Spacer()
+                            Image(systemName: "arrow.up.left")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(Color.offscriptSoftPaper)
                         }
-                        .padding(16)
-                        .offscriptUtilitySurface()
+                        .padding(.vertical, 10)
                     }
                     .buttonStyle(.plain)
-                    .padding(.horizontal, OffScriptTheme.pagePadding)
+                    if idx < items.count - 1 {
+                        Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                    }
                 }
             }
         }
     }
 }
 
-private struct SearchErrorCard: View {
+private struct SearchErrorStrip: View {
     let message: String
 
     var body: some View {
-        Text(message)
-            .font(.offscriptBody)
-            .foregroundStyle(Color.offscriptTextPrimary)
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.offscriptDestructiveSoft)
-            .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                    .stroke(Color.offscriptDestructive.opacity(0.4), lineWidth: 1)
-            )
+        VStack(alignment: .leading, spacing: 4) {
+            TunerLabel(text: "● SEARCH ERROR", color: .offscriptFnRecord)
+            Text(message)
+                .font(.system(size: 12.5))
+                .foregroundStyle(Color.offscriptPaperWhite)
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(
+            Rectangle().fill(Color.offscriptFnRecord).frame(height: 1),
+            alignment: .top
+        )
     }
 }
 
-private struct SearchResultCard: View {
+// MARK: - Result row
+
+private struct SearchResultRow: View {
     let result: PodcastSearchResult
+    let rank: Int
     let isAdded: Bool
     let isImporting: Bool
     let onAdd: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 16) {
-                OffScriptArtworkView(url: result.artworkURL)
-                    .frame(width: 76, height: 76)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                Text(String(format: "%02d", rank))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .tracking(1.0)
+                    .foregroundStyle(Color.offscriptSignalYellow)
+                    .frame(width: 28, alignment: .leading)
+                    .padding(.top, 4)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    OffScriptReasonBadge(text: isAdded ? "In Library" : "RSS Import")
+                OffScriptArtworkView(url: result.artworkURL, cornerRadius: 3)
+                    .frame(width: 64, height: 64)
+                    .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
 
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        TunerLabel(
+                            text: isAdded ? "● IN LIBRARY" : "○ RSS IMPORT",
+                            color: isAdded ? .offscriptFnMode : .offscriptSoftPaper,
+                            size: 8
+                        )
+                    }
                     Text(result.title)
-                        .font(.offscriptCardTitle)
-                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.offscriptPaperWhite)
                         .lineLimit(2)
-
-                    Text(result.author)
-                        .font(.offscriptBody)
-                        .foregroundStyle(Color.offscriptTextSecondary)
+                    TunerLabel(text: result.author.uppercased(), color: .offscriptSoftPaper, size: 8)
                         .lineLimit(1)
                 }
-
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if let summary = result.summary {
                 Text(summary)
-                    .font(.offscriptBody)
-                    .foregroundStyle(Color.offscriptTextSecondary)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
                     .lineLimit(2)
+                    .padding(.leading, 28 + 12 + 64 + 12) // align under text column
             }
 
-            HStack(spacing: 10) {
-                Button(isAdded ? "Added" : (isImporting ? "Adding..." : "Add to Library")) {
+            HStack(spacing: 8) {
+                Spacer().frame(width: 28 + 12 + 64 + 12)
+                Button {
                     onAdd()
+                } label: {
+                    TunerLabel(
+                        text: isAdded ? "✓ ADDED" : (isImporting ? "○ ADDING…" : "+ ADD TO LIBRARY"),
+                        color: isAdded ? .offscriptFnMode : .offscriptSignalYellow,
+                        size: 10
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .overlay(Rectangle().stroke(
+                        isAdded ? Color.offscriptFnMode : Color.offscriptSignalYellow,
+                        lineWidth: 1
+                    ))
                 }
-                .buttonStyle(PrimaryPillButtonStyle())
+                .buttonStyle(.plain)
                 .disabled(isImporting || isAdded)
 
                 if let host = result.websiteURL {
                     Link(destination: host) {
-                        Label("Open", systemImage: "arrow.up.right")
+                        TunerLabel(text: "→ WEBSITE", color: .offscriptPaperWhite, size: 10)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 9)
+                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                     }
-                    .buttonStyle(SecondaryPillButtonStyle())
+                    .buttonStyle(.plain)
                 }
-            }
-
-            if isAdded {
-                Text("Added to your library. New episodes from this show will now shape your smart feed.")
-                    .font(.offscriptMeta)
-                    .foregroundStyle(Color.offscriptTextMuted)
+                Spacer()
             }
         }
-        .padding(16)
-        .offscriptUtilitySurface()
+        .padding(.vertical, 10)
     }
 }

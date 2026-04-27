@@ -4,6 +4,23 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-04-27
+
+### Changed
+- **Full Tuner OLED port across the rest of the app.** The 2.0 design landing only touched `EpisodeDetailView` + design tokens; `HomeView`, `LibraryView`, `QueueView`, `SearchView`, `SettingsView`, `MiniPlayer`, and `PlayerView` still rendered with the old editorial vocabulary (rounded gradient cards, `OffScriptSectionHeader`, `OffScriptUtilityHeader`, `OffScriptExplanationTag`, `HeroRecommendationCard`). They had the new colors but the old layout — that's the "UI not fully implemented" feeling. Every top-level surface now uses the spec-sheet vocabulary: `TunerLabel` eyebrows, hairline-rule section dividers, mono channel readouts, sharp 3pt artwork tiles with hairline borders, no surface modifiers, sharp-cornered Tuner action buttons.
+  - `MiniPlayer` — flat-black strip with single-pixel signal-yellow progress rail, 44pt-tap signal-yellow square play key, mono `● PLAYING` / `❙❙ PAUSED` status badges
+  - `HomeView` — `HomeTunerHeader` with TODAY · DAY DATE eyebrow, `HeroTunerCard` with Tuner action keys (`→ PLAY` / `+ QUEUE`), `TunerRail` / `TunerRailCard` with mono channel readouts
+  - `PlayerView` — full spec sheet (PLAYER · NOW PLAYING header, POS / REM mono readouts, signal-yellow tick rule scrubber, 4-key transport row with hairline buttons, UP NEXT + WHAT'S NEXT + CONTROLS sections all hairline-divided)
+  - `LibraryView` — channel directory layout, `01·02·03` numbered channel rows, mono stat readouts (SHOWS · UNPLAYED · IN PROGRESS), Tuner episode rails
+  - `PodcastDetailView` — channel detail spec sheet with `001·002·003` episode numbering, mono metadata, Tuner action buttons
+  - `QueueView` — working-set spec sheet, `02 RANK ARTWORK TITLE` row layout, `× CLEAR ALL` action, NEXT UP lead strip
+  - `SearchView` — signal scan layout with starter-topic mode toggles, hairline-divided result rows numbered `01·02·03`
+  - `SettingsView` — config panel with stat readouts, Tuner toggles, hairline-divided sections (PLAYBACK / ICLOUD SYNC / ABOUT)
+- **3 Apple AI cards refactored** to spec-sheet vocabulary on `EpisodeDetailView`. They were rounded panel cards stuck inside an otherwise-Tuner screen — `TunerLabel` eyebrow + hairline rule + content, no surface wrapper, mono numbered bullets in the briefing, function-coded status badges (`● REC` / `● READY` / `● ERROR`).
+
+### Notes
+- All sections now use the same vocabulary defined by the existing `TunerLabel`, `TunerTag`, and surface conventions in `AppTheme.swift`. No new design primitives were added — this is purely catching the rest of the app up to the language `EpisodeDetailView` was already speaking.
+
 ## [2.2.3] — 2026-04-27
 
 ### Added

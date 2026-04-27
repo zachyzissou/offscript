@@ -4,6 +4,8 @@ import SwiftUI
 
 private let queueLogger = Logger(subsystem: "com.offscript", category: "Queue")
 
+// MARK: - QueueView (Tuner working set)
+
 struct QueueView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var queueItems: [QueueItem]
@@ -25,179 +27,238 @@ struct QueueView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
-                QueueHeader(count: orderedItems.count)
+            VStack(alignment: .leading, spacing: 16) {
+                QueueTunerHeader(
+                    count: orderedItems.count,
+                    totalDuration: queueTotalDuration
+                )
 
                 if orderedItems.isEmpty {
-                    VStack(spacing: 20) {
-                        OffScriptEmptyState(
-                            icon: "text.badge.plus",
-                            headline: "Nothing queued yet",
-                            message: "Your queue is a working set, not a backlog. Add a few episodes you actually plan to hear next."
-                        )
-
-                        NavigationLink("Explore shows in Search") {
-                            SearchView()
-                        }
-                        .buttonStyle(PrimaryPillButtonStyle())
-                    }
-                    .padding(.horizontal, OffScriptTheme.pagePadding)
-                    .padding(.top, 24)
+                    emptyState
                 } else {
                     if let first = orderedItems.first {
-                        QueueLeadCard(item: first)
-                            .padding(.horizontal, OffScriptTheme.spaciousPadding)
+                        QueueLeadStrip(item: first)
                     }
 
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            OffScriptSectionHeader(
-                                title: "Stack",
-                                subtitle: "Hold to reorder. Tap ✕ to remove."
-                            )
+                    queueListSection
+                }
+            }
+            .padding(.horizontal, OffScriptTheme.pagePadding)
+            .padding(.top, 8)
+            .padding(.bottom, 90)
+        }
+        .background(Color.offscriptStudioBlack.ignoresSafeArea())
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+    }
 
-                            Spacer()
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TunerLabel(text: "● QUEUE EMPTY", color: .offscriptSoftPaper)
+            Text("Nothing queued yet")
+                .font(.system(size: 22, weight: .semibold))
+                .tracking(-0.3)
+                .foregroundStyle(Color.offscriptPaperWhite)
+            Text("This is your working set, not a backlog. Queue a few episodes you actually plan to hear next.")
+                .font(.system(size: 13.5))
+                .foregroundStyle(Color.offscriptPaperWhite)
+                .lineSpacing(2)
 
-                            if orderedItems.count > 1 {
-                                Button("Clear All") {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                        for item in orderedItems {
-                                            do { try QueueService.remove(item, in: modelContext) } catch { queueLogger.error("Failed to remove queue item: \(error.localizedDescription, privacy: .public)") }
-                                        }
-                                    }
-                                }
-                                .font(.offscriptMeta.weight(.semibold))
-                                .foregroundStyle(Color.offscriptDestructive)
+            NavigationLink {
+                SearchView()
+            } label: {
+                HStack {
+                    TunerLabel(text: "→ EXPLORE SHOWS", color: .offscriptSignalYellow, size: 11)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
+        .padding(.top, 16)
+    }
+
+    private var queueListSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+            HStack {
+                TunerLabel(text: "STACK · TAP × TO REMOVE", color: .offscriptSignalYellow)
+                Spacer()
+                if orderedItems.count > 1 {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            for item in orderedItems {
+                                do { try QueueService.remove(item, in: modelContext) }
+                                catch { queueLogger.error("Failed to remove queue item: \(error.localizedDescription, privacy: .public)") }
                             }
                         }
-                        .padding(.horizontal, OffScriptTheme.pagePadding)
+                    } label: {
+                        TunerLabel(text: "× CLEAR ALL", color: .offscriptFnRecord, size: 9)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
 
-                        if let totalDuration = queueTotalDuration {
-                            Text("Total: \(totalDuration)")
-                                .font(.offscriptMeta)
-                                .foregroundStyle(Color.offscriptTextMuted)
-                                .padding(.horizontal, OffScriptTheme.pagePadding)
+            LazyVStack(spacing: 0) {
+                ForEach(Array(orderedItems.enumerated()), id: \.element.id) { index, item in
+                    QueueItemRow(
+                        item: item,
+                        rank: index + 1,
+                        onRemove: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                do { try QueueService.remove(item, in: modelContext) }
+                                catch { queueLogger.error("Failed to remove queue item: \(error.localizedDescription, privacy: .public)") }
+                            }
                         }
-
-                        ForEach(Array(orderedItems.enumerated()), id: \.element.id) { index, item in
-                            QueueItemCard(item: item, rank: index + 1, onRemove: {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    do { try QueueService.remove(item, in: modelContext) } catch { queueLogger.error("Failed to remove queue item: \(error.localizedDescription, privacy: .public)") }
+                    )
+                    .contextMenu {
+                        if index > 0 {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    do { try QueueService.move(from: IndexSet(integer: index), to: index - 1, in: modelContext) }
+                                    catch { queueLogger.error("Failed to move queue item: \(error.localizedDescription, privacy: .public)") }
                                 }
-                            })
-                                .contextMenu {
-                                    if index > 0 {
-                                        Button {
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                                do { try QueueService.move(from: IndexSet(integer: index), to: index - 1, in: modelContext) } catch { queueLogger.error("Failed to move queue item: \(error.localizedDescription, privacy: .public)") }
-                                            }
-                                        } label: {
-                                            Label("Move Up", systemImage: "arrow.up")
-                                        }
-                                    }
-                                    if index < orderedItems.count - 1 {
-                                        Button {
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                                do { try QueueService.move(from: IndexSet(integer: index), to: index + 2, in: modelContext) } catch { queueLogger.error("Failed to move queue item: \(error.localizedDescription, privacy: .public)") }
-                                            }
-                                        } label: {
-                                            Label("Move Down", systemImage: "arrow.down")
-                                        }
-                                    }
-                                    Button(role: .destructive) {
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                            do { try QueueService.remove(item, in: modelContext) } catch { queueLogger.error("Failed to remove queue item: \(error.localizedDescription, privacy: .public)") }
-                                        }
-                                    } label: {
-                                        Label("Remove", systemImage: "trash")
-                                    }
-                                }
-                                .padding(.horizontal, OffScriptTheme.pagePadding)
-                                .staggeredEntrance(index: index)
+                            } label: {
+                                Label("Move Up", systemImage: "arrow.up")
+                            }
                         }
+                        if index < orderedItems.count - 1 {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    do { try QueueService.move(from: IndexSet(integer: index), to: index + 2, in: modelContext) }
+                                    catch { queueLogger.error("Failed to move queue item: \(error.localizedDescription, privacy: .public)") }
+                                }
+                            } label: {
+                                Label("Move Down", systemImage: "arrow.down")
+                            }
+                        }
+                        Button(role: .destructive) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                do { try QueueService.remove(item, in: modelContext) }
+                                catch { queueLogger.error("Failed to remove queue item: \(error.localizedDescription, privacy: .public)") }
+                            }
+                        } label: {
+                            Label("Remove", systemImage: "trash")
+                        }
+                    }
+                    if index < orderedItems.count - 1 {
+                        Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                     }
                 }
             }
-            .padding(.top, 16)
-            .padding(.bottom, 90)
+            .padding(.top, 4)
         }
-        .offscriptPageBackground()
-        .navigationTitle("Queue")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
-private struct QueueHeader: View {
+// MARK: - Header
+
+private struct QueueTunerHeader: View {
     let count: Int
+    let totalDuration: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            OffScriptUtilityHeader(
-                eyebrow: "Queue",
-                title: "Queue with intent",
-                subtitle: "This is your working set: what plays next, what can wait, and what deserves the top slot right now."
-            )
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                TunerLabel(text: "QUEUE · WORKING SET", color: .offscriptSignalYellow)
+                Spacer()
+                TunerLabel(text: "\(count) STACKED", color: .offscriptFnInfo)
+            }
 
-            OffScriptReasonBadge(text: "\(count) queued")
+            Text("Queue")
+                .font(.system(size: 32, weight: .bold))
+                .tracking(-0.5)
+                .foregroundStyle(Color.offscriptPaperWhite)
+
+            if let totalDuration {
+                TunerLabel(text: "TOTAL  \(totalDuration.uppercased())", color: .offscriptSoftPaper)
+                    .padding(.top, 2)
+            }
+
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                .padding(.top, 6)
         }
-        .padding(.horizontal, OffScriptTheme.pagePadding)
     }
 }
 
-private struct QueueLeadCard: View {
+// MARK: - Lead strip
+
+private struct QueueLeadStrip: View {
     @Environment(\.modelContext) private var modelContext
     let item: QueueItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 12) {
-                    OffScriptReasonBadge(text: "Next Up")
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                TunerLabel(text: "● NEXT UP", color: .offscriptSignalYellow)
+                Spacer()
+                if let dur = item.episode.duration {
+                    TunerLabel(text: EpisodeDurationFormatter.short(dur).uppercased(), color: .offscriptSoftPaper)
+                }
+            }
 
+            HStack(alignment: .top, spacing: 14) {
+                OffScriptArtworkView(
+                    url: item.episode.artworkURL ?? item.episode.podcast.artworkURL,
+                    cornerRadius: 3
+                )
+                .frame(width: 88, height: 88)
+                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+
+                VStack(alignment: .leading, spacing: 6) {
+                    TunerTag(text: item.episode.podcast.title, color: .offscriptFnRecord)
+                        .lineLimit(1)
                     Text(item.episode.title)
-                        .font(.offscriptDisplay)
-                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .font(.system(size: 16, weight: .semibold))
+                        .tracking(-0.2)
+                        .foregroundStyle(Color.offscriptPaperWhite)
                         .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text(item.episode.podcast.title)
-                        .font(.offscriptCardTitle)
-                        .foregroundStyle(Color.offscriptTextSecondary)
-
-                    if let duration = item.episode.duration {
-                        Text(EpisodeDurationFormatter.short(duration))
-                            .font(.offscriptMeta)
-                            .foregroundStyle(Color.offscriptTextMuted)
-                    }
                 }
-
-                Spacer(minLength: 0)
-
-                OffScriptArtworkView(url: item.episode.artworkURL ?? item.episode.podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.large)
-                    .frame(width: 96, height: 96)
+                Spacer()
             }
 
-            HStack(spacing: 10) {
-                Button("Play") {
+            HStack(spacing: 8) {
+                Button {
                     PlaybackController.shared.play(item.episode, in: modelContext)
+                } label: {
+                    TunerLabel(text: "→ PLAY", color: .offscriptSignalYellow, size: 11)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                 }
-                .buttonStyle(PrimaryPillButtonStyle())
-                .sensoryFeedback(.impact(flexibility: .soft), trigger: item.episode.id)
+                .buttonStyle(.plain)
 
-                Button("Remove") {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        do { try QueueService.remove(item, in: modelContext) } catch { queueLogger.error("Failed to remove queue item: \(error.localizedDescription, privacy: .public)") }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        do { try QueueService.remove(item, in: modelContext) }
+                        catch { queueLogger.error("Failed to remove queue item: \(error.localizedDescription, privacy: .public)") }
                     }
+                } label: {
+                    TunerLabel(text: "× REMOVE", color: .offscriptFnRecord, size: 11)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                 }
-                .buttonStyle(SecondaryPillButtonStyle())
+                .buttonStyle(.plain)
+
+                Spacer()
             }
+            .padding(.top, 4)
         }
-        .padding(20)
-        .offscriptSurface(radius: OffScriptTheme.Radius.large, prominent: true)
+        .padding(12)
+        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
     }
 }
 
-private struct QueueItemCard: View {
+// MARK: - Item row
+
+private struct QueueItemRow: View {
     @Environment(\.modelContext) private var modelContext
 
     let item: QueueItem
@@ -205,35 +266,30 @@ private struct QueueItemCard: View {
     var onRemove: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 14) {
-            Text("\(rank)")
-                .font(.headline.weight(.bold))
-                .foregroundStyle(Color.offscriptTextPrimary)
-                .frame(width: 34, height: 34)
-                .background(Color.offscriptSurfaceLight)
-                .clipShape(Circle())
-                .overlay(
-                    Circle().stroke(Color.offscriptHairline, lineWidth: 1)
-                )
+        HStack(spacing: 12) {
+            Text(String(format: "%02d", rank))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .tracking(1.0)
+                .foregroundStyle(Color.offscriptSignalYellow)
+                .frame(width: 28, alignment: .leading)
 
-            OffScriptArtworkView(url: item.episode.artworkURL ?? item.episode.podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.small)
-                .frame(width: 56, height: 56)
+            OffScriptArtworkView(
+                url: item.episode.artworkURL ?? item.episode.podcast.artworkURL,
+                cornerRadius: 3
+            )
+            .frame(width: 48, height: 48)
+            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(item.episode.title)
-                    .font(.offscriptCardTitle)
-                    .foregroundStyle(Color.offscriptTextPrimary)
-                    .lineLimit(2)
-
-                Text(item.episode.podcast.title)
-                    .font(.offscriptBody)
-                    .foregroundStyle(Color.offscriptTextSecondary)
+            VStack(alignment: .leading, spacing: 3) {
+                TunerLabel(text: item.episode.podcast.title.uppercased(), color: .offscriptFnInfo, size: 8)
                     .lineLimit(1)
-
+                Text(item.episode.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                    .lineLimit(2)
                 if let duration = item.episode.duration {
-                    Text(EpisodeDurationFormatter.short(duration))
-                        .font(.offscriptMeta)
-                        .foregroundStyle(Color.offscriptTextMuted)
+                    TunerLabel(text: EpisodeDurationFormatter.short(duration).uppercased(),
+                               color: .offscriptSoftPaper, size: 8)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -242,31 +298,26 @@ private struct QueueItemCard: View {
                 PlaybackController.shared.play(item.episode, in: modelContext)
             } label: {
                 Image(systemName: "play.fill")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.black)
-                    .frame(width: 36, height: 36)
-                    .background(Color.offscriptAccent)
-                    .clipShape(Circle())
+                    .frame(width: 30, height: 30)
+                    .background(Color.offscriptSignalYellow)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Play \(item.episode.title)")
 
             if let onRemove {
-                Button {
-                    onRemove()
-                } label: {
+                Button(action: onRemove) {
                     Image(systemName: "xmark")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.offscriptTextMuted)
-                        .frame(width: 28, height: 28)
-                        .background(Color.offscriptSurfaceThin)
-                        .clipShape(Circle())
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color.offscriptFnRecord)
+                        .frame(width: 26, height: 30)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Remove \(item.episode.title) from queue")
+                .accessibilityLabel("Remove from queue")
             }
         }
-        .padding(16)
-        .offscriptUtilitySurface()
+        .padding(.vertical, 10)
     }
 }
