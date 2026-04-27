@@ -96,7 +96,9 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
         .task {
             PlaybackController.shared.configure(context: modelContext)
-            do { try await SampleDataSeeder.seedIfNeeded(context: modelContext) } catch { appLogger.error("Failed to seed sample data: \(error.localizedDescription, privacy: .public)") }
+            // SampleDataSeeder was removed in local commit 7ab11e8
+            // ("wire up OnboardingFlowView and remove SampleDataSeeder").
+            // Real onboarding flow now seeds via Genre + Podcast picker.
             #if DEBUG
             configureDebugSelectedTabIfNeeded()
             configureDebugPlaybackIfNeeded()
