@@ -4,6 +4,19 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.2.1] — 2026-04-27
+
+### Fixed
+- **TestFlight signing failure** introduced in 2.2.0. The new `OffScriptWidgets` app-extension target needs `com.offscript.app.widgets` registered in App Store Connect with the App Groups capability + a provisioning profile that includes `group.com.offscript.app` before CI can sign it. Stripped the target via `scripts/remove_widget_extension.rb` so the host app + Apple AI features ship cleanly. The Swift sources stay in `OffScriptWidgets/` for the follow-up.
+- Apple Developer cert limit (3 iOS distribution certs / account) was also being hit by the auto-create flow for the new bundle ID. Revoke an unused cert in the developer portal before re-adding the widget target.
+
+### Deferred
+- Now Playing widget + Live Activity / Dynamic Island. Re-add by:
+  1. Register App ID `com.offscript.app.widgets` in [Apple Developer Portal](https://developer.apple.com/account/resources/identifiers/list) with App Groups capability enabled.
+  2. Add `group.com.offscript.app` under App Groups; assign it to both bundle IDs.
+  3. Revoke an unused iOS distribution cert if at the 3-cert limit.
+  4. Run `scripts/add_widget_extension.rb` to put the target back, push, watch CI ship.
+
 ## [2.2.0] — 2026-04-27
 
 ### Added

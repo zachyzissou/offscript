@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		2A627EA4A065B113CE2835ED /* BuildFile in Embed Foundation Extensions */ = {isa = PBXBuildFile; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5187BBF3A3CF50E78F48CAD0 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = E64624EEB7536FE73F5DF86D /* Sentry */; };
 /* End PBXBuildFile section */
 
@@ -42,7 +41,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				2A627EA4A065B113CE2835ED /* BuildFile in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -87,17 +85,6 @@
 			exceptions = (
 			);
 			path = OffScriptUITests;
-			sourceTree = "<group>";
-		};
-		35687B8C06982958D582B32B /* OffScriptWidgets */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
-			path = OffScriptWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -145,7 +132,6 @@
 				1B9A234D2F68C21700788880 /* OffScriptUITests */,
 				1B9A23322F68C21600788880 /* Products */,
 				0AE5FFE6F4897E1559F705A5 /* Config */,
-				35687B8C06982958D582B32B /* OffScriptWidgets */,
 			);
 			sourceTree = "<group>";
 		};
@@ -174,7 +160,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				9375FDEE21DADD577A59FA1D /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				1B9A23332F68C21600788880 /* OffScript */,
@@ -229,22 +214,6 @@
 			productReference = 1B9A234A2F68C21700788880 /* OffScriptUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
-		9F42EA46E548E3C2253E493F /* OffScriptWidgets */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 776BCE8DA49B0EFF0FD24090 /* Build configuration list for PBXNativeTarget "OffScriptWidgets" */;
-			buildPhases = (
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				35687B8C06982958D582B32B /* OffScriptWidgets */,
-			);
-			name = OffScriptWidgets;
-			productName = OffScriptWidgets;
-			productType = "com.apple.product-type.app-extension";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -288,7 +257,6 @@
 				1B9A23302F68C21600788880 /* OffScript */,
 				1B9A233F2F68C21700788880 /* OffScriptTests */,
 				1B9A23492F68C21700788880 /* OffScriptUITests */,
-				9F42EA46E548E3C2253E493F /* OffScriptWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -351,12 +319,6 @@
 			isa = PBXTargetDependency;
 			target = 1B9A23302F68C21600788880 /* OffScript */;
 			targetProxy = 1B9A234B2F68C21700788880 /* PBXContainerItemProxy */;
-		};
-		9375FDEE21DADD577A59FA1D /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			name = OffScriptWidgets;
-			target = 9F42EA46E548E3C2253E493F /* OffScriptWidgets */;
-			targetProxy = AFA4A960770DFAAEEA061E72 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -507,7 +469,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -555,7 +517,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -579,7 +541,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -602,7 +564,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -624,7 +586,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -646,7 +608,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -679,7 +641,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -709,7 +671,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.2.0;
+				MARKETING_VERSION = 2.2.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -755,15 +717,6 @@
 			buildConfigurations = (
 				1B9A235B2F68C21700788880 /* Debug */,
 				1B9A235C2F68C21700788880 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		776BCE8DA49B0EFF0FD24090 /* Build configuration list for PBXNativeTarget "OffScriptWidgets" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				29CFF89107083FDD0F2B7A23 /* Release */,
-				3BDDD61B02B88C8FB96D9A9C /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
