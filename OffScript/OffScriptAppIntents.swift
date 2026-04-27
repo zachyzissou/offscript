@@ -17,7 +17,7 @@ enum OffScriptAppIntents {
     /// same on-disk store the main app uses so reads/writes are coherent.
     @MainActor
     static func makeContext() throws -> ModelContext {
-        let schema = Schema(versionedSchema: SchemaV1.self)
+        let schema = Schema(versionedSchema: SchemaV2.self)
         let directory = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first!

@@ -57,7 +57,7 @@ struct OffScriptApp: App {
         // current schema. Origin/main's flat Schema([...]) was simpler but
         // would force-wipe the store on every breaking schema change — the
         // versioned path is what keeps user libraries intact across releases.
-        let schema = Schema(versionedSchema: SchemaV1.self)
+        let schema = Schema(versionedSchema: SchemaV2.self)
         do {
             return try Self.makeModelContainer(schema: schema)
         } catch {
