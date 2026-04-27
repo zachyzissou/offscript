@@ -508,8 +508,27 @@ def command_sync_latest(args: argparse.Namespace) -> None:
         print("Done: no external beta groups need an explicit add (internal groups auto-provision).")
         return
 
-    add_build_to_beta_groups(client, build["id"], [group["id"] for group in external_missing])
-    print("Applied: latest eligible build now has access to the missing external beta groups.")
+    # External-group attach can fail on a fresh build with HTTP 422
+    # "Build is not in an externally assignable state" — that means the build
+    # uploaded VALID but Apple hasn't put it through external beta review yet.
+    # Internal testers already have the build, so this is a non-fatal warning,
+    # not a CI-failure-worthy condition. The external group will pick up the
+    # build automatically after review approval.
+    try:
+        add_build_to_beta_groups(client, build["id"], [group["id"] for group in external_missing])
+        print("Applied: latest eligible build now has access to the missing external beta groups.")
+    except ASCError as exc:
+        message = str(exc)
+        non_fatal_signals = (
+            "not in an externally assignable state",
+            "not assignable",
+            "Cannot add internal group",
+        )
+        if any(signal in message for signal in non_fatal_signals):
+            print(f"Warning: external attach skipped — {message.splitlines()[0]}")
+            print("Build is in TestFlight for internal testers; external assignment will happen after Apple review.")
+            return
+        raise
 
 
 def command_apps(args: argparse.Namespace) -> None:
