@@ -25,59 +25,81 @@ These live in [`CLAUDE.md`](CLAUDE.md), but the most important ones:
 
 ## Releasing
 
-OffScript ships through three TestFlight pathways. Pick the one that matches the
-intent of the change:
+OffScript ships through **Xcode Cloud** — Apple's CI/CD that runs inside App
+Store Connect. It manages signing certs / provisioning profiles automatically
+(no Apple Developer cert-cap pain), auto-registers new bundle IDs (so adding
+extension targets just works), and uploads to TestFlight as a built-in action.
 
-### 1. Curated release — preferred (cut a GitHub Release)
+### Two trigger paths
 
-Use this for anything that should ship with intentional, human-written notes
-(features, design refreshes, UX improvements, anything you'd want a tester to
-*understand* before opening the app).
+**Path 1 — Push to `main`** (fast, day-to-day):
+- Push (or merge a PR) to `main`
+- Xcode Cloud detects the push, archives, signs, uploads to TestFlight
+  Internal Testers automatically
+- No release notes are written; testers see the commit message
 
-1. Bump `MARKETING_VERSION` in the project to the new SemVer, e.g. `2.3.0`.
-   Commit + merge to `main` first so the version is the source of truth.
-2. On GitHub: **Releases → Draft a new release**.
-3. **Tag**: `vX.Y.Z` matching the marketing version (e.g. `v2.3.0`). The leading
-   `v` is stripped automatically by the workflow.
-4. **Title**: short, expert phrasing — "OffScript 2.3 — Apple Intelligence + Live
-   Activity" beats "Release 2.3.0".
-5. **Body**: write the actual TestFlight What-To-Test notes here. The workflow
-   uses the release body verbatim as TestFlight notes, so:
-   - Lead with the headline change in one sentence
-   - Group fixes / additions / known issues with H3 headings
-   - Reference issue / PR numbers where relevant
-   - Avoid marketing words ("revolutionary", "must-try"); state what's there
-6. Mark **Pre-release** while it's a TestFlight beta. Convert to a final release
-   when you actually ship to the App Store.
-7. **Publish release**. The `release: published` trigger on
-   `.github/workflows/testflight.yml` takes over: it builds, uploads to
-   TestFlight, attaches the release body as TestFlight notes, and pings external
-   testers automatically.
+**Path 2 — Cut a GitHub Release with `vX.Y.Z` tag** (curated):
+- Bump `MARKETING_VERSION` in the project to the new SemVer, commit + merge
+  to `main` first so the version is the source of truth
+- On GitHub: **Releases → Draft a new release**, tag `vX.Y.Z` matching the
+  marketing version, write expert TestFlight notes in the body
+- Pushing the tag triggers Xcode Cloud's tag start condition
+- For TestFlight notes that pull from the release body, see the optional
+  `ci_post_xcodebuild.sh` hook (TODO — not wired yet; today release notes
+  on TestFlight come from the manually-edited What-To-Test field in
+  TestFlight UI)
+- Update `CHANGELOG.md` in the same PR as the version bump
 
-### 2. Fast path — push to `main`
+### Operational tooling
 
-Use this for hotfixes, dependency bumps, or small iterative pushes that don't
-warrant manual notes.
+The pipeline lives in App Store Connect's web UI but is fully manageable
+from `scripts/app_store_connect.py`:
 
-Push (or merge a PR) to `main`. The workflow:
-- Builds + uploads to TestFlight (notes auto-generated from the commit log)
-- Cuts a GitHub Release tagged `testflight-X.Y.Z-build.N` and marked as
-  pre-release, with the auto-generated notes attached
-- The release stays editable on the Releases page if you want to clean up the
-  notes after the fact
+```sh
+# Inspect the current Xcode Cloud setup
+scripts/app_store_connect.py xcode-cloud probe
 
-### 3. Manual override — `workflow_dispatch`
+# Inspect a specific workflow's start condition + actions + recent builds
+scripts/app_store_connect.py xcode-cloud inspect <workflow-uuid>
 
-Run the workflow from the **Actions** tab when you need explicit control:
-- Custom `marketing_version` / `build_number`
-- Custom summary + What-To-Test text
-- Useful for re-running a build without a code change
+# Reconfigure a workflow (branch + tag conditions + TestFlight audience)
+scripts/app_store_connect.py xcode-cloud reconfigure <workflow-uuid> --testflight --apply
+
+# Manually trigger a build run
+scripts/app_store_connect.py xcode-cloud start-build <workflow-uuid>
+```
+
+These commands all need the same ASC API key the legacy GH Actions workflow
+used (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_PATH`). For one-off ops, run
+the same commands from the **Xcode Cloud Probe** GitHub Actions workflow
+(Actions tab → Run workflow) so you don't need a local `.env`.
+
+### Pre-build hook
+
+`ci_scripts/ci_post_clone.sh` runs inside Xcode Cloud immediately after the
+repo clone. It materializes `Config/Secrets.xcconfig` from the `SENTRY_DSN`
+environment variable Xcode Cloud passes in. Set the variable in App Store
+Connect → Xcode Cloud → Workflows → Environment.
 
 ### Versioning + the changelog
 
 - `MARKETING_VERSION` is SemVer; the git tag matches (`v2.3.0`).
-- TestFlight build numbers are `YYYYMMDD<run-number><attempt>` (auto-generated).
-- `CHANGELOG.md` should grow a new `## [X.Y.Z] — DATE` block in the same PR that
-  lands the version bump. The release body and the changelog block don't have
-  to be word-for-word identical — the changelog is the durable record, the
-  release body is what testers see.
+- Build numbers come from Xcode Cloud (sequential per workflow). Override
+  via the `CI_BUILD_NUMBER` environment variable if needed.
+- `CHANGELOG.md` should grow a new `## [X.Y.Z] — DATE` block in the same PR
+  that lands the version bump.
+
+### Why we left GH Actions behind
+
+The previous `.github/workflows/testflight.yml` (now `.disabled`) ran
+`xcodebuild archive + altool upload` on a hosted macOS-26 runner. It worked
+but kept hitting Apple-side limits that Xcode Cloud is immune to:
+- iOS distribution cert cap (3 / account) was tripped every time a new
+  bundle ID auto-created a cert
+- New extension bundle IDs needed manual provisioning profile setup in the
+  Apple Developer Portal before CI could sign them
+- Sentry DSN injection had to be hand-rolled in the workflow
+
+Xcode Cloud handles all three natively. The disabled workflow file stays
+in `.github/workflows/testflight.yml.disabled` for historical reference;
+move it back if Xcode Cloud ever has an outage and you need the fallback.
