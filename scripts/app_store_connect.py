@@ -486,8 +486,30 @@ def command_sync_latest(args: argparse.Namespace) -> None:
         print("Dry run only. Re-run with --apply to add build access to these groups.")
         return
 
-    add_build_to_beta_groups(client, build["id"], [group["id"] for group in missing_groups])
-    print("Applied: latest eligible build now has access to the missing beta groups.")
+    # Apple's TestFlight API does not allow attaching a build to an *internal*
+    # beta group — internal groups auto-provision on every newly-uploaded
+    # eligible build (the request returns 422 ENTITY_UNPROCESSABLE with
+    # "Cannot add internal group to a build"). Only explicit external-group
+    # assignment is supported.
+    external_missing = [
+        g for g in missing_groups
+        if not attrs(g).get("isInternalGroup")
+    ]
+    skipped_internal = [
+        g for g in missing_groups
+        if attrs(g).get("isInternalGroup")
+    ]
+
+    for group in skipped_internal:
+        group_attrs = attrs(group)
+        print(f"Skipping internal group {group_attrs.get('name')!r} — internal groups auto-receive eligible builds")
+
+    if not external_missing:
+        print("Done: no external beta groups need an explicit add (internal groups auto-provision).")
+        return
+
+    add_build_to_beta_groups(client, build["id"], [group["id"] for group in external_missing])
+    print("Applied: latest eligible build now has access to the missing external beta groups.")
 
 
 def command_apps(args: argparse.Namespace) -> None:
