@@ -622,6 +622,72 @@ def command_set_beta_notes(args: argparse.Namespace) -> None:
     print(f"Updated TestFlight notes for build id={build_id} locale={args.locale}")
 
 
+def command_xcode_cloud_probe(args: argparse.Namespace) -> None:
+    """
+    Diagnostic for Xcode Cloud setup. Hits the read-only Xcode Cloud
+    endpoints with the ASC API key and prints what we can see.
+
+    Three possible outcomes:
+      A. ciProducts returns 1+ entries → Xcode Cloud is enabled and the
+         app is onboarded; we can list/create workflows via API.
+      B. ciProducts returns 200 with an empty list → Xcode Cloud product
+         hasn't been provisioned for this app yet. ONE-TIME manual step:
+         App Store Connect → My Apps → OffScript → Xcode Cloud → "Get
+         Started". After that, re-run this probe.
+      C. ciProducts returns 403 / "FORBIDDEN_ERROR" → API key doesn't
+         have Xcode Cloud scope. Add the "Developer" or "App Manager"
+         role to the key (Users and Access → Keys → edit key roles).
+
+    On the happy path A, prints the product ID and existing workflows
+    so the next step can target them.
+    """
+    client = ASCClient()
+    bundle_id = args.bundle_id or required_env("ASC_BUNDLE_ID")
+
+    print(f"Probing Xcode Cloud for {bundle_id}...")
+    try:
+        products_body = client.request("GET", "/v1/ciProducts", params={"limit": 200})
+    except ASCError as exc:
+        print(f"  /v1/ciProducts failed: {exc}")
+        print("  Likely cause: API key missing Developer / App Manager role,")
+        print("  OR Xcode Cloud terms not accepted on the team account yet.")
+        print("  See: https://appstoreconnect.apple.com/access/users")
+        raise SystemExit(2)
+
+    products = products_body.get("data", [])
+    if not products:
+        print("  Xcode Cloud has NO products provisioned on this account.")
+        print("  ONE-TIME setup (Apple requires this in the web UI before")
+        print("  the API can create workflows):")
+        print()
+        print("    1. Open App Store Connect → My Apps → OffScript")
+        print("    2. Click 'Xcode Cloud' in the left sidebar")
+        print("    3. Click 'Get Started' and accept the terms")
+        print("    4. (Optional) skip the wizard once it's accepted —")
+        print("       this script will create the actual workflow")
+        print("    5. Re-run: scripts/app_store_connect.py xcode-cloud probe")
+        return
+
+    # Print products + their workflows.
+    for product in products:
+        a = attrs(product)
+        product_id = product.get("id")
+        product_app = a.get("name") or a.get("productType") or product_id
+        print(f"  PRODUCT {product_id} {product_app!r}")
+        try:
+            wfs_body = client.request(
+                "GET",
+                f"/v1/ciProducts/{product_id}/workflows",
+                params={"limit": 50},
+            )
+            for wf in wfs_body.get("data", []):
+                wa = attrs(wf)
+                print(f"    WORKFLOW {wf.get('id')} {wa.get('name')!r:30} "
+                      f"enabled={wa.get('isEnabled')}, lastModified={wa.get('lastModifiedDate')}")
+        except ASCError as exc:
+            print(f"    workflows query failed: {exc}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Read App Store Connect status for OffScript.")
     parser.add_argument("--env", type=Path, help="Optional env file to load before defaults.")
@@ -660,6 +726,17 @@ def build_parser() -> argparse.ArgumentParser:
     wait_parser.add_argument("--require-valid", action="store_true")
     wait_parser.add_argument("--id-file", type=Path)
     wait_parser.set_defaults(func=command_wait_build)
+
+    xcc_probe_parser = subparsers.add_parser(
+        "xcode-cloud",
+        help="Xcode Cloud diagnostics + setup commands.",
+    )
+    xcc_subparsers = xcc_probe_parser.add_subparsers(dest="xcc_command", required=True)
+    xcc_probe = xcc_subparsers.add_parser(
+        "probe",
+        help="Check whether Xcode Cloud is provisioned for this app and list any existing workflows.",
+    )
+    xcc_probe.set_defaults(func=command_xcode_cloud_probe)
 
     notes_parser = subparsers.add_parser("set-beta-notes", help="Create or update TestFlight What to Test notes.")
     notes_parser.add_argument("--build-id")

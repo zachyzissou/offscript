@@ -1,0 +1,52 @@
+name: Xcode Cloud Probe
+
+# On-demand diagnostic: hits the Xcode Cloud read-only endpoints with the
+# existing ASC API key and reports what we can see. Run this from the
+# Actions tab → "Xcode Cloud Probe" → "Run workflow" to find out:
+#
+#   - Is Xcode Cloud terms acceptance done on this team account?
+#   - Is the OffScript app provisioned for Xcode Cloud?
+#   - What workflows already exist for it?
+#
+# Output guides next steps. If terms aren't accepted, you'll see the one
+# manual URL to click; everything else is API-driven.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Xcode Cloud probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    env:
+      ASC_BUNDLE_ID: com.offscript.app
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_TYPE: team
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ASC script deps
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --user PyJWT cryptography requests
+
+      - name: Materialize ASC API key
+        run: |
+          set -euo pipefail
+          umask 077
+          ASC_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$ASC_KEY_PATH"
+          test -s "$ASC_KEY_PATH"
+          echo "ASC_KEY_PATH=$ASC_KEY_PATH" >> "$GITHUB_ENV"
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+
+      - name: Probe Xcode Cloud
+        run: scripts/app_store_connect.py xcode-cloud probe
