@@ -51,7 +51,7 @@ final class DownloadService: NSObject, ObservableObject {
             episode.downloadCompletedAt = .now
             episode.downloadErrorMessage = nil
             episode.isDownloaded = true
-            try? modelContext?.save()
+            modelContext?.saveOrLog("DownloadService")
             TelemetryService.track(
                 "download_resolved_from_disk",
                 metadata: ["episode": episode.title, "podcast": episode.podcast.title],
@@ -69,7 +69,7 @@ final class DownloadService: NSObject, ObservableObject {
         episode.downloadProgress = 0
         episode.downloadState = .queued
         episode.isDownloaded = false
-        try? modelContext?.save()
+        modelContext?.saveOrLog("DownloadService")
 
         if activeDownloadCount < maximumConcurrentDownloads {
             beginDownload(for: episode)
@@ -90,7 +90,7 @@ final class DownloadService: NSObject, ObservableObject {
             episode.downloadErrorMessage = nil
             episode.downloadRequestedAt = nil
             episode.isDownloaded = false
-            try? modelContext?.save()
+            modelContext?.saveOrLog("DownloadService")
             TelemetryService.track(
                 "download_cancelled",
                 metadata: ["episode": episode.title, "podcast": episode.podcast.title],
@@ -104,7 +104,7 @@ final class DownloadService: NSObject, ObservableObject {
         episode.downloadState = episode.localFileURL == nil ? .notDownloaded : .downloaded
         episode.downloadProgress = episode.localFileURL == nil ? 0 : 1
         episode.isDownloaded = episode.localFileURL != nil
-        try? modelContext?.save()
+        modelContext?.saveOrLog("DownloadService")
         TelemetryService.track(
             "download_cancelled",
             metadata: ["episode": episode.title, "podcast": episode.podcast.title],
@@ -125,7 +125,7 @@ final class DownloadService: NSObject, ObservableObject {
         episode.downloadCompletedAt = nil
         episode.downloadErrorMessage = nil
         episode.isDownloaded = false
-        try? modelContext?.save()
+        modelContext?.saveOrLog("DownloadService")
         TelemetryService.track(
             "download_deleted",
             metadata: ["episode": episode.title, "podcast": episode.podcast.title],
@@ -164,7 +164,7 @@ final class DownloadService: NSObject, ObservableObject {
         episode.downloadState = .notDownloaded
         episode.downloadProgress = 0
         episode.isDownloaded = false
-        try? modelContext?.save()
+        modelContext?.saveOrLog("DownloadService")
         return nil
     }
 
@@ -196,7 +196,15 @@ final class DownloadService: NSObject, ObservableObject {
         )
         let downloadsURL = supportURL.appending(path: "Downloads", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: downloadsURL, withIntermediateDirectories: true)
-        let ext = originalURL?.pathExtension.isEmpty == false ? originalURL!.pathExtension : "mp3"
+        // Use the original URL's pathExtension if it's present and non-empty;
+        // otherwise default to mp3. The previous form
+        // `originalURL?.pathExtension.isEmpty == false ? originalURL! : "mp3"`
+        // crashed when originalURL was nil because the false branch of the
+        // optional-equality fell through to a force-unwrap.
+        let ext: String = {
+            guard let pathExt = originalURL?.pathExtension, !pathExt.isEmpty else { return "mp3" }
+            return pathExt
+        }()
         return downloadsURL.appending(path: "\(episodeID.uuidString).\(ext)")
     }
 
@@ -219,7 +227,7 @@ final class DownloadService: NSObject, ObservableObject {
         episodeIDToTask[episode.id] = task
         episode.downloadState = .downloading
         episode.downloadErrorMessage = nil
-        try? modelContext?.save()
+        modelContext?.saveOrLog("DownloadService")
         TelemetryService.track(
             "download_requested",
             metadata: ["episode": episode.title, "podcast": episode.podcast.title],
@@ -266,7 +274,7 @@ final class DownloadService: NSObject, ObservableObject {
             }
         }
 
-        try? modelContext.save()
+        modelContext.saveOrLog("DownloadService")
     }
 }
 
@@ -287,7 +295,7 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
             guard let episode = self.episode(for: episodeID) else { return }
             episode.downloadState = .downloading
             episode.downloadProgress = progress
-            try? self.modelContext?.save()
+            self.modelContext?.saveOrLog("DownloadService")
         }
     }
 
@@ -310,7 +318,7 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
                 episode.downloadCompletedAt = .now
                 episode.downloadErrorMessage = nil
                 episode.isDownloaded = true
-                try? self.modelContext?.save()
+                self.modelContext?.saveOrLog("DownloadService")
                 TelemetryService.track(
                     "download_completed",
                     metadata: ["episode": episode.title, "podcast": episode.podcast.title],
@@ -323,7 +331,7 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
                 episode.downloadState = .failed
                 episode.downloadErrorMessage = error.localizedDescription
                 episode.isDownloaded = false
-                try? self.modelContext?.save()
+                self.modelContext?.saveOrLog("DownloadService")
                 TelemetryService.track(
                     "download_failed",
                     metadata: [
@@ -365,7 +373,7 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
             episode.isDownloaded = false
             self.episodeIDToTask[episodeID] = nil
             self.taskToEpisodeID[task.taskIdentifier] = nil
-            try? self.modelContext?.save()
+            self.modelContext?.saveOrLog("DownloadService")
             TelemetryService.track(
                 "download_failed",
                 metadata: [

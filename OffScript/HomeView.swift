@@ -147,6 +147,8 @@ private struct HomeTunerHeader: View {
                         .foregroundStyle(Color.offscriptSignalYellow)
                         .frame(width: 36, height: 30)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open settings")

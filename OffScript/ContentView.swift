@@ -44,6 +44,7 @@ private enum AppTab: Int, CaseIterable, Identifiable {
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var player = PlaybackController.shared
     @AppStorage("offscript.hasSeenOnboarding") private var hasSeenOnboarding = false
     @State private var selectedTab: AppTab = .home
@@ -108,6 +109,16 @@ struct ContentView: View {
             guard let uniqueID = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
                   let url = URL(string: "offscript://episode/\(uniqueID)") else { return }
             DeepLinkRouter.handle(url, in: modelContext)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Fire sleep timer immediately if its deadline passed while
+            // the app was suspended. The Task.sleep loop inside the timer
+            // pauses with the app, so a 5-minute timer set, then 6 minutes
+            // of background later, would otherwise wait until the loop
+            // wakes up to act.
+            if newPhase == .active {
+                player.reevaluateSleepTimerOnForeground()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .offscriptSwitchTab)) { note in
             // offscript://tab/<name> deep links land here. The router posts

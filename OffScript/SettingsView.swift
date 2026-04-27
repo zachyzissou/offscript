@@ -48,19 +48,9 @@ struct SettingsView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .task { refreshCounts() }
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        TunerLabel(text: "DONE", color: .offscriptSignalYellow, size: 11)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            // No `.toolbar` ToolbarItem — iOS 26 wraps toolbar buttons in
+            // glass-capsule chrome that ignores .plain styling. DONE key
+            // moved inline into `settingsHeader` below.
             .alert("Sign Out", isPresented: $showSignOutConfirmation) {
                 Button("Cancel", role: .cancel) {}
                 Button("Sign Out", role: .destructive) { signOut() }
@@ -74,15 +64,36 @@ struct SettingsView: View {
 
     private var settingsHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 8) {
                 TunerLabel(text: "SETTINGS · CONFIG PANEL", color: .offscriptSignalYellow)
+                    .lineLimit(1)
                 Spacer()
-                TunerLabel(text: isSignedIn ? "● ICLOUD" : "○ LOCAL", color: isSignedIn ? .offscriptFnMode : .offscriptSoftPaper)
+                TunerLabel(text: isSignedIn ? "● ICLOUD" : "○ LOCAL",
+                           color: isSignedIn ? .offscriptFnMode : .offscriptSoftPaper)
+                    .lineLimit(1)
             }
-            Text("Settings")
-                .font(.system(size: 32, weight: .bold))
-                .tracking(-0.5)
-                .foregroundStyle(Color.offscriptPaperWhite)
+            HStack(alignment: .firstTextBaseline) {
+                Text("Settings")
+                    .font(.system(size: 32, weight: .bold))
+                    .tracking(-0.5)
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                Spacer()
+                // DONE key inline — replaces the toolbar Done button which
+                // iOS 26 wrapped in glass chrome. Same Tuner vocabulary as
+                // every other action key in the app.
+                Button {
+                    dismiss()
+                } label: {
+                    TunerLabel(text: "DONE", color: .offscriptSignalYellow, size: 11)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close settings")
+            }
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                 .padding(.top, 4)
         }

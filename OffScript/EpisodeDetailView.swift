@@ -99,9 +99,14 @@ struct EpisodeDetailView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
-                        TunerTag(text: episode.podcast.title, color: .offscriptFnRecord)
+                        // Podcast title in info-cyan per the function-coded color
+                        // system. Was record-red — same bug class fixed across
+                        // QueueLeadStrip and PlayerView in 2.3.2 / 2.3.4.
+                        TunerLabel(text: episode.podcast.title.uppercased(),
+                                   color: .offscriptFnInfo, size: 9)
                         if let dateLabel {
-                            TunerTag(text: dateLabel, color: .offscriptFnInfo, dim: true)
+                            TunerLabel(text: dateLabel.uppercased(),
+                                       color: .offscriptSoftPaper, size: 9)
                         }
                     }
                     Text(episode.title)

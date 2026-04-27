@@ -1,5 +1,8 @@
+import OSLog
 import SwiftData
 import SwiftUI
+
+private let cardLogger = Logger(subsystem: "com.offscript", category: "CardComponents")
 
 // MARK: - Shared Episode Card Components
 // Unified card system: EpisodeVerticalCard (rails), EpisodeCompactCard (lists), HeroEpisodeCard (lead).
@@ -46,10 +49,13 @@ struct EpisodeVerticalCard: View {
                     TunerTag(text: tag, color: .offscriptSignalYellow, dim: true)
                 }
 
+                // Podcast title in info-cyan per the function-coded color
+                // system. Was signal-yellow — yellow is reserved for the
+                // primary accent / actionable state, not metadata labels.
                 Text(episode.podcast.title.uppercased())
                     .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
                     .tracking(1.4)
-                    .foregroundStyle(Color.offscriptSignalYellow)
+                    .foregroundStyle(Color.offscriptFnInfo)
                     .lineLimit(1)
 
                 Button {
@@ -72,6 +78,7 @@ struct EpisodeVerticalCard: View {
                     .font(.system(size: 8, weight: .semibold, design: .monospaced))
                     .tracking(1.4)
                     .foregroundStyle(Color.offscriptSoftPaper)
+                    .lineLimit(1)
 
                 if progressValue > 0 {
                     // Inline Tuner progress rail — replaces removed OffScriptProgressBar.
@@ -87,7 +94,9 @@ struct EpisodeVerticalCard: View {
                 }
 
                 HStack(spacing: 6) {
-                    // Tuner play key — hairline circle with signal-yellow ring
+                    // Tuner play key — sharp hairline rectangle, signal-yellow
+                    // ring. Was Circle (Tuner-vocab violation — sharp rectangles
+                    // only). 36pt visible × 44pt hit target per HIG.
                     Button {
                         PlaybackController.shared.play(episode, in: modelContext)
                     } label: {
@@ -95,7 +104,9 @@ struct EpisodeVerticalCard: View {
                             .font(.system(size: 10))
                             .foregroundStyle(Color.offscriptSignalYellow)
                             .frame(width: 30, height: 30)
-                            .overlay(Circle().stroke(Color.offscriptSignalYellow, lineWidth: 1.25))
+                            .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1.25))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(isCurrentlyPlaying ? "Pause" : "Play \(episode.title)")
@@ -202,10 +213,11 @@ struct EpisodeCompactCard: View {
             } label: {
                 VStack(alignment: .leading, spacing: 3) {
                     if showPodcastTitle {
+                        // Info-cyan per the function-coded color system.
                         Text(episode.podcast.title.uppercased())
                             .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
                             .tracking(1.4)
-                            .foregroundStyle(Color.offscriptSignalYellow)
+                            .foregroundStyle(Color.offscriptFnInfo)
                             .lineLimit(1)
                     }
 
@@ -220,12 +232,14 @@ struct EpisodeCompactCard: View {
                         .font(.system(size: 8, weight: .semibold, design: .monospaced))
                         .tracking(1.4)
                         .foregroundStyle(Color.offscriptSoftPaper)
+                        .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
 
-            // Tuner play key
+            // Tuner play key — sharp hairline rectangle, signal-yellow ring.
+            // Was Circle (Tuner-vocab violation). 32pt visible / 44pt hit.
             Button {
                 PlaybackController.shared.play(episode, in: modelContext)
             } label: {
@@ -233,16 +247,17 @@ struct EpisodeCompactCard: View {
                     .font(.system(size: 11))
                     .foregroundStyle(Color.offscriptSignalYellow)
                     .frame(width: 32, height: 32)
-                    .overlay(Circle().stroke(Color.offscriptSignalYellow, lineWidth: 1.25))
+                    .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1.25))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isCurrentlyPlaying ? "Pause" : "Play \(episode.title)")
 
             Menu {
-                // origin/main's QueueService only exposes add/remove/move —
-                // play-next / add-to-end variants are reintroduced later.
                 Button(episode.isQueued ? "Already Queued" : "Add to Queue") {
-                    try? QueueService.add(episode, in: modelContext)
+                    do { try QueueService.add(episode, in: modelContext) }
+                    catch { cardLogger.error("Queue add failed: \(error.localizedDescription, privacy: .public)") }
                 }
                 .disabled(episode.isQueued)
 
@@ -257,6 +272,8 @@ struct EpisodeCompactCard: View {
                     .foregroundStyle(Color.offscriptPaperWhite)
                     .frame(width: 30, height: 30)
                     .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("More actions for \(episode.title)")
@@ -270,6 +287,8 @@ struct EpisodeCompactCard: View {
                         .foregroundStyle(Color.offscriptSoftPaper)
                         .frame(width: 26, height: 26)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Remove \(episode.title)")

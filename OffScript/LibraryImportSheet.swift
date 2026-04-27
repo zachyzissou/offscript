@@ -74,14 +74,8 @@ struct LibraryImportSheet: View {
                     .padding(.bottom, 90)
                 }
             }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        .tracking(1.2)
-                        .foregroundStyle(Color.offscriptSignalYellow)
-                }
-            }
+            // No `.toolbar` ToolbarItem — iOS 26 wraps toolbar buttons in
+            // glass chrome. DONE key is rendered inline inside `header`.
             .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
@@ -107,15 +101,32 @@ struct LibraryImportSheet: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 8) {
                 TunerLabel(text: "IMPORT · ADD CHANNELS", color: .offscriptSignalYellow)
+                    .lineLimit(1)
                 Spacer()
                 TunerLabel(text: "URL · OPML", color: .offscriptFnInfo)
+                    .lineLimit(1)
             }
-            Text("Import")
-                .font(.system(size: 32, weight: .bold))
-                .tracking(-0.5)
-                .foregroundStyle(Color.offscriptPaperWhite)
+            HStack(alignment: .firstTextBaseline) {
+                Text("Import")
+                    .font(.system(size: 32, weight: .bold))
+                    .tracking(-0.5)
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                Spacer()
+                // DONE inline — same reason every other sheet moved off
+                // .toolbar ToolbarItem in 2.3.x.
+                Button { dismiss() } label: {
+                    TunerLabel(text: "DONE", color: .offscriptSignalYellow, size: 11)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close import")
+            }
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                 .padding(.top, 4)
         }

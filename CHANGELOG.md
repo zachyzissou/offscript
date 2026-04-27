@@ -4,6 +4,34 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.3.9] — 2026-04-27
+
+Polish pass driven by three parallel audits (UI consistency, feature correctness, lifecycle/edge-case). The list below covers the high-impact fixes; the remaining items roll forward to follow-up pushes.
+
+### Fixed — UI consistency (Tuner vocabulary)
+- **`CardComponents.swift` play buttons** were using `Circle().stroke(...)` — last remaining Tuner sharp-rectangle violations after the v2.3.2 sweep. Fixed in both EpisodeVerticalCard (rail card) and EpisodeCompactCard (list row).
+- **`CardComponents.swift` podcast title color** was rendering in `offscriptSignalYellow` (yellow accent) on rail and list cards. Switched to `offscriptFnInfo` (cyan) per the function-coded color system. Yellow is reserved for actionable / accent state, not metadata labels.
+- **`EpisodeDetailView.swift` podcast title** was rendering in `offscriptFnRecord` (record red) — same bug class fixed in QueueLeadStrip (2.3.2) and PlayerView artwork block (2.3.4). Switched to `offscriptFnInfo` cyan.
+- **`PodcastDetailView` was using `.searchable()`** for episode search — iOS 26 renders that as a translucent rounded capsule that clashes with every other Tuner surface. Replaced with the custom Tuner `tunerEpisodeSearchField` (hairline rectangle, mono prompt, signal-yellow magnifier, sharp `×` clear).
+- **SettingsView and LibraryImportSheet `.toolbar` ToolbarItem `Done` button** — iOS 26 wraps toolbar buttons in glass-capsule chrome that ignores `.plain` styling. Both DONE keys moved inline into their respective headers using the same Tuner sharp-rectangle vocabulary as every other action key.
+
+### Fixed — hit targets
+- Settings cog (Home + Library), Import key (Library), search-clear `×` (Search), card play / menu / remove buttons (CardComponents) — all expanded to 44pt hit targets with `contentShape(Rectangle())` while keeping the visual size. Several were as small as 24×24, well below HIG minimum.
+
+### Fixed — playback correctness
+- **AVPlayerItem error handling.** `PlaybackController` was creating a fresh `AVPlayerItem` and calling `player.play()` with no observation — if the audio URL 404'd, the codec was unsupported, or the network dropped, the UI sat in "playing" state with no audio and no error feedback. Now KVO-observes `item.status` plus the `AVPlayerItemFailedToPlayToEndTime` and `AVPlayerItemPlaybackStalled` notifications, surfaces a `playbackError` published string, and PlayerView renders an inline error strip with a dismiss key. Errors auto-clear on the next ready-to-play.
+- **Now Playing artwork.** Lock screen and Control Center showed the episode title and podcast but no artwork — looked broken next to Apple Podcasts. `updateNowPlaying(for:)` now fetches artwork off-main and posts it to `MPNowPlayingInfoCenter` via `MPMediaItemArtwork`. Local file URLs read sync; remote URLs fetch on a utility-priority detached task.
+- **Now Playing playback rate.** The published rate to MPNowPlayingInfoCenter was hardcoded to `1.0` — when the user picked a custom rate via the per-podcast picker, the lock screen / scrub UI still treated it as 1×. Now reflects the actual `playbackRate`. Also publishes `MPMediaItemPropertyArtist` so the lock screen shows author + show, not just show.
+- **Sleep timer surviving backgrounding.** Previous timer used `Task.sleep(for: minutes)` which suspends with the app, so a timer set for 5 min would just freeze if the app spent any time backgrounded. Replaced with a wallclock-based loop that wakes every second, plus a `reevaluateSleepTimerOnForeground()` call wired to `scenePhase == .active` so a timer whose deadline passed during suspension fires the moment the app foregrounds.
+
+### Fixed — silent failure
+- **`DownloadService.swift:199` force unwrap.** `originalURL?.pathExtension.isEmpty == false ? originalURL!.pathExtension : "mp3"` crashed if `originalURL` was nil because the false-branch fell through to a force-unwrap. Replaced with a guard-let block that defaults to `"mp3"` cleanly.
+- **Bare `try? save()` migrated to `saveOrLog`** across `DownloadService` (12 sites), `BackgroundFeedRefresh` (2), `SyncCoordinator` (3), `TelemetryService` (1). New `ModelContext.saveOrLog(category:)` helper logs the failing category + error description via OSLog instead of dropping the error on the floor. CLAUDE.md forbids bare `try?` for exactly this reason — silent save failure is the worst kind of failure to debug.
+
+### Fixed — input safety
+- **Recent searches delimiter escape.** Search history is stored as a single string joined by `\u{1F}` (UNIT SEPARATOR). If a user query somehow contained that control character, `split(separator:)` would corrupt the list on next read. Now defensively rejects queries containing the delimiter on store.
+- **OPML import HTML rejection.** Pasting a feed URL that returns 200 OK with `Content-Type: text/html` (a misconfigured server's landing page at a feed-shaped URL) used to parse as an empty `ParsedFeed` — looked like "we found a feed but it has no episodes" instead of "this isn't a feed." Now rejects HTML responses up front with the proper `feedParseFailed` error.
+
 ## [2.3.8] — 2026-04-27
 
 ### Added — cold-start "Start Here" rail

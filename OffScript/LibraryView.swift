@@ -207,6 +207,8 @@ private struct LibraryTunerHeader: View {
                         .foregroundStyle(Color.offscriptSignalYellow)
                         .frame(width: 36, height: 30)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Import podcasts")
@@ -217,6 +219,8 @@ private struct LibraryTunerHeader: View {
                         .foregroundStyle(Color.offscriptSignalYellow)
                         .frame(width: 36, height: 30)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open settings")
@@ -421,6 +425,12 @@ struct PodcastDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 PodcastDetailTunerHeader(podcast: podcast, episodeCount: episodes.count)
 
+                // Custom Tuner search input — `.searchable()` renders a system
+                // rounded translucent search bar on iOS 26 that clashes with
+                // every other Tuner surface. Same pattern as SearchView's
+                // tunerSearchField.
+                tunerEpisodeSearchField
+
                 FilterRow(selection: $filter)
 
                 if episodes.isEmpty {
@@ -462,7 +472,44 @@ struct PodcastDetailView: View {
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .searchable(text: $episodeSearchQuery, prompt: "Search episodes")
+        // No `.searchable` — see tunerEpisodeSearchField for the inline
+        // hairline TextField that replaces it.
+    }
+
+    private var tunerEpisodeSearchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.offscriptSignalYellow)
+
+            TextField("",
+                      text: $episodeSearchQuery,
+                      prompt: Text("SEARCH EPISODES")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.offscriptSoftPaper))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .font(.system(size: 13))
+                .foregroundStyle(Color.offscriptPaperWhite)
+                .accentColor(Color.offscriptSignalYellow)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if !episodeSearchQuery.isEmpty {
+                Button { episodeSearchQuery = "" } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.offscriptSoftPaper)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear episode search")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
     }
 }
 

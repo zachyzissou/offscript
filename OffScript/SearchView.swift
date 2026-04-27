@@ -109,7 +109,7 @@ struct SearchView: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Color.offscriptSoftPaper)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -189,6 +189,10 @@ struct SearchView: View {
     }
 
     private var recentSearches: [String] {
+        // U+001F (UNIT SEPARATOR) is a control char that won't appear in
+        // typed search terms. We still defensively reject any item that
+        // contains it on store, but parsing here just splits and filters
+        // empties.
         recentSearchesStorage
             .split(separator: "\u{1F}")
             .map(String.init)
@@ -241,6 +245,10 @@ struct SearchView: View {
     private func storeRecentSearch(_ value: String) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        // Reject queries that contain our delimiter — `split(separator:)`
+        // would corrupt the recent-searches list otherwise. U+001F should
+        // never appear in real input, but we don't rely on that.
+        guard !trimmed.contains("\u{1F}") else { return }
         var items = recentSearches.filter { $0.caseInsensitiveCompare(trimmed) != .orderedSame }
         items.insert(trimmed, at: 0)
         recentSearchesStorage = Array(items.prefix(6)).joined(separator: "\u{1F}")

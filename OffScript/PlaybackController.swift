@@ -4,6 +4,7 @@ import MediaPlayer
 import OSLog
 import SwiftData
 import SwiftUI
+import UIKit
 
 @MainActor
 final class PlaybackController: ObservableObject {
@@ -16,6 +17,16 @@ final class PlaybackController: ObservableObject {
     @Published private(set) var currentTime: TimeInterval = 0
     @Published private(set) var duration: TimeInterval = 0
     @Published var isPlayerPresented = false
+
+    /// Set when an AVPlayerItem fails to load (404, codec, network drop)
+    /// or stalls. PlayerView and MiniPlayer read this to render an inline
+    /// error chip; ContentView could surface a global toast. Cleared on
+    /// the next successful load.
+    @Published private(set) var playbackError: String?
+
+    private var itemStatusObservation: NSKeyValueObservation?
+    private var itemFailureObserver: NSObjectProtocol?
+    private var itemStallObserver: NSObjectProtocol?
 
     private let player = AVPlayer()
     private var timeObserver: Any?
@@ -44,24 +55,111 @@ final class PlaybackController: ObservableObject {
         if let obs = interruptionObserver { NotificationCenter.default.removeObserver(obs) }
         if let obs = routeChangeObserver { NotificationCenter.default.removeObserver(obs) }
         if let obs = mediaServicesResetObserver { NotificationCenter.default.removeObserver(obs) }
+        if let obs = itemFailureObserver { NotificationCenter.default.removeObserver(obs) }
+        if let obs = itemStallObserver { NotificationCenter.default.removeObserver(obs) }
+        itemStatusObservation?.invalidate()
         sleepTimerTask?.cancel()
+    }
+
+    /// Wire KVO + notifications on a fresh AVPlayerItem so we can tell
+    /// "load failed" from "stalled" from "ready". Without this, a 404
+    /// audio URL leaves the UI in a permanent "playing" state with no
+    /// audio and no signal that anything went wrong — exactly the
+    /// "tapped play, nothing happens" symptom we used to ship.
+    private func observeItem(_ item: AVPlayerItem) {
+        itemStatusObservation?.invalidate()
+        itemStatusObservation = nil
+        if let observer = itemFailureObserver {
+            NotificationCenter.default.removeObserver(observer)
+            itemFailureObserver = nil
+        }
+        if let observer = itemStallObserver {
+            NotificationCenter.default.removeObserver(observer)
+            itemStallObserver = nil
+        }
+
+        itemStatusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch item.status {
+                case .failed:
+                    let message = item.error?.localizedDescription ?? "Couldn't play this episode."
+                    self.handlePlaybackFailure(message: message)
+                case .readyToPlay:
+                    self.playbackError = nil
+                case .unknown:
+                    break
+                @unknown default:
+                    break
+                }
+            }
+        }
+
+        itemFailureObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] notification in
+            let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+            let message = error?.localizedDescription ?? "Playback stopped unexpectedly."
+            Task { @MainActor [weak self] in
+                self?.handlePlaybackFailure(message: message)
+            }
+        }
+
+        itemStallObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.playbackStalledNotification,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                // Stall isn't fatal — surface a buffering note so the user
+                // knows the buffer ran dry. Clears on next readyToPlay.
+                self?.playbackError = "Buffering — check your connection."
+            }
+        }
+    }
+
+    private func handlePlaybackFailure(message: String) {
+        logger.error("Playback failed: \(message, privacy: .public)")
+        player.pause()
+        isPlaying = false
+        playbackError = message
+        updateNowPlayingPlaybackRate()
+    }
+
+    func clearPlaybackError() {
+        playbackError = nil
     }
 
     // MARK: - Sleep timer
 
-    /// Schedule playback to pause `minutes` from now. Cancels any existing
+    /// Schedule playback to pause at `endDate`. Cancels any existing
     /// timer first so back-to-back menu picks reset cleanly.
+    ///
+    /// Implementation note: uses a periodic Task that wakes every second
+    /// and checks against wallclock — not `Task.sleep(for: minutes)`. The
+    /// original sleep-once approach died when the app backgrounded
+    /// because Task suspends while the app is suspended. By driving the
+    /// fire decision off a wallclock comparison, the timer fires the
+    /// moment the user foregrounds again — even if the original deadline
+    /// passed during the suspension window.
     func setSleepTimer(minutes: Int) {
         cancelSleepTimer()
         let endDate = Date().addingTimeInterval(TimeInterval(minutes * 60))
         sleepTimerEndDate = endDate
         sleepTimerTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(TimeInterval(minutes * 60)))
-            guard let self, !Task.isCancelled, self.sleepTimerEndDate == endDate else { return }
-            self.player.pause()
-            self.isPlaying = false
-            self.sleepTimerEndDate = nil
-            self.updateNowPlayingPlaybackRate()
+            while !Task.isCancelled {
+                guard let self, self.sleepTimerEndDate == endDate else { return }
+                if Date() >= endDate {
+                    self.player.pause()
+                    self.isPlaying = false
+                    self.sleepTimerEndDate = nil
+                    self.updateNowPlayingPlaybackRate()
+                    return
+                }
+                try? await Task.sleep(for: .seconds(1))
+            }
         }
     }
 
@@ -69,6 +167,18 @@ final class PlaybackController: ObservableObject {
         sleepTimerTask?.cancel()
         sleepTimerTask = nil
         sleepTimerEndDate = nil
+    }
+
+    /// Force a sleep-timer evaluation. Call from the scene-active
+    /// notification so a timer that should have fired during background
+    /// suspension fires immediately on foreground.
+    func reevaluateSleepTimerOnForeground() {
+        guard let endDate = sleepTimerEndDate, Date() >= endDate else { return }
+        sleepTimerTask?.cancel()
+        player.pause()
+        isPlaying = false
+        sleepTimerEndDate = nil
+        updateNowPlayingPlaybackRate()
     }
 
     func configure(context: ModelContext) {
@@ -119,7 +229,10 @@ final class PlaybackController: ObservableObject {
         playbackRate = PodcastPlaybackPreferences.preferredRate(for: episode.podcast)
             ?? PodcastPlaybackPreferences.globalDefault
         let url = episode.localFileURL ?? episode.audioURL
-        player.replaceCurrentItem(with: AVPlayerItem(url: url))
+        let item = AVPlayerItem(url: url)
+        observeItem(item)
+        playbackError = nil
+        player.replaceCurrentItem(with: item)
 
         let savedPosition = episode.playedPosition
         if savedPosition > 0 {
@@ -431,13 +544,38 @@ final class PlaybackController: ObservableObject {
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
             MPMediaItemPropertyPlaybackDuration: duration,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? Double(playbackRate) : 0.0
         ]
         info[MPMediaItemPropertyPodcastTitle] = episode.podcast.title
+        info[MPMediaItemPropertyArtist] = episode.podcast.author ?? episode.podcast.title
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        updateNowPlayingArtwork(for: episode)
+    }
+
+    /// Fetch the episode artwork off-main and hand it to the Now Playing
+    /// info center. Without this the lock screen and Control Center show
+    /// title + podcast but no image — looked broken next to Apple Podcasts.
+    /// Local file URLs read synchronously off the file system; remote URLs
+    /// hit the network on a utility-priority detached task.
+    private func updateNowPlayingArtwork(for episode: Episode) {
+        guard let url = episode.artworkURL ?? episode.podcast.artworkURL else { return }
+        Task.detached(priority: .utility) {
+            let data: Data?
+            if url.isFileURL {
+                data = try? Data(contentsOf: url)
+            } else {
+                data = try? await URLSession.shared.data(from: url).0
+            }
+            guard let data, let image = UIImage(data: data) else { return }
+            let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+            await MainActor.run {
+                MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] = artwork
+            }
+        }
     }
 
     private func updateNowPlayingPlaybackRate() {
-        MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? Double(playbackRate) : 0.0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
     }
 }

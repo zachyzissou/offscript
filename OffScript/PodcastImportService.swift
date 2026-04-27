@@ -60,8 +60,18 @@ enum PodcastImportService {
             throw PodcastImportError.feedFetchFailed(error.localizedDescription)
         }
 
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw PodcastImportError.feedFetchFailed("HTTP \(http.statusCode)")
+        if let http = response as? HTTPURLResponse {
+            guard (200..<300).contains(http.statusCode) else {
+                throw PodcastImportError.feedFetchFailed("HTTP \(http.statusCode)")
+            }
+            // Reject HTML responses — a 200 OK from a misconfigured server
+            // serving a landing page at a feed URL would otherwise parse
+            // as an empty ParsedFeed and look like "we found a feed but
+            // it has no episodes" instead of "this isn't a feed."
+            if let contentType = http.value(forHTTPHeaderField: "Content-Type")?.lowercased(),
+               contentType.contains("text/html") {
+                throw PodcastImportError.feedParseFailed
+            }
         }
 
         let parsed: ParsedFeed

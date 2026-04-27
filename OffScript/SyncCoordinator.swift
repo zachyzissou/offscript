@@ -61,7 +61,7 @@ final class SyncCoordinator: ObservableObject {
         updateSnapshot(for: podcast, isSyncing: true)
         podcast.lastSyncAttemptAt = .now
         podcast.syncStatus = "syncing"
-        try? modelContext.save()
+        modelContext.saveOrLog("SyncCoordinator")
 
         do {
             try await service.sync(podcast: podcast, in: modelContext)
@@ -69,7 +69,7 @@ final class SyncCoordinator: ObservableObject {
             podcast.syncErrorMessage = nil
             podcast.nextRetryAt = nil
             updateSnapshot(for: podcast, isSyncing: false)
-            try? modelContext.save()
+            modelContext.saveOrLog("SyncCoordinator")
         } catch {
             let failureCount = podcast.syncFailureCount + 1
             podcast.syncFailureCount = failureCount
@@ -77,7 +77,7 @@ final class SyncCoordinator: ObservableObject {
             let retryDelay = min(pow(2.0, Double(failureCount)) * 60, 60 * 60 * 6)
             podcast.nextRetryAt = Date().addingTimeInterval(retryDelay)
             updateSnapshot(for: podcast, isSyncing: false, errorMessage: error.localizedDescription)
-            try? modelContext.save()
+            modelContext.saveOrLog("SyncCoordinator")
         }
     }
 

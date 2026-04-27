@@ -12,6 +12,6 @@ enum TelemetryService {
         }
 
         context.insert(TelemetryEvent(name: name, metadata: compactMetadata))
-        try? context.save()
+        context.saveOrLog("Telemetry")
     }
 }

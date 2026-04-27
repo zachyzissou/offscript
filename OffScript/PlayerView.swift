@@ -49,6 +49,9 @@ struct PlayerView: View {
                         titleBlock(episode: episode)
                         readouts
                         scrubber
+                        if let error = player.playbackError {
+                            playbackErrorStrip(message: error)
+                        }
                         transportRow
                         chaptersSection(episode: episode)
                         upNext
@@ -228,6 +231,33 @@ struct PlayerView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+    }
+
+    /// Inline error strip rendered above the transport row when an
+    /// AVPlayerItem fails to load or stalls. Sharp Tuner rectangle in
+    /// record-red so it reads as fault state without dominating the
+    /// player.
+    private func playbackErrorStrip(message: String) -> some View {
+        HStack(spacing: 8) {
+            TunerLabel(text: "● PLAYBACK ERROR", color: .offscriptFnRecord, size: 9)
+            Text(message)
+                .font(.system(size: 12.5))
+                .foregroundStyle(Color.offscriptPaperWhite)
+                .lineLimit(2)
+            Spacer()
+            Button { player.clearPlaybackError() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color.offscriptSoftPaper)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss error")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
     }
 
     // MARK: chapters
