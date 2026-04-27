@@ -822,6 +822,58 @@ def command_xcode_cloud_reconfigure(args: argparse.Namespace) -> None:
     print(f"  actions: {len(new_attrs.get('actions') or [])}")
 
 
+def command_xcode_cloud_build_run(args: argparse.Namespace) -> None:
+    """Drill into a specific build run: top-level status, all build actions,
+    and the issues + artifacts each action produced."""
+    client = ASCClient()
+    run_id = args.build_run_id
+
+    body = client.request("GET", f"/v1/ciBuildRuns/{run_id}")
+    run = body.get("data", {})
+    a = attrs(run)
+    print(f"Build run {run_id}")
+    print(f"  number: {a.get('number')}")
+    print(f"  executionProgress: {a.get('executionProgress')}")
+    print(f"  completionStatus: {a.get('completionStatus')}")
+    print(f"  startReason: {a.get('startReason')}")
+    print(f"  cancelReason: {a.get('cancelReason')}")
+    print(f"  createdDate: {a.get('createdDate')}")
+    print(f"  finishedDate: {a.get('finishedDate')}")
+    sc = a.get("sourceCommit") or {}
+    print(f"  sourceCommit: ref={sc.get('commitSha', '?')[:8]} branch={sc.get('htmlUrl', '?')}")
+
+    try:
+        actions_body = client.request("GET", f"/v1/ciBuildRuns/{run_id}/actions", params={"limit": 50})
+    except ASCError as exc:
+        print(f"  actions query failed: {exc}")
+        return
+
+    print()
+    actions = actions_body.get("data", [])
+    print(f"Build actions ({len(actions)}):")
+    for action in actions:
+        action_id = action.get("id")
+        aa = attrs(action)
+        print(f"  ACTION {action_id} {aa.get('name')!r}")
+        print(f"    actionType: {aa.get('actionType')}")
+        print(f"    executionProgress: {aa.get('executionProgress')}")
+        print(f"    completionStatus: {aa.get('completionStatus')}")
+        print(f"    isRequiredToPass: {aa.get('isRequiredToPass')}")
+        try:
+            iss_body = client.request(
+                "GET",
+                f"/v1/ciBuildActions/{action_id}/issues",
+                params={"limit": 50},
+            )
+            for issue in iss_body.get("data", []):
+                ia = attrs(issue)
+                print(f"    ISSUE {ia.get('issueType')} category={ia.get('category')}: {ia.get('message')}")
+                if ia.get("fileSource"):
+                    print(f"      at {ia['fileSource'].get('fileName')}:{ia['fileSource'].get('lineNumber')}")
+        except ASCError as exc:
+            print(f"    issues query failed: {exc}")
+
+
 def command_xcode_cloud_start_build(args: argparse.Namespace) -> None:
     """
     Manually kick off a build via POST /v1/ciBuildRuns. Useful for
@@ -920,6 +972,13 @@ def build_parser() -> argparse.ArgumentParser:
     xcc_reconfig.add_argument("--audience", default="INTERNAL_ONLY", choices=["INTERNAL_ONLY", "APP_STORE_CONNECT_USERS"])
     xcc_reconfig.add_argument("--apply", action="store_true", help="Actually PATCH. Without this flag, dry-run.")
     xcc_reconfig.set_defaults(func=command_xcode_cloud_reconfigure)
+
+    xcc_run = xcc_subparsers.add_parser(
+        "build-run",
+        help="Inspect a specific build run: status, actions, and per-action issues.",
+    )
+    xcc_run.add_argument("build_run_id", help="Build run UUID (from `inspect`).")
+    xcc_run.set_defaults(func=command_xcode_cloud_build_run)
 
     xcc_start = xcc_subparsers.add_parser(
         "start-build",

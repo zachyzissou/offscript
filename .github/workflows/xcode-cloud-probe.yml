@@ -19,9 +19,13 @@ on:
         required: false
         default: "probe"
         type: choice
-        options: [probe, inspect, reconfigure-dryrun, reconfigure-apply, start-build]
+        options: [probe, inspect, reconfigure-dryrun, reconfigure-apply, start-build, build-run]
       workflow_id:
         description: "Workflow UUID (required for inspect/reconfigure/start-build)"
+        required: false
+        type: string
+      build_run_id:
+        description: "Build run UUID (required for build-run)"
         required: false
         type: string
 
@@ -63,6 +67,7 @@ jobs:
         env:
           CMD: ${{ github.event.inputs.command || 'probe' }}
           WF_ID: ${{ github.event.inputs.workflow_id }}
+          BR_ID: ${{ github.event.inputs.build_run_id }}
         run: |
           set -euo pipefail
           case "$CMD" in
@@ -84,6 +89,10 @@ jobs:
             start-build)
               test -n "${WF_ID:-}" || { echo "workflow_id input required"; exit 1; }
               scripts/app_store_connect.py xcode-cloud start-build "$WF_ID"
+              ;;
+            build-run)
+              test -n "${BR_ID:-}" || { echo "build_run_id input required"; exit 1; }
+              scripts/app_store_connect.py xcode-cloud build-run "$BR_ID"
               ;;
             *)
               echo "Unknown command: $CMD"; exit 1
