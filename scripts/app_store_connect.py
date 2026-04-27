@@ -736,6 +736,92 @@ def command_xcode_cloud_inspect(args: argparse.Namespace) -> None:
         print(f"  buildRuns query failed: {exc}")
 
 
+def command_xcode_cloud_reconfigure(args: argparse.Namespace) -> None:
+    """
+    PATCH an existing Xcode Cloud workflow so it triggers on push to main
+    (and optionally release tags vX.Y.Z), and so the Archive action
+    auto-publishes to TestFlight internal testers.
+
+    Idempotent — safe to re-run. Only mutates fields specified by flags.
+
+    The default behavior:
+      - branchStartCondition pattern → 'main' (autoCancel on)
+      - tagStartCondition pattern → 'v*' (catches v2.2.0, v2.3.0, etc.)
+      - actions[].buildDistributionAudience → INTERNAL_ONLY for any
+        ARCHIVE action that currently has it null
+    """
+    client = ASCClient()
+    workflow_id = args.workflow_id
+
+    # Fetch the current state so we can preserve unrelated fields.
+    body = client.request("GET", f"/v1/ciWorkflows/{workflow_id}")
+    wf = body.get("data", {})
+    a = attrs(wf)
+
+    new_attributes: dict[str, Any] = {}
+
+    # Branch start condition
+    if not args.skip_branch:
+        new_attributes["branchStartCondition"] = {
+            "source": {
+                "isAllMatch": False,
+                "patterns": [{"pattern": args.branch, "isPrefix": False}],
+            },
+            "filesAndFoldersRule": None,
+            "autoCancel": True,
+        }
+
+    # Tag start condition (release-driven path)
+    if args.tag_pattern:
+        new_attributes["tagStartCondition"] = {
+            "source": {
+                "isAllMatch": False,
+                "patterns": [{"pattern": args.tag_pattern, "isPrefix": False}],
+            },
+            "autoCancel": False,
+        }
+
+    # Auto-publish to TestFlight by setting buildDistributionAudience on
+    # any ARCHIVE action that currently has it null. Preserves everything
+    # else about the action.
+    if args.testflight:
+        actions = a.get("actions") or []
+        updated_actions = []
+        for action in actions:
+            if action.get("actionType") == "ARCHIVE" and not action.get("buildDistributionAudience"):
+                updated = dict(action)
+                updated["buildDistributionAudience"] = args.audience
+                updated_actions.append(updated)
+            else:
+                updated_actions.append(action)
+        new_attributes["actions"] = updated_actions
+
+    if not new_attributes:
+        print("Nothing to update.")
+        return
+
+    payload = {
+        "data": {
+            "type": "ciWorkflows",
+            "id": workflow_id,
+            "attributes": new_attributes,
+        }
+    }
+    print("PATCH /v1/ciWorkflows/{} payload:".format(workflow_id))
+    print(json.dumps(payload, indent=2))
+
+    if not args.apply:
+        print("\nDry run. Re-run with --apply to actually PATCH.")
+        return
+
+    response = client.request("PATCH", f"/v1/ciWorkflows/{workflow_id}", json=payload)
+    print("\nPATCH succeeded.")
+    new_attrs = attrs(response.get("data", {}))
+    print(f"  branchStartCondition: {json.dumps(new_attrs.get('branchStartCondition'), indent=2)}")
+    print(f"  tagStartCondition: {json.dumps(new_attrs.get('tagStartCondition'), indent=2)}")
+    print(f"  actions: {len(new_attrs.get('actions') or [])}")
+
+
 def command_xcode_cloud_start_build(args: argparse.Namespace) -> None:
     """
     Manually kick off a build via POST /v1/ciBuildRuns. Useful for
@@ -821,6 +907,19 @@ def build_parser() -> argparse.ArgumentParser:
     xcc_inspect.add_argument("workflow_id", help="Xcode Cloud workflow UUID (from `probe`).")
     xcc_inspect.add_argument("--limit", type=int, default=10, help="Build runs to list (default 10).")
     xcc_inspect.set_defaults(func=command_xcode_cloud_inspect)
+
+    xcc_reconfig = xcc_subparsers.add_parser(
+        "reconfigure",
+        help="PATCH a workflow to trigger on push to main + tag pattern, with auto-publish to TestFlight.",
+    )
+    xcc_reconfig.add_argument("workflow_id", help="Xcode Cloud workflow UUID.")
+    xcc_reconfig.add_argument("--branch", default="main", help="Branch pattern to start on (default 'main').")
+    xcc_reconfig.add_argument("--tag-pattern", default="v*", help="Tag pattern to start on (default 'v*'). Set empty string to skip.")
+    xcc_reconfig.add_argument("--skip-branch", action="store_true", help="Don't touch branchStartCondition.")
+    xcc_reconfig.add_argument("--testflight", action="store_true", help="Set buildDistributionAudience on ARCHIVE actions.")
+    xcc_reconfig.add_argument("--audience", default="INTERNAL_ONLY", choices=["INTERNAL_ONLY", "APP_STORE_CONNECT_USERS"])
+    xcc_reconfig.add_argument("--apply", action="store_true", help="Actually PATCH. Without this flag, dry-run.")
+    xcc_reconfig.set_defaults(func=command_xcode_cloud_reconfigure)
 
     xcc_start = xcc_subparsers.add_parser(
         "start-build",

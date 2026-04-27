@@ -15,13 +15,13 @@ on:
   workflow_dispatch:
     inputs:
       command:
-        description: "Subcommand: probe / inspect / start-build"
+        description: "Subcommand"
         required: false
         default: "probe"
         type: choice
-        options: [probe, inspect, start-build]
+        options: [probe, inspect, reconfigure-dryrun, reconfigure-apply, start-build]
       workflow_id:
-        description: "Workflow UUID (required for inspect/start-build)"
+        description: "Workflow UUID (required for inspect/reconfigure/start-build)"
         required: false
         type: string
 
@@ -72,6 +72,14 @@ jobs:
             inspect)
               test -n "${WF_ID:-}" || { echo "workflow_id input required"; exit 1; }
               scripts/app_store_connect.py xcode-cloud inspect "$WF_ID"
+              ;;
+            reconfigure-dryrun)
+              test -n "${WF_ID:-}" || { echo "workflow_id input required"; exit 1; }
+              scripts/app_store_connect.py xcode-cloud reconfigure "$WF_ID" --testflight
+              ;;
+            reconfigure-apply)
+              test -n "${WF_ID:-}" || { echo "workflow_id input required"; exit 1; }
+              scripts/app_store_connect.py xcode-cloud reconfigure "$WF_ID" --testflight --apply
               ;;
             start-build)
               test -n "${WF_ID:-}" || { echo "workflow_id input required"; exit 1; }
