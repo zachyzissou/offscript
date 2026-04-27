@@ -5,6 +5,15 @@ import SwiftUI
 
 private let deepLinkLogger = Logger(subsystem: "com.offscript", category: "DeepLink")
 
+/// Tab-switch notification. ContentView observes this and updates its
+/// `selectedTab` binding when an `offscript://tab/<name>` URL fires. Single
+/// userInfo key `tab` carrying a String matching one of "home", "library",
+/// "queue", "search". Lives at file scope so DeepLinkRouter doesn't need a
+/// reference to ContentView's @State.
+extension Notification.Name {
+    static let offscriptSwitchTab = Notification.Name("offscript.switchTab")
+}
+
 /// Centralized handler for `offscript://` URLs coming from:
 ///   - The Now Playing widget (tap → open the player)
 ///   - The Live Activity / Dynamic Island (tap → open the player)
@@ -16,6 +25,8 @@ private let deepLinkLogger = Logger(subsystem: "com.offscript", category: "DeepL
 ///   offscript://episode/<uuid>          → fetch episode + present detail
 ///   offscript://episode/<uuid>/play     → fetch episode + play immediately
 ///   offscript://podcast/<uuid>          → fetch podcast + present detail
+///   offscript://tab/<home|library|queue|search>
+///                                        → switch the tab bar selection
 @MainActor
 enum DeepLinkRouter {
     /// Pushed by ContentView's `.onOpenURL`. Reads the URL into a route,
@@ -54,6 +65,22 @@ enum DeepLinkRouter {
                 return
             }
             handlePodcast(id: podcastID, in: context)
+
+        case "tab":
+            // offscript://tab/<name> — useful for widget shortcuts, debug
+            // automation, and future Shortcuts integration. Validated against
+            // a known set so an unknown tab name doesn't silently swap to
+            // home (which would mask the bug).
+            guard let tabName = segments.first?.lowercased(),
+                  ["home", "library", "queue", "search"].contains(tabName) else {
+                deepLinkLogger.warning("Invalid tab deep link: \(url.absoluteString, privacy: .public)")
+                return
+            }
+            NotificationCenter.default.post(
+                name: .offscriptSwitchTab,
+                object: nil,
+                userInfo: ["tab": tabName]
+            )
 
         default:
             deepLinkLogger.warning("Unknown deep link host: \(host, privacy: .public)")

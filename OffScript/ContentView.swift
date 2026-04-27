@@ -29,6 +29,17 @@ private enum AppTab: Int, CaseIterable, Identifiable {
         case .search:  return "magnifyingglass"
         }
     }
+
+    /// Match the name encoded in `offscript://tab/<name>` deep links.
+    static func from(deepLinkName: String) -> AppTab? {
+        switch deepLinkName.lowercased() {
+        case "home":    return .home
+        case "library": return .library
+        case "queue":   return .queue
+        case "search":  return .search
+        default:        return nil
+        }
+    }
 }
 
 struct ContentView: View {
@@ -96,6 +107,16 @@ struct ContentView: View {
             guard let uniqueID = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
                   let url = URL(string: "offscript://episode/\(uniqueID)") else { return }
             DeepLinkRouter.handle(url, in: modelContext)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .offscriptSwitchTab)) { note in
+            // offscript://tab/<name> deep links land here. The router posts
+            // the notification; ContentView is the only piece that knows
+            // which tab is selected, so the routing happens at this layer.
+            guard let name = note.userInfo?["tab"] as? String,
+                  let tab = AppTab.from(deepLinkName: name) else { return }
+            withAnimation(.easeInOut(duration: 0.15)) {
+                selectedTab = tab
+            }
         }
     }
 

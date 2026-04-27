@@ -47,27 +47,49 @@ struct OffScriptApp: App {
     }
 
     // MARK: - Model Container with Versioned Migration
-    // Uses VersionedSchema + SchemaMigrationPlan for safe migrations.
-    // Falls back to destructive reset only if the migration plan itself fails.
+    //
+    // Three-tier recovery:
+    //   1. Open the on-disk store with the SchemaV2 migration plan. Lets
+    //      existing user data carry forward via the V1→V2 stage.
+    //   2. If (1) fails (e.g. "Cannot use staged migration with an unknown
+    //      model version" — happens when the on-disk store has metadata
+    //      that doesn't match either V1 or V2; possible if a build between
+    //      versions wrote the store and was never released), QUARANTINE the
+    //      failing store (rename to .corrupted-<timestamp>) and create a
+    //      fresh one. We don't delete in case the user wants to recover it
+    //      via Files later.
+    //   3. If (2) ALSO fails (extremely rare), fall back to an in-memory
+    //      container so the app at least launches. User loses data but the
+    //      UI works and they can reinstall to get a clean slate.
+    //
+    // Earlier versions called `resetPersistentStore()` which only deleted
+    // the .store / .store-shm / .store-wal trio at the standard path. iOS 26
+    // SwiftData seems to also leave migration-metadata caches in the same
+    // directory or in app-private dirs that break the second attempt with
+    // the same error. Quarantining the entire OffScript subdirectory and
+    // creating a fresh one sidesteps that.
     var sharedModelContainer: ModelContainer = {
-        // Use the VersionedSchema so SwiftData can run our migration plan
-        // (OffScriptMigrationPlan) when the on-disk store predates the
-        // current schema. Origin/main's flat Schema([...]) was simpler but
-        // would force-wipe the store on every breaking schema change — the
-        // versioned path is what keeps user libraries intact across releases.
         let schema = Schema(versionedSchema: SchemaV2.self)
         do {
             return try Self.makeModelContainer(schema: schema)
         } catch {
             Self.logger.error("Primary SwiftData store failed to load: \(String(describing: error), privacy: .public)")
 
-            // Safety net: wipe the store and recreate if migration fails.
             do {
-                try Self.resetPersistentStore()
-                Self.logger.info("Persistent store deleted — recreating with current schema")
-                return try Self.makeModelContainer(schema: schema)
+                try Self.quarantineStoreDirectory()
+                Self.logger.info("Quarantined corrupted store directory — retrying with fresh schema")
+                // Rebuild Schema instance — keeps SwiftData's internal
+                // state from carrying over the failed first attempt.
+                let freshSchema = Schema(versionedSchema: SchemaV2.self)
+                return try Self.makeModelContainer(schema: freshSchema)
             } catch {
-                Self.logger.fault("SwiftData store recovery failed: \(String(describing: error), privacy: .public)")
+                Self.logger.fault("Quarantine + retry failed: \(String(describing: error), privacy: .public). Falling back to in-memory store so the app at least launches.")
+                if let inMemory = try? ModelContainer(
+                    for: Schema(versionedSchema: SchemaV2.self),
+                    configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
+                ) {
+                    return inMemory
+                }
                 fatalError("Could not create ModelContainer: \(error)")
             }
         }
@@ -130,16 +152,34 @@ struct OffScriptApp: App {
         return directory.appendingPathComponent("OffScript.store")
     }()
 
-    private static func resetPersistentStore() throws {
+    /// Move the entire `OffScript/` subdirectory of Application Support to a
+    /// timestamped `OffScript-corrupted-<unix-time>/` sibling, then create a
+    /// fresh empty `OffScript/`. This sidesteps any SwiftData migration-
+    /// metadata caches sitting next to the .store files — an issue we hit
+    /// where deleting just .store/.shm/.wal wasn't enough for the second
+    /// migration attempt to succeed.
+    ///
+    /// We rename rather than delete so the user can recover the prior store
+    /// from Files.app if they need to.
+    private static func quarantineStoreDirectory() throws {
         let fileManager = FileManager.default
-        let baseURL = persistentStoreURL
-        let companionExtensions = ["", "-shm", "-wal"]
+        let appSupport = fileManager
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)
+            .first!
+        let storeDir = appSupport.appendingPathComponent("OffScript", isDirectory: true)
 
-        for suffix in companionExtensions {
-            let targetURL = URL(fileURLWithPath: baseURL.path() + suffix)
-            if fileManager.fileExists(atPath: targetURL.path()) {
-                try fileManager.removeItem(at: targetURL)
-            }
+        if fileManager.fileExists(atPath: storeDir.path()) {
+            let stamp = Int(Date().timeIntervalSince1970)
+            let quarantineDir = appSupport.appendingPathComponent(
+                "OffScript-corrupted-\(stamp)",
+                isDirectory: true
+            )
+            try fileManager.moveItem(at: storeDir, to: quarantineDir)
+            logger.info("Moved corrupted store dir to \(quarantineDir.path(), privacy: .public)")
         }
+
+        // Recreate empty store dir so makeModelContainer's persistentStoreURL
+        // resolves to a writable path on the second attempt.
+        try fileManager.createDirectory(at: storeDir, withIntermediateDirectories: true)
     }
 }

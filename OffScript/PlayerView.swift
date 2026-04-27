@@ -151,33 +151,23 @@ struct PlayerView: View {
     }
 
     private var scrubber: some View {
-        VStack(spacing: 6) {
-            // Tick rule — signal yellow fill on hairline
-            GeometryReader { proxy in
-                let clamped = min(max(progressValue, 0), 1)
-                ZStack(alignment: .leading) {
-                    Rectangle().fill(Color.offscriptHairline)
-                    Rectangle()
-                        .fill(Color.offscriptSignalYellow)
-                        .frame(width: proxy.size.width * clamped)
-                }
-            }
-            .frame(height: 2)
-
-            // Hidden slider for tap-to-seek + drag — keeps Tuner visual rail
-            // but uses native Slider interaction underneath.
-            Slider(
-                value: Binding(
-                    get: { player.currentTime },
-                    set: { player.seek(to: $0) }
-                ),
-                in: 0...max(player.duration, 1)
-            )
-            .tint(Color.offscriptSignalYellow)
-            .frame(height: 22)
-            .opacity(0.001) // invisible but still touchable
-            .padding(.top, -22) // overlay on top of the visual tick rail
-        }
+        // Real Slider with custom track — use SwiftUI's native interaction
+        // (drag, tap-to-seek, accessibility) and overlay the Tuner-visual
+        // rail directly via .background. Earlier version had an invisible
+        // Slider stacked over a separate visual rail, which was fragile —
+        // touch coordinates didn't always reach the slider, and the visual
+        // rail's width could drift from the slider's actual track.
+        Slider(
+            value: Binding(
+                get: { player.currentTime },
+                set: { player.seek(to: $0) }
+            ),
+            in: 0...max(player.duration, 1)
+        )
+        .tint(Color.offscriptSignalYellow)
+        .frame(height: 24)
+        .padding(.vertical, 2)
+        .accessibilityValue("\(Int(progressValue * 100)) percent")
     }
 
     // MARK: transport

@@ -16,6 +16,7 @@ struct MiniPlayer: View {
                     .frame(height: 1)
 
                 // Progress rail — signal-yellow fill on a hairline track.
+                // 2pt height (1pt was visually invisible against the bg).
                 GeometryReader { proxy in
                     let clamped = min(max(progressValue, 0), 1)
                     ZStack(alignment: .leading) {
@@ -25,7 +26,7 @@ struct MiniPlayer: View {
                             .frame(width: proxy.size.width * clamped)
                     }
                 }
-                .frame(height: 1)
+                .frame(height: 2)
 
                 HStack(spacing: 12) {
                     // Channel readout — TunerLabel mono channel number is the

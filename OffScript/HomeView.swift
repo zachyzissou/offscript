@@ -28,7 +28,7 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                HomeTunerHeader()
+                HomeTunerHeader(onOpenSettings: onOpenSettings)
 
                 if let errorMessage {
                     HomeErrorRow(message: errorMessage)
@@ -75,17 +75,11 @@ struct HomeView: View {
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button(action: onOpenSettings) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.offscriptSignalYellow)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Open settings")
-            }
-        }
+        // No `.toolbar` ToolbarItem here. iOS 26's NavigationStack wraps any
+        // toolbar Button in a Liquid Glass capsule that ignores `.plain`
+        // styling and our color tokens — that's the gray-circle chrome we
+        // saw in the screenshot. The settings affordance is rendered inline
+        // in HomeTunerHeader instead, where we have full control.
         .task { await loadSections() }
         .refreshable { await loadSections() }
     }
@@ -110,6 +104,8 @@ struct HomeView: View {
 // MARK: - Header
 
 private struct HomeTunerHeader: View {
+    let onOpenSettings: () -> Void
+
     private var dayString: String {
         Date.now.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
     }
@@ -122,11 +118,28 @@ private struct HomeTunerHeader: View {
                 TunerLabel(text: "OFFSCRIPT · CHANNEL FEED", color: .offscriptFnInfo)
             }
 
-            // Big spec-sheet headline
-            Text("Home")
-                .font(.system(size: 32, weight: .bold))
-                .tracking(-0.5)
-                .foregroundStyle(Color.offscriptPaperWhite)
+            HStack(alignment: .firstTextBaseline) {
+                // Big spec-sheet headline
+                Text("Home")
+                    .font(.system(size: 32, weight: .bold))
+                    .tracking(-0.5)
+                    .foregroundStyle(Color.offscriptPaperWhite)
+
+                Spacer()
+
+                // Tuner config button — sharp hairline rectangle, signal-yellow
+                // glyph. Replaces the toolbar gear which iOS 26 was wrapping in
+                // a foreign glass-capsule chrome.
+                Button(action: onOpenSettings) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.offscriptSignalYellow)
+                        .frame(width: 36, height: 30)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open settings")
+            }
 
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                 .padding(.top, 4)

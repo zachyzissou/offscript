@@ -46,7 +46,8 @@ struct LibraryView: View {
                 LibraryTunerHeader(
                     showCount: subscribedPodcasts.count,
                     unplayedCount: freshEpisodes.count,
-                    inProgressCount: inProgressEpisodes.count
+                    inProgressCount: inProgressEpisodes.count,
+                    onOpenSettings: onOpenSettings
                 )
 
                 if subscribedPodcasts.isEmpty {
@@ -92,16 +93,8 @@ struct LibraryView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .refreshable { await syncSubscriptions() }
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button(action: onOpenSettings) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.offscriptSignalYellow)
-                }
-                .accessibilityLabel("Open settings")
-            }
-        }
+        // Settings button rendered inline in LibraryTunerHeader, not as a
+        // toolbar item — iOS 26 wraps toolbar buttons in glass chrome.
     }
 
     private var emptyState: some View {
@@ -178,6 +171,7 @@ private struct LibraryTunerHeader: View {
     let showCount: Int
     let unplayedCount: Int
     let inProgressCount: Int
+    let onOpenSettings: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -187,10 +181,22 @@ private struct LibraryTunerHeader: View {
                 TunerLabel(text: "\(showCount) CH", color: .offscriptFnInfo)
             }
 
-            Text("Library")
-                .font(.system(size: 32, weight: .bold))
-                .tracking(-0.5)
-                .foregroundStyle(Color.offscriptPaperWhite)
+            HStack(alignment: .firstTextBaseline) {
+                Text("Library")
+                    .font(.system(size: 32, weight: .bold))
+                    .tracking(-0.5)
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                Spacer()
+                Button(action: onOpenSettings) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.offscriptSignalYellow)
+                        .frame(width: 36, height: 30)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open settings")
+            }
 
             // Inline mono readout — no surface, just hairline bar between
             HStack(spacing: 14) {
