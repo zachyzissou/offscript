@@ -112,10 +112,17 @@ private struct HomeTunerHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 8) {
+                // Both eyebrows lock to a single line — at larger Dynamic
+                // Type sizes the right-hand "OFFSCRIPT · CHANNEL FEED" used
+                // to wrap and collide with the "Home" title rendered just
+                // below it. lineLimit(1) keeps each on one row; truncation
+                // is preferable to overlap.
                 TunerLabel(text: "TODAY · \(dayString.uppercased())", color: .offscriptSoftPaper)
+                    .lineLimit(1)
                 Spacer()
                 TunerLabel(text: "OFFSCRIPT · CHANNEL FEED", color: .offscriptFnInfo)
+                    .lineLimit(1)
             }
 
             HStack(alignment: .firstTextBaseline) {
@@ -297,12 +304,15 @@ private struct HeroTunerCard: View {
                 // Reason as a TunerTag with signal yellow accent
                 TunerTag(text: reason, color: .offscriptSignalYellow, dim: true)
 
-                // Mono metadata — date · duration · progress
+                // Mono metadata — date · duration. The "X LEFT" remaining
+                // time used to render here AND in the explanation tag above
+                // (`reason`), which produced two adjacent rows both saying
+                // "15M LEFT" — visual overlap of meaning. The tag already
+                // covers remaining-time when there's progress, so this row
+                // sticks to date + duration only.
                 HStack(spacing: 10) {
                     TunerLabel(text: metadata, color: .offscriptSoftPaper)
-                    if episode.playedPosition > 0, !episode.isPlayed {
-                        TunerLabel(text: "● \(timeRemaining)", color: .offscriptFnInfo)
-                    }
+                        .lineLimit(1)
                     Spacer()
                 }
 

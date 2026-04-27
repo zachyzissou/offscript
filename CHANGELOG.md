@@ -4,6 +4,16 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.3.6] — 2026-04-27
+
+### Added — OPML import is now a background process
+- **`BatchImportService` singleton** owns the work, not the sheet. Tap "→ IMPORT ALL · IN BACKGROUND" and the sheet is free to close — the batch runs to completion regardless of where the user navigates. Reopening the sheet picks up the live state. Bounded 6-way `withTaskGroup` parallelism, episode-limit-25 per feed.
+- **`LibraryBatchImportStrip`** — Tuner-styled status strip at the top of the Library page. While running: signal-yellow progress rail with `added/total` counter. Finished: `✓ IMPORT COMPLETE` (or `● IMPORT FINISHED` when any feed failed) with a "× DISMISS" key. Idle: invisible. The user always knows what's happening without having to open the sheet.
+
+### Fixed — Home screen overlap
+- **Hero-card metadata duplication.** The "X LEFT — PICK UP WHERE YOU STOPPED" reason tag and the "● X LEFT" metadata row were saying the same thing on adjacent rows. Stripped the metadata row to date + duration only; the tag carries the remaining-time signal.
+- **Single-line lock on the dual-eyebrow row.** `HomeTunerHeader` was rendering "TODAY · MON, APR 27" + "OFFSCRIPT · CHANNEL FEED" without `lineLimit`, so at larger Dynamic Type sizes either side could wrap and collide with the "Home" title below. Both eyebrows now lock to one line; truncation is preferable to overlap.
+
 ## [2.3.5] — 2026-04-27
 
 ### Fixed — Sign in with Apple (was silently broken)

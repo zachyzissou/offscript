@@ -52,6 +52,11 @@ struct LibraryView: View {
                     onOpenSettings: onOpenSettings
                 )
 
+                // Background OPML import status — visible whenever the
+                // batch importer is mid-flight or has just finished and
+                // hasn't been dismissed yet.
+                LibraryBatchImportStrip()
+
                 if subscribedPodcasts.isEmpty {
                     emptyState
                 } else {
@@ -695,6 +700,87 @@ private struct FilterRow: View {
                     .accessibilityAddTraits(selection == filter ? .isSelected : [])
                 }
             }
+        }
+    }
+}
+
+/// Tuner-styled status strip that surfaces background OPML imports.
+/// Renders nothing while the importer is idle. While running shows a
+/// live count and a hairline progress rail; when finished shows the
+/// summary with a dismiss key. Lives at the top of the Library page so
+/// the user always sees what's happening once they leave the sheet.
+private struct LibraryBatchImportStrip: View {
+    @ObservedObject private var importer = BatchImportService.shared
+
+    var body: some View {
+        switch importer.phase {
+        case .idle:
+            EmptyView()
+        case .running:
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    TunerLabel(text: "● IMPORTING IN BACKGROUND",
+                               color: .offscriptSignalYellow)
+                    Spacer()
+                    TunerLabel(text: "\(importer.addedCount)/\(importer.totalCount)",
+                               color: .offscriptFnInfo)
+                }
+
+                GeometryReader { proxy in
+                    let total = max(1, importer.totalCount)
+                    let done = importer.addedCount + importer.failedCount
+                    let clamped = min(max(Double(done) / Double(total), 0), 1)
+                    ZStack(alignment: .leading) {
+                        Rectangle().fill(Color.offscriptHairline)
+                        Rectangle()
+                            .fill(Color.offscriptSignalYellow)
+                            .frame(width: proxy.size.width * clamped)
+                    }
+                }
+                .frame(height: 2)
+            }
+            .padding(.vertical, 10)
+            .overlay(
+                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                alignment: .top
+            )
+            .overlay(
+                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                alignment: .bottom
+            )
+
+        case .finished(let added, let failed):
+            HStack(spacing: 12) {
+                TunerLabel(
+                    text: failed == 0 ? "✓ IMPORT COMPLETE" : "● IMPORT FINISHED",
+                    color: failed == 0 ? .offscriptFnMode : .offscriptSignalYellow
+                )
+                Text(failed == 0
+                     ? "Added \(added) shows"
+                     : "Added \(added), \(failed) failed")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                Spacer()
+                Button {
+                    importer.dismiss()
+                } label: {
+                    TunerLabel(text: "× DISMISS",
+                               color: .offscriptSoftPaper, size: 9)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.vertical, 10)
+            .overlay(
+                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                alignment: .top
+            )
+            .overlay(
+                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                alignment: .bottom
+            )
         }
     }
 }
