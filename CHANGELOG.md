@@ -4,6 +4,26 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.3.10] — 2026-04-27
+
+Polish round 3 — cascade cleanup, leaked references, and the residual punch list from a fresh re-audit.
+
+### Added — proper unsubscribe cascade
+- **`PodcastUnsubscribeService`** centralizes everything that has to happen when a user removes a show: marks the podcast `isSubscribed = false`, dequeues its episodes, **deletes downloaded audio files** for those episodes, **de-indexes them from CoreSpotlight** (so iOS Search stops surfacing them), and saves once at the end. Previously the unsubscribe handler in `LibraryView` only did the queue cleanup — Spotlight kept surfacing episodes from shows the user no longer followed for up to a month, and downloaded files sat on disk forever.
+- **`SpotlightIndexer.deindexEpisodes(ids:)`** API. Per-podcast scoped — `deleteAll()` was the only existing wipe option. Used by the new unsubscribe service.
+- Confirmation dialog copy updated to reflect the broader cleanup ("dequeues its episodes, deletes any offline downloads, and stops it from appearing in iOS Search").
+
+### Fixed — DownloadService task leaks
+- The `taskToEpisodeID` and `episodeIDToTask` dictionaries used to leak entries forever when an episode was deleted while its download was in-flight (the guard for `episode(for:)` returning nil just silently returned). Now the deleted-episode case explicitly cancels the task, removes both dictionary entries, and (on completion) deletes any partially-downloaded file. Three completion paths fixed: `didWriteData`, `didFinishDownloadingTo`, and `didCompleteWithError`.
+
+### Fixed — second-pass audit findings
+- **`AppTheme.swift` artwork gradient** was using `Color.black.opacity(0.08)` inline — switched to `Color.offscriptStudioBlack.opacity(0.08)` per the named-token rule (CLAUDE.md forbids bare white/black opacity).
+- **`AppTheme.swift` shimmer overlay** was using `Color.white.opacity(0.08)` inline — switched to `Color.offscriptHairline`.
+- **`QueueTunerHeader` two-eyebrow row** was missing `lineLimit(1)` on both labels, so the "QUEUE · WORKING SET" eyebrow could wrap onto the "Queue" headline at large Dynamic Type sizes. Same fix already applied to `HomeTunerHeader`, `SettingsHeader`, and `LibraryImportSheet` header in earlier rounds.
+- **`LibraryBatchImportStrip` × DISMISS** key was a 36pt-tall touch target. Expanded to 44pt minimum with `contentShape(Rectangle())` and added `accessibilityLabel`.
+- **`LibraryImportSheet` paste-URL × clear button** was 24×24 — well below HIG minimum. Expanded to 44×44 with `contentShape(Rectangle())` and `accessibilityLabel`.
+- **`SearchView` error strip** had no recovery affordance. Added an inline `↻ RETRY` Tuner key so transient network errors don't require the user to retype the query.
+
 ## [2.3.9] — 2026-04-27
 
 Polish pass driven by three parallel audits (UI consistency, feature correctness, lifecycle/edge-case). The list below covers the high-impact fixes; the remaining items roll forward to follow-up pushes.

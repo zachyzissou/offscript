@@ -54,7 +54,8 @@ struct SearchView: View {
                 }
 
                 if let errorMessage {
-                    SearchErrorStrip(message: errorMessage)
+                    SearchErrorStrip(message: errorMessage,
+                                     onRetry: { Task { await search() } })
                 }
 
                 if isSearching {
@@ -380,13 +381,30 @@ private struct RecentSearchesSection: View {
 
 private struct SearchErrorStrip: View {
     let message: String
+    var onRetry: (() -> Void)? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
             TunerLabel(text: "● SEARCH ERROR", color: .offscriptFnRecord)
             Text(message)
                 .font(.system(size: 12.5))
                 .foregroundStyle(Color.offscriptPaperWhite)
+
+            // Retry key — surfaces a way out for transient network errors
+            // without requiring the user to mutate the query.
+            if let onRetry {
+                Button(action: onRetry) {
+                    TunerLabel(text: "↻ RETRY",
+                               color: .offscriptSignalYellow, size: 10)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Retry search")
+            }
         }
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)

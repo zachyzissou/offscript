@@ -106,6 +106,21 @@ enum SpotlightIndexer {
         }
     }
 
+    /// Remove a specific set of episode IDs from the Spotlight index.
+    /// Used on unsubscribe so iOS Search stops surfacing episodes from
+    /// shows the user is no longer following. The episodes themselves
+    /// are not deleted from SwiftData (history is preserved for taste
+    /// profile continuity), only de-indexed.
+    static func deindexEpisodes(ids: [UUID]) {
+        guard !ids.isEmpty else { return }
+        let identifiers = ids.map { $0.uuidString }
+        CSSearchableIndex.default().deleteSearchableItems(withIdentifiers: identifiers) { error in
+            if let error {
+                spotlightLogger.error("Spotlight deindex failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
     /// Bypass the 24h TTL and schedule a full re-index on next `indexEpisodes`
     /// call. Use this after subscription changes so new shows appear in Spotlight
     /// immediately rather than waiting up to a day.

@@ -239,9 +239,11 @@ struct LibraryImportSheet: View {
                         Image(systemName: "xmark")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(Color.offscriptSoftPaper)
-                            .frame(width: 24, height: 24)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Clear URL")
                 }
             }
             .padding(.horizontal, 12)

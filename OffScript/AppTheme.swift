@@ -353,8 +353,12 @@ struct OffScriptArtworkView: View {
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .clipped()
                     .overlay(
+                        // Subtle bottom shadow on artwork — uses studio-black
+                        // token for consistency with the OLED Tuner field
+                        // instead of bare Color.black.opacity (CLAUDE.md
+                        // forbids inline opacity on raw white/black).
                         LinearGradient(
-                            colors: [Color.clear, Color.black.opacity(0.08)],
+                            colors: [Color.clear, Color.offscriptStudioBlack.opacity(0.08)],
                             startPoint: .top,
                             endPoint: .bottom
                         )
@@ -559,7 +563,9 @@ struct ShimmerModifier: ViewModifier {
                     LinearGradient(
                         stops: [
                             .init(color: .clear, location: lead),
-                            .init(color: Color.white.opacity(0.08), location: center),
+                            // Shimmer highlight uses the hairline token —
+                            // CLAUDE.md forbids bare `Color.white.opacity`.
+                            .init(color: Color.offscriptHairline, location: center),
                             .init(color: .clear, location: trail)
                         ],
                         startPoint: .leading,

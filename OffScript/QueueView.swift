@@ -165,10 +165,15 @@ private struct QueueTunerHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 8) {
+                // Both eyebrows lock to one line so larger Dynamic Type
+                // sizes don't wrap one onto the next and overlap the
+                // "Queue" headline below.
                 TunerLabel(text: "QUEUE · WORKING SET", color: .offscriptSignalYellow)
+                    .lineLimit(1)
                 Spacer()
                 TunerLabel(text: "\(count) STACKED", color: .offscriptFnInfo)
+                    .lineLimit(1)
             }
 
             Text("Queue")

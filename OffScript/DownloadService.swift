@@ -292,7 +292,16 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
         Task { @MainActor in
             guard let episodeID = self.taskToEpisodeID[downloadTask.taskIdentifier] else { return }
             self.objectWillChange.send()
-            guard let episode = self.episode(for: episodeID) else { return }
+            guard let episode = self.episode(for: episodeID) else {
+                // Episode was deleted mid-download (e.g., user
+                // unsubscribed). Cancel the task and drop the dictionary
+                // entries so we don't leak references for the lifetime
+                // of the app.
+                downloadTask.cancel()
+                self.taskToEpisodeID.removeValue(forKey: downloadTask.taskIdentifier)
+                self.episodeIDToTask.removeValue(forKey: episodeID)
+                return
+            }
             episode.downloadState = .downloading
             episode.downloadProgress = progress
             self.modelContext?.saveOrLog("DownloadService")
@@ -307,7 +316,15 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
         Task { @MainActor in
             guard let episodeID = self.taskToEpisodeID[downloadTask.taskIdentifier] else { return }
             self.objectWillChange.send()
-            guard let episode = self.episode(for: episodeID) else { return }
+            guard let episode = self.episode(for: episodeID) else {
+                // Episode disappeared between download start and finish
+                // (unsubscribe). Drop the task entries and remove any
+                // file that already landed.
+                self.taskToEpisodeID.removeValue(forKey: downloadTask.taskIdentifier)
+                self.episodeIDToTask.removeValue(forKey: episodeID)
+                try? FileManager.default.removeItem(at: location)
+                return
+            }
             do {
                 let destinationURL = try self.destinationURL(for: episodeID, originalURL: episode.audioURL)
                 try? FileManager.default.removeItem(at: destinationURL)
@@ -366,7 +383,14 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
         Task { @MainActor in
             guard let episodeID = self.taskToEpisodeID[task.taskIdentifier] else { return }
             self.objectWillChange.send()
-            guard let episode = self.episode(for: episodeID) else { return }
+            guard let episode = self.episode(for: episodeID) else {
+                // Episode was deleted while the download was in flight.
+                // Drop the dict entries so they don't pin the IDs forever.
+                self.taskToEpisodeID.removeValue(forKey: task.taskIdentifier)
+                self.episodeIDToTask.removeValue(forKey: episodeID)
+                self.resumeQueuedDownloadsIfNeeded()
+                return
+            }
             episode.downloadState = .failed
             episode.downloadErrorMessage = error.localizedDescription
             episode.downloadProgress = 0

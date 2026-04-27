@@ -577,21 +577,17 @@ private struct PodcastDetailTunerHeader: View {
                     ) {
                         Button("Unsubscribe", role: .destructive) {
                             withAnimation {
-                                podcast.isSubscribed = false
-                                do {
-                                    let queueItems = try QueueService.orderedItems(in: modelContext)
-                                    for item in queueItems where item.episode.podcast.id == podcast.id {
-                                        try QueueService.remove(item, in: modelContext)
-                                    }
-                                    try modelContext.save()
-                                } catch {
-                                    libraryLogger.error("Failed to unsubscribe: \(error.localizedDescription, privacy: .public)")
-                                }
+                                // Centralized unsubscribe: clears queue
+                                // items, deletes downloaded files, removes
+                                // Spotlight index entries, and saves once.
+                                // Previously only handled queue cleanup.
+                                _ = PodcastUnsubscribeService.unsubscribe(podcast,
+                                                                          in: modelContext)
                             }
                         }
                         Button("Cancel", role: .cancel) {}
                     } message: {
-                        Text("This removes the show from your library and dequeues its episodes.")
+                        Text("Removes the show from your library, dequeues its episodes, deletes any offline downloads, and stops it from appearing in iOS Search. Listening history is preserved.")
                     }
                 }
 
@@ -816,8 +812,11 @@ private struct LibraryBatchImportStrip: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss import status")
             }
             .padding(.vertical, 10)
             .overlay(
