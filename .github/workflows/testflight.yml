@@ -13,9 +13,10 @@ name: TestFlight Beta
 #
 #   2. push: main
 #      The fast path for direct merges. Auto-pushes to TestFlight using
-#      git-log-derived notes. Useful for hotfixes / small iterations.
-#      Does NOT cut a GitHub Release — those stay manual to keep notes
-#      curated.
+#      git-log-derived notes, then auto-cuts a prerelease GitHub Release
+#      tagged "testflight-X.Y.Z-build.N" so every ship has a permanent,
+#      browsable artifact. The prerelease flag signals this isn't an App
+#      Store release; users can later cut a curated vX.Y.Z release.
 #
 #   3. workflow_dispatch
 #      Manual override path with explicit version + notes inputs.
