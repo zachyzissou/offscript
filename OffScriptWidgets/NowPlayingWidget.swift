@@ -12,6 +12,9 @@ struct NowPlayingWidget: Widget {
         StaticConfiguration(kind: kind, provider: NowPlayingProvider()) { entry in
             NowPlayingWidgetView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
+                // Tap → deep-link into the player. Handled by
+                // DeepLinkRouter.handle in the main app's onOpenURL.
+                .widgetURL(URL(string: "offscript://player"))
         }
         .configurationDisplayName("Now Playing")
         .description("See the OffScript episode you're currently listening to.")

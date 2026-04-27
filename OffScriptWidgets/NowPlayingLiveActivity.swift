@@ -43,12 +43,17 @@ public struct NowPlayingActivityAttributes: ActivityAttributes {
 }
 
 struct NowPlayingLiveActivity: Widget {
+    private static let openPlayerURL = URL(string: "offscript://player")!
+
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: NowPlayingActivityAttributes.self) { context in
-            // Lock Screen / banner
-            LockScreenView(attributes: context.attributes, state: context.state)
-                .activityBackgroundTint(Color.black.opacity(0.92))
-                .activitySystemActionForegroundColor(Color.orange)
+            // Lock Screen / banner — wrap in Link so tapping deep-links to
+            // the player rather than the default app launch.
+            Link(destination: Self.openPlayerURL) {
+                LockScreenView(attributes: context.attributes, state: context.state)
+            }
+            .activityBackgroundTint(Color.black.opacity(0.92))
+            .activitySystemActionForegroundColor(Color.orange)
         } dynamicIsland: { context in
             DynamicIsland {
                 // Expanded

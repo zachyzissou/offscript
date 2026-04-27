@@ -1,3 +1,4 @@
+import CoreSpotlight
 import SwiftData
 import SwiftUI
 
@@ -99,10 +100,23 @@ struct ContentView: View {
             SpotlightIndexer.indexEpisodes(in: modelContext)
             // Bridge PlaybackController → widgets + Live Activity. Idempotent.
             NowPlayingPublisher.shared.start()
+            // Opportunistic background transcription on Wi-Fi + power.
+            BackgroundTranscriptionService.shared.configure(context: modelContext)
             #if DEBUG
             configureDebugSelectedTabIfNeeded()
             configureDebugPlaybackIfNeeded()
             #endif
+        }
+        .onOpenURL { url in
+            DeepLinkRouter.handle(url, in: modelContext)
+        }
+        .onContinueUserActivity(CSSearchableItemActionType) { activity in
+            // Spotlight result tap. The uniqueIdentifier is the episode UUID
+            // we wrote in SpotlightIndexer; route through the deep-link
+            // handler so the same play-on-open behavior applies.
+            guard let uniqueID = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
+                  let url = URL(string: "offscript://episode/\(uniqueID)") else { return }
+            DeepLinkRouter.handle(url, in: modelContext)
         }
         .onChange(of: scenePhase) { _, newValue in
             switch newValue {

@@ -12,6 +12,17 @@
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.offscript.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>offscript</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIAppFonts</key>
 	<array>
 		<string>PlayfairDisplay-Variable.ttf</string>
