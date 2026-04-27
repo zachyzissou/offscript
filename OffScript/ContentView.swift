@@ -5,67 +5,65 @@ import SwiftUI
 
 private let appLogger = Logger(subsystem: "com.offscript", category: "App")
 
+// MARK: - Tab identity (typed enum, not raw Int)
+
+private enum AppTab: Int, CaseIterable, Identifiable {
+    case home, library, queue, search
+
+    var id: Int { rawValue }
+
+    var label: String {
+        switch self {
+        case .home:    return "HOME"
+        case .library: return "LIBRARY"
+        case .queue:   return "QUEUE"
+        case .search:  return "SEARCH"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .home:    return "waveform.path.ecg"
+        case .library: return "books.vertical"
+        case .queue:   return "text.badge.plus"
+        case .search:  return "magnifyingglass"
+        }
+    }
+}
+
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @ObservedObject private var player = PlaybackController.shared
     @AppStorage("offscript.hasSeenOnboarding") private var hasSeenOnboarding = false
-    @State private var selectedTab = 0
+    @State private var selectedTab: AppTab = .home
     @State private var isSettingsPresented = false
     @Query private var queueItems: [QueueItem]
 
     var body: some View {
         Group {
             if hasSeenOnboarding {
-                // Previously this whole tree was wrapped in a GeometryReader so we
-                // could push a tinted background behind the tab bar at exactly the
-                // right safe-area height. The trade was bad: GeometryReader at the
-                // root invalidates the entire TabView (and every child screen) on
-                // every layout pass, making tab-switching feel sluggish once the
-                // library has any real content.
-                //
-                // Replaced with native primitives:
-                //   - .safeAreaInset(edge: .bottom) for the MiniPlayer slot
-                //   - SwiftUI's own safe-area for the tab bar tint
-                // No more root-level GeometryReader.
-                TabView(selection: $selectedTab) {
-                    NavigationStack {
-                        HomeView(onOpenSettings: { isSettingsPresented = true })
-                    }
-                    .tag(0)
-                    .tabItem { Label("Home", systemImage: "waveform.path.ecg") }
+                // Custom Tuner shell — replaces SwiftUI's TabView. iOS 26's
+                // TabView ignores UITabBarAppearance and forces the floating
+                // Liquid Glass capsule, which clashes hard with the Tuner
+                // instrument-cluster vocabulary every other surface uses.
+                // Going custom keeps full control of the tab bar's shape,
+                // colors, hairlines, and how it docks against MiniPlayer.
+                VStack(spacing: 0) {
+                    activeTabContent
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    NavigationStack {
-                        LibraryView(onOpenSettings: { isSettingsPresented = true })
-                    }
-                    .tag(1)
-                    .tabItem { Label("Library", systemImage: "books.vertical") }
-
-                    NavigationStack {
-                        QueueView()
-                    }
-                    .tag(2)
-                    .tabItem { Label("Queue", systemImage: "text.badge.plus") }
-                    .badge(queueItems.count > 0 ? queueItems.count : 0)
-
-                    NavigationStack {
-                        SearchView()
-                    }
-                    .tag(3)
-                    .tabItem { Label("Search", systemImage: "magnifyingglass") }
-                }
-                .tint(Color.offscriptAccent)
-                .toolbarBackground(Color.offscriptCardUtility.opacity(0.98), for: .tabBar)
-                .toolbarBackground(.visible, for: .tabBar)
-                .toolbarColorScheme(.dark, for: .tabBar)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    // MiniPlayer slot — empty when nothing is playing so the tab
-                    // bar takes its natural height.
                     if player.currentEpisode != nil {
                         MiniPlayer()
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
+
+                    TunerTabBar(
+                        selection: $selectedTab,
+                        queueBadge: queueItems.count
+                    )
                 }
-                .animation(.spring(response: 0.35, dampingFraction: 0.86), value: player.currentEpisode != nil)
+                .background(Color.offscriptStudioBlack.ignoresSafeArea())
+                .animation(.easeInOut(duration: 0.2), value: player.currentEpisode != nil)
                 .fullScreenCover(isPresented: $player.isPlayerPresented) {
                     PlayerView()
                 }
@@ -73,9 +71,6 @@ struct ContentView: View {
                     SettingsView()
                 }
             } else {
-                // Local renamed OnboardingView -> OnboardingFlowView (commit f314adf:
-                // "remove old OnboardingView") and the new flow doesn't have a
-                // jump-to-search affordance — onComplete is parameterless.
                 OnboardingFlowView {
                     hasSeenOnboarding = true
                 }
@@ -84,18 +79,9 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
         .task {
             PlaybackController.shared.configure(context: modelContext)
-            // SampleDataSeeder was removed in local commit 7ab11e8
-            // ("wire up OnboardingFlowView and remove SampleDataSeeder").
-            // Real onboarding flow now seeds via Genre + Podcast picker.
 
-            // Donate subscribed-show episodes to Spotlight so iOS system search
-            // and Siri Suggestions can surface them. Idempotent + 24h debounced.
             SpotlightIndexer.indexEpisodes(in: modelContext)
-            // Bridge PlaybackController state → Now Playing widget + Live Activity.
-            // Idempotent — safe to call multiple times.
             NowPlayingPublisher.shared.start()
-            // Opportunistic background transcription on Wi-Fi + power. Service
-            // decides per-episode whether to run based on policy gates.
             BackgroundTranscriptionService.shared.configure(context: modelContext)
 
             #if DEBUG
@@ -104,16 +90,115 @@ struct ContentView: View {
             #endif
         }
         .onOpenURL { url in
-            // offscript:// deep links from widgets, Live Activity, etc.
             DeepLinkRouter.handle(url, in: modelContext)
         }
         .onContinueUserActivity(CSSearchableItemActionType) { activity in
-            // Spotlight result tap. The uniqueIdentifier is the episode UUID
-            // we wrote in SpotlightIndexer; route through the deep-link
-            // handler so the same play-on-open behavior applies.
             guard let uniqueID = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
                   let url = URL(string: "offscript://episode/\(uniqueID)") else { return }
             DeepLinkRouter.handle(url, in: modelContext)
+        }
+    }
+
+    /// Switch on the typed tab so the compiler enforces exhaustive routing.
+    /// Each tab gets its own NavigationStack so back-stacks survive tab
+    /// switches.
+    @ViewBuilder
+    private var activeTabContent: some View {
+        switch selectedTab {
+        case .home:
+            NavigationStack {
+                HomeView(onOpenSettings: { isSettingsPresented = true })
+            }
+        case .library:
+            NavigationStack {
+                LibraryView(onOpenSettings: { isSettingsPresented = true })
+            }
+        case .queue:
+            NavigationStack {
+                QueueView()
+            }
+        case .search:
+            NavigationStack {
+                SearchView()
+            }
+        }
+    }
+}
+
+// MARK: - Tuner tab bar
+
+/// Replaces SwiftUI's TabView with a flat instrument-cluster-style tab bar.
+/// Top hairline rule, sharp 0pt corners, mono labels via TunerLabel,
+/// signal-yellow active state, soft-paper inactive. Queue tab gets a small
+/// signal-yellow stacked-count badge above the icon when items are queued.
+private struct TunerTabBar: View {
+    @Binding var selection: AppTab
+    let queueBadge: Int
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(Color.offscriptHairline)
+                .frame(height: 1)
+
+            HStack(spacing: 0) {
+                ForEach(AppTab.allCases) { tab in
+                    Button {
+                        selection = tab
+                    } label: {
+                        tabContent(for: tab)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityLabel(tab.label.capitalized)
+                    .accessibilityAddTraits(selection == tab ? .isSelected : [])
+                }
+            }
+            .padding(.top, 6)
+            .padding(.bottom, 2)
+            .background(Color.offscriptStudioBlack)
+        }
+    }
+
+    @ViewBuilder
+    private func tabContent(for tab: AppTab) -> some View {
+        let isActive = (selection == tab)
+        let color: Color = isActive ? .offscriptSignalYellow : .offscriptSoftPaper
+
+        VStack(spacing: 4) {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: tab.systemImage)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(color)
+                    .frame(width: 28, height: 22)
+
+                if tab == .queue, queueBadge > 0 {
+                    Text("\(min(queueBadge, 99))")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.offscriptSignalYellow)
+                        .offset(x: 12, y: -4)
+                        .accessibilityLabel("\(queueBadge) queued")
+                }
+            }
+
+            TunerLabel(text: tab.label, color: color, size: 8)
+                .lineLimit(1)
+        }
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .overlay(alignment: .top) {
+            if isActive {
+                // 1px signal-yellow active indicator at the top of the cell —
+                // matches the function-coded eyebrow rules used everywhere else.
+                Rectangle()
+                    .fill(Color.offscriptSignalYellow)
+                    .frame(width: 36, height: 1)
+                    .offset(y: -6)
+            }
         }
     }
 }
@@ -123,14 +208,15 @@ private extension ContentView {
     func configureDebugSelectedTabIfNeeded() {
         let defaults = UserDefaults.standard
         guard let value = defaults.object(forKey: "offscript.debugSelectedTab") as? Int else { return }
-        guard (0...3).contains(value) else { return }
-        selectedTab = value
+        guard let tab = AppTab(rawValue: value) else { return }
+        selectedTab = tab
     }
 
     func configureDebugPlaybackIfNeeded() {
         let defaults = UserDefaults.standard
-        if let tabValue = defaults.object(forKey: "offscript.debugLaunchTab") as? Int {
-            selectedTab = min(max(tabValue, 0), 3)
+        if let tabValue = defaults.object(forKey: "offscript.debugLaunchTab") as? Int,
+           let tab = AppTab(rawValue: tabValue) {
+            selectedTab = tab
         }
 
         guard defaults.bool(forKey: "offscript.debugBootPlayback") else { return }
@@ -141,7 +227,7 @@ private extension ContentView {
         )
         descriptor.fetchLimit = 4
 
-        guard let episodes = try? modelContext.fetch(descriptor), let leadEpisode = episodes.first else { return } // debug-only fetch, safe to ignore
+        guard let episodes = try? modelContext.fetch(descriptor), let leadEpisode = episodes.first else { return }
 
         for episode in episodes.dropFirst().prefix(2) where !episode.isQueued {
             try? QueueService.add(episode, in: modelContext)

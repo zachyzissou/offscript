@@ -39,13 +39,11 @@ struct OffScriptApp: App {
         MetricKitReporter.shared.configure()
         AppSettings.applyLaunchOverridesIfNeeded()
 
-        let tabBarAppearance = UITabBarAppearance()
-        tabBarAppearance.configureWithOpaqueBackground()
-        tabBarAppearance.backgroundColor = UIColor(red: 0.06, green: 0.06, blue: 0.08, alpha: 1.0)
-        tabBarAppearance.shadowColor = UIColor.white.withAlphaComponent(0.08)
-
-        UITabBar.appearance().standardAppearance = tabBarAppearance
-        UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
+        // Tab bar is custom (TunerTabBar in ContentView) — no SwiftUI TabView
+        // in the tree, so UITabBarAppearance config would do nothing. iOS 26
+        // was ignoring it anyway and forcing the floating Liquid Glass
+        // capsule, which is what made the tab bar look like a foreign UI on
+        // top of the otherwise-Tuner instrument cluster.
     }
 
     // MARK: - Model Container with Versioned Migration
