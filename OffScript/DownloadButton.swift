@@ -5,6 +5,9 @@ struct DownloadButton: View {
     let episode: Episode
 
     var body: some View {
+        // Tuner-direction download key — sharp hairline rectangle with mono
+        // status text. Function-coded color (signal yellow for actionable
+        // states, mode-green when downloaded, record-red on failure).
         Menu {
             switch episode.downloadState {
             case .notDownloaded, .failed:
@@ -21,10 +24,31 @@ struct DownloadButton: View {
                 }
             }
         } label: {
-            Label(downloadLabel, systemImage: downloadIcon)
+            HStack(spacing: 6) {
+                Image(systemName: downloadIcon)
+                    .font(.system(size: 11, weight: .semibold))
+                TunerLabel(text: downloadLabel.uppercased(), color: downloadColor, size: 10)
+            }
+            .foregroundStyle(downloadColor)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .overlay(Rectangle().stroke(downloadColor.opacity(0.7), lineWidth: 1))
         }
-        .buttonStyle(SecondaryPillButtonStyle())
+        .buttonStyle(.plain)
         .accessibilityLabel(downloadAccessibilityLabel)
+    }
+
+    private var downloadColor: Color {
+        switch episode.downloadState {
+        case .notDownloaded:
+            return .offscriptPaperWhite
+        case .queued, .downloading:
+            return .offscriptSignalYellow
+        case .downloaded:
+            return .offscriptFnMode
+        case .failed:
+            return .offscriptFnRecord
+        }
     }
 
     private var downloadLabel: String {

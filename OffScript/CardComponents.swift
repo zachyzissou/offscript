@@ -74,7 +74,16 @@ struct EpisodeVerticalCard: View {
                     .foregroundStyle(Color.offscriptSoftPaper)
 
                 if progressValue > 0 {
-                    OffScriptProgressBar(value: progressValue, height: 2)
+                    // Inline Tuner progress rail — replaces removed OffScriptProgressBar.
+                    GeometryReader { proxy in
+                        let clamped = min(max(progressValue, 0), 1)
+                        ZStack(alignment: .leading) {
+                            Rectangle().fill(Color.offscriptHairline)
+                            Rectangle().fill(Color.offscriptSignalYellow)
+                                .frame(width: proxy.size.width * clamped)
+                        }
+                    }
+                    .frame(height: 2)
                 }
 
                 HStack(spacing: 6) {

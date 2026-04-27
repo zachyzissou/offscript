@@ -286,17 +286,33 @@ private extension ContentView {
         try? modelContext.save()
     }
 
-    func configureDebugSelectedTabIfNeeded() {
+    /// Read launch args / UserDefaults that may arrive as Int, NSNumber,
+    /// or String depending on how iOS bridged the `-key value` pair.
+    /// Returns the AppTab or nil. Without this fallback chain, args set
+    /// via `xcrun simctl launch ... -offscript.debugLaunchTab 1` were
+    /// silently ignored because `as? Int` against an NSNumber-bridged
+    /// UserDefault sometimes fails.
+    private func tabFromLaunchArg(key: String) -> AppTab? {
         let defaults = UserDefaults.standard
-        guard let value = defaults.object(forKey: "offscript.debugSelectedTab") as? Int else { return }
-        guard let tab = AppTab(rawValue: value) else { return }
-        selectedTab = tab
+        let raw = defaults.object(forKey: key)
+        let asInt: Int?
+        if let i = raw as? Int { asInt = i }
+        else if let n = raw as? NSNumber { asInt = n.intValue }
+        else if let s = raw as? String, let i = Int(s) { asInt = i }
+        else { asInt = nil }
+        guard let i = asInt else { return nil }
+        return AppTab(rawValue: i)
+    }
+
+    func configureDebugSelectedTabIfNeeded() {
+        if let tab = tabFromLaunchArg(key: "offscript.debugSelectedTab") {
+            selectedTab = tab
+        }
     }
 
     func configureDebugPlaybackIfNeeded() {
         let defaults = UserDefaults.standard
-        if let tabValue = defaults.object(forKey: "offscript.debugLaunchTab") as? Int,
-           let tab = AppTab(rawValue: tabValue) {
+        if let tab = tabFromLaunchArg(key: "offscript.debugLaunchTab") {
             selectedTab = tab
         }
 

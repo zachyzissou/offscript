@@ -24,46 +24,67 @@ struct ImportProgressView: View {
     private let syncService = FeedSyncService()
 
     var body: some View {
-        VStack(spacing: 32) {
-            Spacer()
-
-            VStack(spacing: 14) {
-                if isComplete {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 48))
-                        .foregroundStyle(Color.offscriptAccent)
-                        .transition(.scale.combined(with: .opacity))
-                } else {
-                    ProgressView()
-                        .controlSize(.large)
-                        .tint(Color.offscriptAccent)
-                }
-
-                Text(isComplete ? "Your feed is ready" : "Building your feed...")
-                    .font(.offscriptDisplay)
-                    .foregroundStyle(Color.offscriptTextPrimary)
-
-                Text(isComplete ? "Head in — your recommendations are waiting." : "Fetching episodes and learning your taste...")
-                    .font(.offscriptBody)
-                    .foregroundStyle(Color.offscriptTextSecondary)
-                    .multilineTextAlignment(.center)
-            }
-
-            VStack(spacing: 12) {
-                ForEach(podcasts, id: \.feedURL) { podcast in
-                    ImportRow(
-                        podcast: podcast,
-                        status: statuses[podcast.feedURL] ?? .pending
+        // Tuner-direction onboarding step 03 — instrument-cluster spec
+        // sheet showing live import status per channel. Eyebrow tells the
+        // user where they are in the flow (03 of 03). Each ImportRow shows
+        // mono status badges (○ STANDBY / ● TUNING / ✓ TUNED / ✕ FAILED)
+        // synced to function-coded colors.
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    TunerLabel(text: "03 · TUNING", color: .offscriptSignalYellow)
+                    Spacer()
+                    TunerLabel(
+                        text: isComplete ? "● COMPLETE" : "● TUNING \(doneCount)/\(podcasts.count)",
+                        color: isComplete ? .offscriptFnMode : .offscriptSignalYellow
                     )
                 }
+
+                Text(isComplete ? "Channels tuned." : "Tuning channels…")
+                    .font(.system(size: 32, weight: .bold))
+                    .tracking(-0.5)
+                    .foregroundStyle(Color.offscriptPaperWhite)
+
+                Text(isComplete
+                     ? "Your feed is ready. Recommendations build as you listen."
+                     : "Fetching the most recent episodes for each channel. This won't pull the full back catalog — background sync handles that later.")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                    .lineSpacing(2)
+                    .padding(.top, 4)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                    .padding(.top, 8)
             }
-            .padding(.horizontal, 24)
+
+            VStack(spacing: 0) {
+                ForEach(Array(podcasts.enumerated()), id: \.element.feedURL) { idx, podcast in
+                    ImportRow(
+                        podcast: podcast,
+                        rank: idx + 1,
+                        status: statuses[podcast.feedURL] ?? .pending
+                    )
+                    if idx < podcasts.count - 1 {
+                        Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                    }
+                }
+            }
 
             Spacer()
         }
+        .padding(.horizontal, OffScriptTheme.pagePadding)
+        .padding(.top, 8)
+        .padding(.bottom, 24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.offscriptStudioBlack.ignoresSafeArea())
         .task {
             await runImports()
         }
+    }
+
+    private var doneCount: Int {
+        statuses.values.filter { $0 == .done }.count
     }
 
     // Onboarding-time tuning. We deliberately import only the most recent
@@ -151,54 +172,48 @@ struct ImportProgressView: View {
 
 private struct ImportRow: View {
     let podcast: PodcastSearchResult
+    let rank: Int
     let status: ImportProgressView.ImportStatus
 
     var body: some View {
-        HStack(spacing: 14) {
-            OffScriptArtworkView(
-                url: podcast.artworkURL,
-                cornerRadius: OffScriptTheme.Radius.small
-            )
-            .frame(width: 44, height: 44)
+        HStack(spacing: 12) {
+            Text(String(format: "%02d", rank))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .tracking(1.0)
+                .foregroundStyle(Color.offscriptSignalYellow)
+                .frame(width: 28, alignment: .leading)
 
-            VStack(alignment: .leading, spacing: 3) {
+            OffScriptArtworkView(url: podcast.artworkURL, cornerRadius: 3)
+                .frame(width: 40, height: 40)
+                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+
+            VStack(alignment: .leading, spacing: 2) {
                 Text(podcast.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.offscriptTextPrimary)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.offscriptPaperWhite)
                     .lineLimit(1)
 
-                Text(podcast.author)
-                    .font(.offscriptMeta)
-                    .foregroundStyle(Color.offscriptTextMuted)
+                TunerLabel(text: podcast.author.uppercased(), color: .offscriptSoftPaper, size: 8)
                     .lineLimit(1)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer()
-
-            Group {
-                switch status {
-                case .pending:
-                    Circle()
-                        .fill(Color.offscriptSurfaceLight)
-                        .frame(width: 24, height: 24)
-                case .importing:
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(Color.offscriptAccent)
-                case .done:
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(Color.offscriptAccent)
-                        .font(.title3)
-                case .failed:
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .foregroundStyle(Color.offscriptDestructive)
-                        .font(.title3)
-                }
-            }
-            .frame(width: 24, height: 24)
+            statusBadge
         }
-        .padding(12)
-        .background(Color.offscriptSurfaceFaint)
-        .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous))
+        .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        switch status {
+        case .pending:
+            TunerLabel(text: "○ STANDBY", color: .offscriptSoftPaper, size: 9)
+        case .importing:
+            TunerLabel(text: "● TUNING", color: .offscriptSignalYellow, size: 9)
+        case .done:
+            TunerLabel(text: "✓ TUNED", color: .offscriptFnMode, size: 9)
+        case .failed:
+            TunerLabel(text: "✕ FAILED", color: .offscriptFnRecord, size: 9)
+        }
     }
 }

@@ -4,6 +4,21 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.3.1] — 2026-04-27
+
+### Changed — Tuner finishing pass
+- **`ImportProgressView`** (onboarding step 03) ported to Tuner spec sheet vocabulary. Was the last screen still using centered-loading editorial layout with big spinner + checkmark. Now uses the `03 · TUNING` eyebrow + `● TUNING N/M` status badge + `Tuning channels…` headline + hairline-divided per-channel rows with `01·02·03` rank prefixes and mono `○ STANDBY / ● TUNING / ✓ TUNED / ✕ FAILED` status labels. Function-coded colors line up with the rest of the app.
+- **`DownloadButton`** ported. Was the last `SecondaryPillButtonStyle` (rounded capsule) in the codebase. Now sharp hairline rectangle with mono status text and function-coded color (signal-yellow for actionable / mode-green when downloaded / record-red on failure).
+- **In-line Tuner progress rails** in `EpisodeDetailView` + `CardComponents.EpisodeVerticalCard` (replaces removed `OffScriptProgressBar`).
+
+### Removed — dead code in `AppTheme.swift`
+12 view structs that had no callers after the Tuner port — keeping them around made the design system look like two vocabularies were still in active use:
+- 7 legacy editorial-direction views: `OffScriptReasonBadge`, `OffScriptExplanationTag`, `OffScriptEmptyState`, `OffScriptSectionHeader`, `OffScriptUtilityHeader`, `OffScriptProgressBar`, `OffScriptScrubber`.
+- 5 unused Tuner primitives: `TunerRingMeter`, `TunerTrace`, `TunerTransportButton`, `TunerModeToggle`, `TunerArtworkTile`. Designed for the spec but never composed into actual screens — Player built its own transport row, scrubber went native `Slider`, rail cards use sharp `OffScriptArtworkView` tiles, filter chips landed as inline Tuner buttons.
+
+### Changed — design bible
+`CLAUDE.md` rewritten. Was still describing the old warm-amber editorial direction (Playfair Display, gradient cards, 12/24/32pt radii) — completely stale relative to what shipped. Now documents the Tuner OLED instrument-cluster direction, the iOS 26 chrome trap (don't use `TabView`/`.toolbar`/`.searchable`), the spec-sheet skeleton every screen follows, the component cheat sheet (`TunerLabel`, `TunerTag`, inline Tuner action buttons), and the operational tooling (Xcode Cloud + simctl audit pattern).
+
 ## [2.3.0] — 2026-04-27
 
 ### Changed

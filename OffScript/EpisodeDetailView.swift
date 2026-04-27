@@ -142,7 +142,19 @@ struct EpisodeDetailView: View {
     // ── Progress tick strip ──────────────────────────────────────────
     private var progressTickStrip: some View {
         VStack(alignment: .leading, spacing: 6) {
-            OffScriptProgressBar(value: progressValue, height: 2)
+            // Inline Tuner progress rail — signal-yellow fill on hairline
+            // track. Was OffScriptProgressBar; inlined when AppTheme dropped
+            // legacy chrome.
+            GeometryReader { proxy in
+                let clamped = min(max(progressValue, 0), 1)
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(Color.offscriptHairline)
+                    Rectangle()
+                        .fill(Color.offscriptSignalYellow)
+                        .frame(width: proxy.size.width * clamped)
+                }
+            }
+            .frame(height: 2)
             HStack {
                 TunerLabel(text: timeRemaining)
                 Spacer()
