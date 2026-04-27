@@ -16,6 +16,7 @@ struct SearchView: View {
     @State private var isSearching = false
     @State private var importingID: String?
     @State private var errorMessage: String?
+    @FocusState private var searchFieldFocused: Bool
 
     private let searchService = PodcastSearchService()
     private let syncService = FeedSyncService()
@@ -26,13 +27,16 @@ struct SearchView: View {
     }
 
     var body: some View {
+        // No `.searchable` — that modifier renders a system-default
+        // rounded translucent search bar that floats over the page and
+        // clashes with everything Tuner. Custom field below puts the
+        // search input in the header where it belongs.
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if !isSearchActive {
-                    SearchTunerHeader()
-                }
+                SearchTunerHeader()
+                tunerSearchField
 
-                if query.isEmpty, !isSearchActive {
+                if query.isEmpty {
                     SearchPromptStrip()
 
                     StarterTopicsSection(
@@ -73,8 +77,48 @@ struct SearchView: View {
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .searchable(text: $query, isPresented: $isSearchActive, prompt: "Search podcasts or hosts")
         .task(id: query) { await search() }
+    }
+
+    /// Custom Tuner search input — hairline rectangle with mono prompt,
+    /// signal-yellow magnifier glyph, and an inline × clear button when
+    /// there's text. Sits in the page header instead of the floating
+    /// system search bar.
+    private var tunerSearchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.offscriptSignalYellow)
+
+            TextField("", text: $query, prompt: Text("SEARCH PODCASTS OR HOSTS")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundColor(.offscriptSoftPaper))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($searchFieldFocused)
+                .font(.system(size: 13))
+                .foregroundStyle(Color.offscriptPaperWhite)
+                .accentColor(Color.offscriptSignalYellow)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.offscriptSoftPaper)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
     }
 
     private var searchSkeleton: some View {

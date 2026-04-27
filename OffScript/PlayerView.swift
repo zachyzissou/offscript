@@ -34,46 +34,51 @@ struct PlayerView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let episode = player.currentEpisode {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            specHeader(episode: episode)
-                            artworkBlock(episode: episode)
-                            titleBlock(episode: episode)
-                            readouts
-                            scrubber
-                            transportRow
-                            upNext
-                            whatsNextSection(episode: episode)
-                            controlsSection(episode: episode)
-                        }
-                        .padding(.horizontal, OffScriptTheme.pagePadding)
-                        .padding(.vertical, 12)
+        // No NavigationStack here — iOS 26 wraps any toolbar item in a glass
+        // capsule chrome that ignores .buttonStyle(.plain) and our color
+        // tokens. Same problem the tab bar + settings cog had. PlayerView is
+        // a full-screen modal cover; we render our own dismiss key inline at
+        // the top so we keep full control over its rendering.
+        Group {
+            if let episode = player.currentEpisode {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        dismissBar
+                        specHeader(episode: episode)
+                        artworkBlock(episode: episode)
+                        titleBlock(episode: episode)
+                        readouts
+                        scrubber
+                        transportRow
+                        upNext
+                        whatsNextSection(episode: episode)
+                        controlsSection(episode: episode)
                     }
-                    .background(Color.offscriptStudioBlack.ignoresSafeArea())
-                } else {
-                    emptyState
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+                    .padding(.vertical, 12)
                 }
+                .background(Color.offscriptStudioBlack.ignoresSafeArea())
+            } else {
+                emptyState
             }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(Color.offscriptSignalYellow)
-                            .frame(width: 36, height: 32)
-                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
-                    }
-                    .accessibilityLabel("Close player")
-                }
+        }
+    }
+
+    /// Inline dismiss row — sharp Tuner button, no nav-bar chrome.
+    private var dismissBar: some View {
+        HStack {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color.offscriptSignalYellow)
+                    .frame(width: 36, height: 30)
+                    .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
             }
-            .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close player")
+            Spacer()
         }
     }
 
