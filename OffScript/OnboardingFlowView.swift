@@ -1,4 +1,5 @@
 import AuthenticationServices
+import OSLog
 import SwiftUI
 
 struct OnboardingFlowView: View {
@@ -184,16 +185,27 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> ASAuthorizationAppleIDButton {
+        // Tuner: Apple's signin button has its own design language we can't
+        // re-skin, so leave it stock — the chrome here is Apple's, not ours.
+        // Sharp corners (radius 0) line up with the Tuner rectangle vocab.
         let button = ASAuthorizationAppleIDButton(type: .signIn, style: .white)
-        button.cornerRadius = 18
-        button.addTarget(context.coordinator, action: #selector(Coordinator.handleSignIn), for: .touchUpInside)
+        button.cornerRadius = 0
+        button.addTarget(context.coordinator,
+                         action: #selector(Coordinator.handleSignIn),
+                         for: .touchUpInside)
         return button
     }
 
     func updateUIView(_ uiView: ASAuthorizationAppleIDButton, context: Context) {}
 
-    final class Coordinator: NSObject, ASAuthorizationControllerDelegate {
+    final class Coordinator: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
         let onComplete: () -> Void
+        // Strong reference to the in-flight controller. Without this, the
+        // controller is released as `handleSignIn()` returns and the delegate
+        // callbacks (success / error) never fire — the symptom is "Sign in
+        // with Apple does nothing." Apple's docs describe holding the
+        // controller for the lifetime of the request.
+        private var inFlightController: ASAuthorizationController?
 
         init(onComplete: @escaping () -> Void) {
             self.onComplete = onComplete
@@ -205,13 +217,31 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
 
             let controller = ASAuthorizationController(authorizationRequests: [request])
             controller.delegate = self
+            controller.presentationContextProvider = self
+            inFlightController = controller
             controller.performRequests()
+        }
+
+        // MARK: ASAuthorizationControllerPresentationContextProviding
+        // The system needs a window to present its sheet from. iOS 26 has
+        // multiple connected scenes possible; we pick the first foreground
+        // active one and fall back to the key window if none match. Without
+        // this, the auth sheet refuses to present and the request errors out.
+        func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+            let active = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first { $0.activationState == .foregroundActive }
+                ?? UIApplication.shared.connectedScenes
+                    .compactMap { $0 as? UIWindowScene }
+                    .first
+
+            return active?.windows.first(where: \.isKeyWindow)
+                ?? active?.windows.first
+                ?? UIWindow()
         }
 
         func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
             if let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
-                // origin/main switched to @AppStorage for credential persistence —
-                // write the user id and display name directly into UserDefaults.
                 let displayName = [credential.fullName?.givenName, credential.fullName?.familyName]
                     .compactMap { $0 }
                     .joined(separator: " ")
@@ -221,10 +251,16 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
                     defaults.set(displayName, forKey: "offscript.appleUserName")
                 }
             }
+            inFlightController = nil
             onComplete()
         }
 
         func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+            // Surface the actual error — silent failure here is exactly what
+            // had Sign in with Apple appearing broken to the user.
+            let logger = Logger(subsystem: "com.offscript", category: "AppleSignin")
+            logger.error("Sign in with Apple failed: \(error.localizedDescription, privacy: .public)")
+            inFlightController = nil
             onComplete()
         }
     }

@@ -407,19 +407,63 @@ struct LibraryImportSheet: View {
         defer { isImporting = false }
         errorMessage = nil
 
-        // Sequentially — running 50 importPodcast calls in parallel would
-        // hammer the iTunes lookup endpoint and trip rate limits. Per-row
-        // status updates as we go so the user can watch progress.
-        for entry in entries {
-            opmlImportProgress[entry.feedURL] = .importing
-            do {
-                let result = try await PodcastImportService.resolve(opmlEntry: entry)
-                _ = try await syncService.importPodcast(from: result, into: modelContext)
-                opmlImportProgress[entry.feedURL] = .added
-            } catch {
-                importSheetLogger.error("OPML row failed for \(entry.feedURL.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                opmlImportProgress[entry.feedURL] = .failed
+        // Bounded parallelism. Resolving 50 feeds sequentially took
+        // minutes — most of that time was idle waiting on per-feed network
+        // round-trips. Run 6 at a time: enough to overlap the slow ones,
+        // not so many that we trip rate limiters or force the user to
+        // watch a progress bar that updates in big chunks.
+        let concurrency = 6
+        await withTaskGroup(of: (URL, ImportRowStatus).self) { group in
+            var iterator = entries.makeIterator()
+            var inFlight = 0
+
+            // Prime the pump with the first `concurrency` tasks.
+            while inFlight < concurrency, let entry = iterator.next() {
+                opmlImportProgress[entry.feedURL] = .importing
+                inFlight += 1
+                group.addTask { [syncService, modelContext] in
+                    await Self.runOne(entry: entry,
+                                      syncService: syncService,
+                                      modelContext: modelContext)
+                }
             }
+
+            // As each task completes, mark its status and queue the next.
+            // Keeps `concurrency` requests in flight at all times until the
+            // entry list is exhausted.
+            while let (feedURL, status) = await group.next() {
+                opmlImportProgress[feedURL] = status
+                if let nextEntry = iterator.next() {
+                    opmlImportProgress[nextEntry.feedURL] = .importing
+                    group.addTask { [syncService, modelContext] in
+                        await Self.runOne(entry: nextEntry,
+                                          syncService: syncService,
+                                          modelContext: modelContext)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Resolve + import a single OPML row. Lives off-main where possible
+    /// (resolve is async, importPodcast hops back to MainActor for the
+    /// SwiftData write). Returns the status for the calling group to
+    /// surface in the UI. Episode limit caps the initial sync — pulling
+    /// 500-episode back catalogs for every feed in a 50-podcast OPML
+    /// turned import into a multi-minute wait. Background refresh fills
+    /// in the rest later.
+    private static func runOne(entry: OPMLFeedEntry,
+                               syncService: FeedSyncService,
+                               modelContext: ModelContext) async -> (URL, ImportRowStatus) {
+        do {
+            let result = try await PodcastImportService.resolve(opmlEntry: entry)
+            _ = try await syncService.importPodcast(from: result,
+                                                    into: modelContext,
+                                                    episodeLimit: 25)
+            return (entry.feedURL, .added)
+        } catch {
+            importSheetLogger.error("OPML row failed for \(entry.feedURL.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return (entry.feedURL, .failed)
         }
     }
 }

@@ -4,6 +4,21 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.3.5] — 2026-04-27
+
+### Fixed — Sign in with Apple (was silently broken)
+- **Missing entitlement.** `OffScript.entitlements` had no `com.apple.developer.applesignin` capability. Without it, every `ASAuthorizationController.performRequests()` call failed at the system level — but the failure callback wasn't logged, so the symptom was just "the button does nothing." Added `Default` scope so the app can request user identity at sign-in time.
+- **Missing `presentationContextProvider`.** iOS 26 has multiple connected scenes, and `ASAuthorizationController` will refuse to present its sheet without an explicit window anchor. The Coordinator now conforms to `ASAuthorizationControllerPresentationContextProviding` and returns the foreground-active key window — falls back to the first active scene's window, finally to a fresh `UIWindow()`, so it's never nil.
+- **Controller release race.** The local `ASAuthorizationController` lived only in `handleSignIn()`'s scope, which meant ARC could free it before the delegate callback fired (Apple's API expects the caller to hold a strong reference until completion). The Coordinator now keeps an `inFlightController` reference, cleared on success or error.
+- **Silent error handling.** The `didCompleteWithError` callback used to just call `onComplete()` and swallow the error. Now logs via OSLog so the actual reason surfaces in Console.
+
+### Fixed — OPML import was unbearably slow
+- **Sequential → 6-way bounded parallelism.** Previously, each OPML row resolved + imported in series; a 50-podcast OPML easily took multiple minutes because most of that wall time was idle waiting on per-feed network round-trips. `batchImportOPML` now runs 6 imports concurrently via `withTaskGroup`, priming the pump and keeping the pipeline full as each completes. ~6× faster end-to-end on typical OPML sizes.
+- **Episode limit on initial sync.** OPML imports were pulling the entire back catalog for every feed (some podcasts have 500+ episodes). Now passes `episodeLimit: 25` so each show lands fast with recent episodes — background refresh fills in older episodes later. Cuts per-feed time from seconds to ~half a second on most feeds.
+
+### Changed
+- Sign-in with Apple button radius dropped from 18 → 0 to align with the Tuner sharp-rectangle vocabulary. Style is otherwise stock Apple, since their button design isn't ours to override.
+
 ## [2.3.4] — 2026-04-27
 
 ### Added — PlayerView depth pass
