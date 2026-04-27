@@ -50,6 +50,7 @@ struct PlayerView: View {
                         readouts
                         scrubber
                         transportRow
+                        chaptersSection(episode: episode)
                         upNext
                         whatsNextSection(episode: episode)
                         controlsSection(episode: episode)
@@ -121,10 +122,16 @@ struct PlayerView: View {
             .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
 
             VStack(alignment: .leading, spacing: 6) {
-                TunerTag(text: episode.podcast.title, color: .offscriptFnRecord)
+                // Podcast title in info-cyan per the function-coded color
+                // system. Was record-red (the same bug fixed in
+                // QueueLeadStrip in 2.3.2) — record-red is reserved for
+                // destructive / error signals.
+                TunerLabel(text: episode.podcast.title.uppercased(),
+                           color: .offscriptFnInfo, size: 9)
                     .lineLimit(1)
                 if let date = formattedDate(episode.pubDate) {
-                    TunerTag(text: date, color: .offscriptFnInfo, dim: true)
+                    TunerLabel(text: date.uppercased(),
+                               color: .offscriptSoftPaper, size: 9)
                 }
                 if let dur = episode.duration {
                     TunerLabel(text: "DURATION  \(EpisodeDurationFormatter.short(dur).uppercased())", color: .offscriptSoftPaper)
@@ -223,6 +230,96 @@ struct PlayerView: View {
         .accessibilityLabel(label)
     }
 
+    // MARK: chapters
+
+    /// Hairline-divided chapter list. Renders only when the episode actually
+    /// has chapters (model parses both psc:chapter PSC tags and timestamp
+    /// patterns in the summary via EpisodeChapterParser). Each row is a
+    /// tap-to-seek button; the current chapter is highlighted in
+    /// signal-yellow with a `▶` glyph.
+    @ViewBuilder
+    private func chaptersSection(episode: Episode) -> some View {
+        let chapters = episode.resolvedChapters
+        if !chapters.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    TunerLabel(text: "CHAPTERS · TAP TO SEEK", color: .offscriptSignalYellow)
+                    Spacer()
+                    TunerLabel(text: "\(chapters.count) MARKS", color: .offscriptFnInfo)
+                }
+
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(chapters.enumerated()), id: \.element.id) { idx, chapter in
+                        chapterRow(
+                            idx: idx,
+                            chapter: chapter,
+                            isCurrent: isCurrentChapter(chapter, in: chapters)
+                        )
+                        if idx < chapters.count - 1 {
+                            Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            }
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(
+                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                alignment: .top
+            )
+        }
+    }
+
+    private func chapterRow(idx: Int, chapter: EpisodeChapter, isCurrent: Bool) -> some View {
+        Button {
+            player.seek(to: chapter.startTime)
+        } label: {
+            HStack(spacing: 12) {
+                Text(String(format: "%02d", idx + 1))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .tracking(1.0)
+                    .foregroundStyle(isCurrent ? Color.offscriptSignalYellow : Color.offscriptSoftPaper)
+                    .frame(width: 28, alignment: .leading)
+
+                if isCurrent {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Color.offscriptSignalYellow)
+                }
+
+                Text(chapter.title)
+                    .font(.system(size: 13.5, weight: isCurrent ? .semibold : .regular))
+                    .foregroundStyle(isCurrent ? Color.offscriptSignalYellow : Color.offscriptPaperWhite)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text(time(chapter.startTime))
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Color.offscriptSoftPaper)
+                    .monospacedDigit()
+            }
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Chapter \(idx + 1): \(chapter.title) at \(time(chapter.startTime))")
+    }
+
+    /// A chapter is "current" when player time has crossed its startTime
+    /// but hasn't yet crossed the next chapter's startTime. The last chapter
+    /// stays current to the end of the episode.
+    private func isCurrentChapter(_ chapter: EpisodeChapter, in chapters: [EpisodeChapter]) -> Bool {
+        guard let idx = chapters.firstIndex(of: chapter) else { return false }
+        let now = player.currentTime
+        guard now >= chapter.startTime else { return false }
+        if idx + 1 < chapters.count {
+            return now < chapters[idx + 1].startTime
+        }
+        return true
+    }
+
     // MARK: up next
 
     @ViewBuilder
@@ -277,21 +374,29 @@ struct PlayerView: View {
 
             HStack(spacing: 8) {
                 Menu {
-                    ForEach([("1.0x", Float(1.0)), ("1.25x", Float(1.25)), ("1.5x", Float(1.5)), ("2.0x", Float(2.0))], id: \.0) { label, rate in
-                        Button {
-                            player.setPlaybackRate(rate)
-                        } label: {
-                            HStack {
-                                Text(label)
-                                if player.playbackRate == rate {
-                                    Image(systemName: "checkmark")
+                    Section("Speed for \(episode.podcast.title)") {
+                        ForEach([("1.0×", Float(1.0)),
+                                 ("1.1×", Float(1.1)),
+                                 ("1.25×", Float(1.25)),
+                                 ("1.5×", Float(1.5)),
+                                 ("1.75×", Float(1.75)),
+                                 ("2.0×", Float(2.0)),
+                                 ("2.5×", Float(2.5))], id: \.0) { label, rate in
+                            Button {
+                                player.setPlaybackRate(rate)
+                            } label: {
+                                HStack {
+                                    Text(label)
+                                    if abs(player.playbackRate - rate) < 0.001 {
+                                        Image(systemName: "checkmark")
+                                    }
                                 }
                             }
                         }
                     }
                 } label: {
-                    tunerControlLabel(text: "SPEED  \(String(format: "%.2gX", player.playbackRate))",
-                                      color: .offscriptPaperWhite)
+                    tunerControlLabel(text: "SPEED  \(String(format: "%.2g", player.playbackRate))×",
+                                      color: hasCustomRate(for: episode) ? .offscriptSignalYellow : .offscriptPaperWhite)
                 }
                 .buttonStyle(.plain)
 
@@ -312,6 +417,34 @@ struct PlayerView: View {
                     catch { playerLogger.error("Mark-played save failed: \(error.localizedDescription, privacy: .public)") }
                 } label: {
                     tunerControlLabel(text: "✓ MARK PLAYED", color: .offscriptSignalYellow)
+                }
+                .buttonStyle(.plain)
+
+                // Sleep timer — Menu with the standard podcast app intervals.
+                // Active timer shows live countdown in mm:ss as the SLEEP key
+                // label; tapping reveals the menu so the user can extend or
+                // cancel without leaving the player.
+                Menu {
+                    if player.sleepTimerEndDate != nil {
+                        Button(role: .destructive) {
+                            player.cancelSleepTimer()
+                        } label: {
+                            Label("Cancel Timer", systemImage: "xmark")
+                        }
+                        Divider()
+                    }
+                    ForEach([5, 15, 30, 45, 60], id: \.self) { minutes in
+                        Button {
+                            player.setSleepTimer(minutes: minutes)
+                        } label: {
+                            Text("\(minutes) min")
+                        }
+                    }
+                } label: {
+                    tunerControlLabel(text: sleepTimerLabel,
+                                      color: player.sleepTimerEndDate != nil
+                                        ? .offscriptSignalYellow
+                                        : .offscriptPaperWhite)
                 }
                 .buttonStyle(.plain)
 
@@ -356,6 +489,28 @@ struct PlayerView: View {
     private var progressValue: Double {
         guard player.duration > 0 else { return 0 }
         return player.currentTime / player.duration
+    }
+
+    /// True when the podcast has its own rate that differs from the
+    /// default — drives the SPEED key's color so the user can tell at a
+    /// glance whether they're on a custom pace for this show.
+    private func hasCustomRate(for episode: Episode) -> Bool {
+        PodcastPlaybackPreferences.preferredRate(for: episode.podcast) != nil
+    }
+
+    /// Live countdown label for the SLEEP key. Re-renders alongside
+    /// `currentTime` since both update once per second via the time observer,
+    /// so the SwiftUI tick is enough to keep the countdown fresh without a
+    /// dedicated Timer.
+    private var sleepTimerLabel: String {
+        guard let endDate = player.sleepTimerEndDate else { return "SLEEP  OFF" }
+        // Bind to player.currentTime so SwiftUI re-renders this label every
+        // second (the AVPlayer time observer drives that publisher).
+        _ = player.currentTime
+        let remaining = max(0, Int(endDate.timeIntervalSinceNow))
+        let mm = remaining / 60
+        let ss = remaining % 60
+        return String(format: "SLEEP  %d:%02d", mm, ss)
     }
 
     private func time(_ interval: TimeInterval) -> String {

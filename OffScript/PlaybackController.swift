@@ -26,6 +26,12 @@ final class PlaybackController: ObservableObject {
     private var routeChangeObserver: NSObjectProtocol?
     private var mediaServicesResetObserver: NSObjectProtocol?
 
+    /// When non-nil, playback will pause at this date. Drives the PlayerView
+    /// SLEEP key label (countdown). Cleared when the timer fires or is
+    /// cancelled — UI binds to it as the source of truth.
+    @Published private(set) var sleepTimerEndDate: Date?
+    private var sleepTimerTask: Task<Void, Never>?
+
     private init() {
         configureAudioSession()
         observeTime()
@@ -38,6 +44,31 @@ final class PlaybackController: ObservableObject {
         if let obs = interruptionObserver { NotificationCenter.default.removeObserver(obs) }
         if let obs = routeChangeObserver { NotificationCenter.default.removeObserver(obs) }
         if let obs = mediaServicesResetObserver { NotificationCenter.default.removeObserver(obs) }
+        sleepTimerTask?.cancel()
+    }
+
+    // MARK: - Sleep timer
+
+    /// Schedule playback to pause `minutes` from now. Cancels any existing
+    /// timer first so back-to-back menu picks reset cleanly.
+    func setSleepTimer(minutes: Int) {
+        cancelSleepTimer()
+        let endDate = Date().addingTimeInterval(TimeInterval(minutes * 60))
+        sleepTimerEndDate = endDate
+        sleepTimerTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(TimeInterval(minutes * 60)))
+            guard let self, !Task.isCancelled, self.sleepTimerEndDate == endDate else { return }
+            self.player.pause()
+            self.isPlaying = false
+            self.sleepTimerEndDate = nil
+            self.updateNowPlayingPlaybackRate()
+        }
+    }
+
+    func cancelSleepTimer() {
+        sleepTimerTask?.cancel()
+        sleepTimerTask = nil
+        sleepTimerEndDate = nil
     }
 
     func configure(context: ModelContext) {
@@ -74,13 +105,19 @@ final class PlaybackController: ObservableObject {
     }
 
     /// Shared setup for `play()` and `load()`: configures context, installs
-    /// the AVPlayerItem, restores saved position, and opens the player UI.
+    /// the AVPlayerItem, restores saved position, applies the episode's
+    /// per-podcast playback rate, and opens the player UI.
     private func prepareItem(for episode: Episode, in context: ModelContext?) {
         if let context {
             configure(context: context)
         }
 
         currentEpisode = episode
+        // Resolve the rate this podcast should play at — per-podcast
+        // preference wins, then the global default, then 1.0×. Each podcast
+        // remembers its own pace.
+        playbackRate = PodcastPlaybackPreferences.preferredRate(for: episode.podcast)
+            ?? PodcastPlaybackPreferences.globalDefault
         let url = episode.localFileURL ?? episode.audioURL
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
 
@@ -126,11 +163,22 @@ final class PlaybackController: ObservableObject {
         persistPlaybackProgress()
     }
 
+    /// Set the rate for the currently playing podcast and persist it as
+    /// the default for that podcast going forward. Per-podcast preferences
+    /// store in UserDefaults keyed by podcast UUID — avoids a SwiftData
+    /// schema migration for what's a UI preference, not a content fact.
+    /// When no episode is loaded, falls back to setting the global default.
     func setPlaybackRate(_ rate: Float) {
         playbackRate = rate
+        if let podcast = currentEpisode?.podcast {
+            PodcastPlaybackPreferences.setPreferredRate(rate, for: podcast)
+        } else {
+            PodcastPlaybackPreferences.setGlobalDefault(rate)
+        }
         if isPlaying {
             player.rate = rate
         }
+        updateNowPlayingPlaybackRate()
     }
 
     func skipToNextInQueue() {

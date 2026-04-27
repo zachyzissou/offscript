@@ -70,6 +70,27 @@ struct MiniPlayer: View {
                     .accessibilityLabel("Open player")
                     .accessibilityHint("Expand the now-playing screen for \(episode.title)")
 
+                    // Skip-back-15 — hairline transport key. Lives next to the
+                    // play key so the most-frequent in-app interactions
+                    // (rewind a phrase, skip an ad) don't require opening the
+                    // full player. Hidden when there's no real duration so
+                    // it doesn't sit dead on a fresh load.
+                    if player.duration > 0 {
+                        Button {
+                            player.seek(by: -15)
+                        } label: {
+                            Image(systemName: "gobackward.15")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color.offscriptPaperWhite)
+                                .frame(width: 36, height: 36)
+                                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Skip back 15 seconds")
+                    }
+
                     // Tuner play key — sharp signal-yellow square (instrument key),
                     // 44pt hit target per HIG, 36pt visible disc for visual rhythm.
                     Button {
@@ -85,6 +106,26 @@ struct MiniPlayer: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
+
+                    // Skip-forward-30 — same vocabulary as skip-back. Used for
+                    // ad skipping; 30s is the standard podcast skip-fwd amount
+                    // (Overcast / Pocket Casts / Apple Podcasts all default to
+                    // it). Mirrors PlayerView's transport row.
+                    if player.duration > 0 {
+                        Button {
+                            player.seek(by: 30)
+                        } label: {
+                            Image(systemName: "goforward.30")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color.offscriptPaperWhite)
+                                .frame(width: 36, height: 36)
+                                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Skip ahead 30 seconds")
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)

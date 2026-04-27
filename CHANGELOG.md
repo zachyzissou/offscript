@@ -4,6 +4,23 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.3.4] — 2026-04-27
+
+### Added — PlayerView depth pass
+- **Chapters in PlayerView.** The model already parsed PSC chapter tags + summary timestamp patterns via `EpisodeChapterParser` for months — the data was on the model graph and just never rendered. Now there's a "CHAPTERS · TAP TO SEEK" section between the transport row and Up Next that:
+  - Lists every chapter with `01·02·03` rank prefixes, mono start times, and the chapter title
+  - Highlights the current chapter in signal-yellow with a `▶` glyph (recomputed against `player.currentTime`, so it tracks live as playback crosses each marker)
+  - Tap-to-seek — tapping any row jumps playback to that chapter's start time
+  - Self-hides when the episode has no chapters, no empty state churn
+- **Sleep timer.** SLEEP key in the Player controls row, with the standard podcast app intervals (5 / 15 / 30 / 45 / 60 min). Active timer shows live `mm:ss` countdown directly on the key in signal-yellow; tapping reveals the Cancel option. Implementation in `PlaybackController.setSleepTimer(minutes:)` / `cancelSleepTimer()` — `Task.sleep` based, cancelled cleanly on deinit and on rescheduling.
+- **Per-podcast playback rate.** Speed menu now sets the rate per podcast — pick 1.5× for a fast-talker, 1.0× for narrative, and OffScript remembers each choice. The SPEED key on the Player turns signal-yellow when the current podcast has a custom pace so you can see at a glance you're not on the default. Storage is `UserDefaults`-keyed by podcast UUID via `PodcastPlaybackPreferences` — no SwiftData migration for what's a UI preference, not a content fact. Rate menu expanded to 1.0× / 1.1× / 1.25× / 1.5× / 1.75× / 2.0× / 2.5× to match what every other podcast app offers.
+
+### Added — MiniPlayer transport
+- **Skip-back-15 and skip-forward-30 keys** flanking the play key in the MiniPlayer. Same icons (`gobackward.15`, `goforward.30`) and skip amounts as the lock-screen / CarPlay remote commands so the muscle memory transfers. The most-frequent in-app interactions (rewind a phrase, skip an ad) no longer require opening the full player. Hidden when there's no real duration so they don't sit dead on a fresh load.
+
+### Fixed
+- **PlayerView artwork block** was using `TunerTag` with `offscriptFnRecord` (record red) for the podcast title — same bug class as the QueueLeadStrip fix in 2.3.2. Switched to `TunerLabel` in `offscriptFnInfo` (cyan), matching every other place a podcast title is shown.
+
 ## [2.3.3] — 2026-04-27
 
 ### Added — import functionality
