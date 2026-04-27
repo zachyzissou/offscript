@@ -197,7 +197,7 @@ struct EpisodeDetailView: View {
                 .foregroundStyle(episode.isQueued ? Color.offscriptSoftPaper : Color.offscriptPaperWhite)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .overlay(Capsule().stroke(Color.offscriptHairline, lineWidth: 1))
+                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
             }
             .buttonStyle(.plain)
             .disabled(episode.isQueued)

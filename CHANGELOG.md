@@ -4,6 +4,31 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.3.2] — 2026-04-27
+
+### Fixed — playback (root-cause fix for two reported bugs)
+- **Audio now keeps playing when the app is backgrounded.** Root cause: `Info.plist` was missing `UIBackgroundModes → audio`. Without that key, the `setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio)` call threw at session-configure time — the bare `try?` swallowed the throw — and iOS fell back to the default `.soloAmbient` category, which suspends in background. Adding the entitlement makes the call succeed, the session sticks at `.playback`, and audio survives backgrounding.
+- **Audio now plays through the silent / ring-mute switch.** Same root cause — `.soloAmbient` respects the silent switch by spec; `.playback` does not. Fixing the Info.plist key fixes both reported symptoms with one change.
+- **Phone calls / Siri no longer kill playback permanently.** Added `AVAudioSession.interruptionNotification` handling — pause on `began`, resume on `ended` if the system signals `shouldResume`. Was missing entirely; an interrupted episode would never resume even after the call ended.
+- **Headphone / Bluetooth unplug correctly pauses** instead of blasting through the speaker. Added `AVAudioSession.routeChangeNotification` handling for `oldDeviceUnavailable`.
+- **Media-services reset recovery.** Added `mediaServicesWereResetNotification` handler that re-runs `configureAudioSession()` and resumes if we were playing. Rare but real — if iOS resets media services while in background, the session needs to be recreated from scratch.
+- **Lock-screen / CarPlay / Control Center play command** now re-activates the audio session before resuming, matching the in-app `togglePlayPause()` path. Was missing — remote-command resume could fail silently if the session had been deactivated by another app.
+
+### Changed — Tuner sharp-rectangle vocabulary, end-to-end
+- **`TunerTag` was secretly using `Capsule()` for its outline.** That meant every reason badge across the app — hero card "PICK UP WHERE YOU STOPPED", lead-card explanation chips, AI reason tags, queue-lead podcast title — was rendered as a rounded pill, violating the Tuner sharp-rectangle rule. Swapped to `Rectangle()`. One-line fix surfaces consistently everywhere `TunerTag` is used.
+- **`EpisodeDetailView` "QUEUE" / "QUEUED" button** outline was the last `Capsule().stroke` left in the screen-level UI. Swapped to `Rectangle().stroke`.
+- **`QueueLeadStrip` podcast title color**: was rendering in `offscriptFnRecord` (record red), which is the function-coded color reserved for destructive / error signals (× CLEAR ALL, × REMOVE). Switched to `offscriptFnInfo` (cyan), matching every other place a podcast title is shown — and switched from `TunerTag` to a `TunerLabel` since the rectangle chrome was redundant.
+
+### Removed — dead `AppTheme.swift` primitives left over from the editorial direction
+- `PrimaryPillButtonStyle` / `SecondaryPillButtonStyle` — the old orange-pill Resume button and glass-pill Queue button. All call sites migrated to inline Tuner sharp-rectangle keys.
+- `SkeletonRailCard` / `SkeletonHeroCard` / `SkeletonSearchRow` — pre-Tuner shimmer skeletons with rounded fills + capsule chips. Tuner rails render hairline-rectangle placeholders inline; nothing referenced them.
+- `GrainOverlay` / `offscriptGrain` extension + the `SplitMix64` PRNG it used — the editorial-paper grain texture from the warm-amber direction. Tuner is flat OLED black; no grain belongs.
+
+### Net effect
+- Two reported playback bugs fixed by a one-key Info.plist correction (the actual fix) plus four AVAudioSession-level handlers that should have always been there (the production-readiness fix).
+- Zero remaining `Capsule()` / rounded chrome in the Tuner UI vocabulary. Sharp rectangles everywhere.
+- ~150 lines of dead code removed from `AppTheme.swift`.
+
 ## [2.3.1] — 2026-04-27
 
 ### Changed — Tuner finishing pass

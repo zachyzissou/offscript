@@ -22,11 +22,22 @@ final class PlaybackController: ObservableObject {
     private var completionObserver: Any?
     private var modelContext: ModelContext?
 
+    private var interruptionObserver: NSObjectProtocol?
+    private var routeChangeObserver: NSObjectProtocol?
+    private var mediaServicesResetObserver: NSObjectProtocol?
+
     private init() {
         configureAudioSession()
         observeTime()
         observePlaybackCompletion()
+        observeSystemAudioEvents()
         configureRemoteCommands()
+    }
+
+    deinit {
+        if let obs = interruptionObserver { NotificationCenter.default.removeObserver(obs) }
+        if let obs = routeChangeObserver { NotificationCenter.default.removeObserver(obs) }
+        if let obs = mediaServicesResetObserver { NotificationCenter.default.removeObserver(obs) }
     }
 
     func configure(context: ModelContext) {
@@ -242,11 +253,103 @@ final class PlaybackController: ObservableObject {
         #endif
     }
 
+    /// Listen for interruptions (phone calls, Siri), route changes (headphones
+    /// unplugged), and media services resets. Without these handlers, a phone
+    /// call ends playback permanently and unplugging headphones lets audio
+    /// blast out of the speaker — both well-known podcast-app failure modes.
+    private func observeSystemAudioEvents() {
+        #if os(iOS)
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            let optionValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+            Task { @MainActor [weak self] in
+                self?.handleInterruption(typeValue: typeValue, optionValue: optionValue)
+            }
+        }
+
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            Task { @MainActor [weak self] in
+                self?.handleRouteChange(reasonValue: reasonValue)
+            }
+        }
+
+        mediaServicesResetObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.logger.warning("Audio media services were reset; reconfiguring session.")
+                self.configureAudioSession()
+                if self.isPlaying {
+                    self.player.play()
+                    self.player.rate = self.playbackRate
+                }
+            }
+        }
+        #endif
+    }
+
+    private func handleInterruption(typeValue: UInt?, optionValue: UInt?) {
+        guard let typeValue,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+        switch type {
+        case .began:
+            // Phone call / Siri began — pause and let iOS take focus.
+            player.pause()
+            isPlaying = false
+            updateNowPlayingPlaybackRate()
+        case .ended:
+            // Resume only if the system says we should (user dismissed Siri,
+            // call ended without other audio taking over).
+            if let optionValue,
+               AVAudioSession.InterruptionOptions(rawValue: optionValue).contains(.shouldResume) {
+                activateAudioSession()
+                player.play()
+                player.rate = playbackRate
+                isPlaying = true
+                updateNowPlayingPlaybackRate()
+            }
+        @unknown default:
+            break
+        }
+    }
+
+    private func handleRouteChange(reasonValue: UInt?) {
+        guard let reasonValue,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+
+        // Pause when headphones / bluetooth disconnect — same behavior the
+        // music app uses. Anything else is fine to keep playing through.
+        if reason == .oldDeviceUnavailable {
+            player.pause()
+            isPlaying = false
+            updateNowPlayingPlaybackRate()
+        }
+    }
+
     private func configureRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.addTarget { [weak self] _ in
+            // Re-activate the session before resuming from a remote command.
+            // Same reason as togglePlayPause(): the session can be inactive
+            // when iOS routes us via lock-screen / CarPlay / control center.
+            self?.activateAudioSession()
             self?.player.play()
+            self?.player.rate = self?.playbackRate ?? 1.0
             self?.isPlaying = true
+            self?.updateNowPlayingPlaybackRate()
             return .success
         }
         center.pauseCommand.addTarget { [weak self] _ in

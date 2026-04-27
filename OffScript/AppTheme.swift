@@ -395,7 +395,11 @@ struct TunerTag: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2.5)
             .overlay(
-                Capsule().stroke(color.opacity(dim ? 0.33 : 0.66), lineWidth: 1)
+                // Sharp hairline rectangle — Tuner vocabulary is rectilinear,
+                // never a rounded capsule. The capsule outline that lived
+                // here violated the rule on every surface that uses TunerTag
+                // (hero cards, rail cards, AI reason badges).
+                Rectangle().stroke(color.opacity(dim ? 0.33 : 0.66), lineWidth: 1)
             )
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: true)
@@ -534,46 +538,10 @@ private struct ViewHeightPreferenceKey: PreferenceKey {
     }
 }
 
-struct PrimaryPillButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(.black)
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 13)
-            .background(Color.offscriptAccent.opacity(configuration.isPressed ? 0.78 : 1.0))
-            .clipShape(Capsule())
-            .shadow(color: Color.offscriptAccent.opacity(configuration.isPressed ? 0 : 0.25), radius: 8, y: 4)
-            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.94 : 1.0))
-            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.65), value: configuration.isPressed)
-    }
-}
-
-struct SecondaryPillButtonStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(Color.offscriptTextPrimary)
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 11)
-            .background(Color.white.opacity(configuration.isPressed ? 0.12 : 0.08))
-            .clipShape(Capsule())
-            .overlay(
-                Capsule()
-                    .stroke(Color.offscriptHairline, lineWidth: 1)
-            )
-            .scaleEffect(reduceMotion ? 1.0 : (configuration.isPressed ? 0.96 : 1.0))
-            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
-    }
-}
+// PrimaryPillButtonStyle / SecondaryPillButtonStyle were the pre-Tuner
+// rounded pill buttons (orange Resume / glass Queue). All call sites have
+// migrated to Tuner sharp-rectangle keys defined inline on each surface.
+// Removed to keep the rounded vocabulary out of the codebase entirely.
 
 // MARK: - Shimmer / Skeleton Loading
 
@@ -615,47 +583,10 @@ extension View {
     }
 }
 
-struct GrainOverlay: ViewModifier {
-    var opacity: Double = 0.03
-
-    func body(content: Content) -> some View {
-        content.overlay(
-            Canvas { context, size in
-                var rng = SplitMix64(seed: 42)
-                let count = min(Int(size.width * size.height * 0.005), 1200)
-                for _ in 0..<count {
-                    let x = CGFloat.random(in: 0..<size.width, using: &rng)
-                    let y = CGFloat.random(in: 0..<size.height, using: &rng)
-                    let gray = CGFloat.random(in: 0.3...1.0, using: &rng)
-                    context.fill(
-                        Path(CGRect(x: x, y: y, width: 1.5, height: 1.5)),
-                        with: .color(Color(white: gray, opacity: opacity))
-                    )
-                }
-            }
-            .allowsHitTesting(false)
-            .drawingGroup()
-        )
-    }
-}
-
-private struct SplitMix64: RandomNumberGenerator {
-    var state: UInt64
-    init(seed: UInt64) { state = seed }
-    mutating func next() -> UInt64 {
-        state &+= 0x9e3779b97f4a7c15
-        var z = state
-        z = (z ^ (z >> 30)) &* 0xbf58476d1ce4e5b9
-        z = (z ^ (z >> 27)) &* 0x94d049bb133111eb
-        return z ^ (z >> 31)
-    }
-}
-
-extension View {
-    func offscriptGrain(opacity: Double = 0.03) -> some View {
-        modifier(GrainOverlay(opacity: opacity))
-    }
-}
+// GrainOverlay / offscriptGrain were the editorial-paper grain texture from
+// the original "warm-to-cool gradient + grain" direction. Tuner is flat OLED
+// black so grain has no place. Removed; nothing referenced it after the
+// Tuner port.
 
 // MARK: - Staggered Entrance Animation
 
@@ -685,110 +616,10 @@ extension View {
     }
 }
 
-struct SkeletonRailCard: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color.offscriptFillSubtle)
-                .frame(width: 190, height: 142)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Capsule()
-                    .fill(Color.offscriptFillSubtle)
-                    .frame(width: 70, height: 16)
-
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.offscriptFillSubtle)
-                    .frame(width: 80, height: 10)
-
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.offscriptFillSubtle)
-                    .frame(width: 140, height: 14)
-
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.offscriptFillSubtle)
-                    .frame(width: 100, height: 10)
-            }
-
-            Capsule()
-                .fill(Color.offscriptFillSubtle)
-                .frame(width: 56, height: 32)
-        }
-        .padding(16)
-        .frame(width: 222, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                .fill(Color.offscriptCard)
-        )
-        .shimmer()
-    }
-}
-
-struct SkeletonHeroCard: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Matches the new full-width artwork hero card layout
-            RoundedRectangle(cornerRadius: 0, style: .continuous)
-                .fill(Color.offscriptFillSubtle)
-                .frame(height: 200)
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: OffScriptTheme.Radius.large,
-                        bottomLeadingRadius: 0,
-                        bottomTrailingRadius: 0,
-                        topTrailingRadius: OffScriptTheme.Radius.large,
-                        style: .continuous
-                    )
-                )
-
-            VStack(alignment: .leading, spacing: 12) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.offscriptFillSubtle)
-                    .frame(height: 22)
-
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.offscriptFillSubtle)
-                    .frame(width: 200, height: 22)
-
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.offscriptFillSubtle)
-                    .frame(width: 140, height: 12)
-
-                HStack(spacing: 10) {
-                    Capsule()
-                        .fill(Color.offscriptFillSubtle)
-                        .frame(width: 64, height: 36)
-                    Capsule()
-                        .fill(Color.offscriptFillSubtle)
-                        .frame(width: 72, height: 36)
-                }
-            }
-            .padding(20)
-        }
-        .offscriptSurface(radius: OffScriptTheme.Radius.large, prominent: true)
-        .shimmer()
-    }
-}
-
-struct SkeletonSearchRow: View {
-    var body: some View {
-        HStack(spacing: 12) {
-            ProgressView()
-                .tint(Color.offscriptAccent)
-
-            VStack(alignment: .leading, spacing: 6) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.offscriptFillSubtle)
-                    .frame(width: 200, height: 14)
-
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.offscriptFillSubtle)
-                    .frame(width: 140, height: 10)
-            }
-        }
-        .shimmer()
-    }
-}
+// SkeletonRailCard / SkeletonHeroCard / SkeletonSearchRow were the
+// pre-Tuner loading skeletons (rounded fills, capsule chips). The Tuner
+// rails use sharp hairline placeholders rendered inline on each surface
+// instead, so these primitives have no callers. Removed.
 
 // MARK: - Duration Formatter
 

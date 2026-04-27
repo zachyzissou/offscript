@@ -212,7 +212,11 @@ private struct QueueLeadStrip: View {
                 .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
 
                 VStack(alignment: .leading, spacing: 6) {
-                    TunerTag(text: item.episode.podcast.title, color: .offscriptFnRecord)
+                    // Podcast title uses Info cyan per the function-coded color
+                    // system. Record red is reserved for destructive / error
+                    // signals (× CLEAR ALL, × REMOVE) and was misapplied here.
+                    TunerLabel(text: item.episode.podcast.title.uppercased(),
+                               color: .offscriptFnInfo, size: 9)
                         .lineLimit(1)
                     Text(item.episode.title)
                         .font(.system(size: 16, weight: .semibold))
