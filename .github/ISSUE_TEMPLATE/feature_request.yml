@@ -1,0 +1,45 @@
+name: Feature request
+description: An idea for something OffScript should do (or stop doing)
+title: "[feature] "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two things help most: **the problem** (what's currently friction-y), and **the user** (who hits it). The solution is the easy part; we'll figure that out together.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What's the friction today? Be specific — not "the app is bad at recommendations" but "I subscribed to Acquired last week and it still hasn't shown up in any rail."
+    validations:
+      required: true
+
+  - type: textarea
+    id: who
+    attributes:
+      label: Who hits this
+      description: Yourself, a TestFlight tester, a hypothetical persona — anything that helps us understand the use case.
+    validations:
+      required: false
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea (optional)
+      description: If you have a specific solution in mind, share it. Not required — sometimes the best ideas come from "here's the problem, what do you think?"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: importance
+    attributes:
+      label: How much do you care
+      options:
+        - "Nice to have"
+        - "Would meaningfully improve the app"
+        - "I'd use the app way more if this existed"
+        - "I'm currently not using OffScript because of this"
+    validations:
+      required: true
