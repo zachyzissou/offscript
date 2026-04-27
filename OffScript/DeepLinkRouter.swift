@@ -73,8 +73,11 @@ enum DeepLinkRouter {
         if autoplay {
             PlaybackController.shared.play(episode, in: context)
         } else {
-            // Present the player on the loaded episode.
-            PlaybackController.shared.play(episode, in: context)
+            // Load the episode (sets up the player item + seeks to saved
+            // position) but do not start playback. The user triggered this
+            // from Spotlight / a widget tap and may just want to inspect the
+            // episode before deciding to play.
+            PlaybackController.shared.load(episode, in: context)
             PlaybackController.shared.isPlayerPresented = true
         }
     }

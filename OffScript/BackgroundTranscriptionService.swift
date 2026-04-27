@@ -31,17 +31,28 @@ final class BackgroundTranscriptionService {
     private let maxDurationSeconds: TimeInterval = 90 * 60
 
     private init() {
+        // Enable battery monitoring at init so that `canRun` reads a real
+        // batteryState value before the first scanLoop is ever entered.
+        // (Without this, batteryState always returns .unknown and `canRun`
+        // suppresses all scans even when the device is plugged in.)
+        UIDevice.current.isBatteryMonitoringEnabled = true
+
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor [weak self] in
                 self?.isOnWiFi = path.usesInterfaceType(.wifi) && path.status == .satisfied
                 self?.scheduleScanIfPossible()
             }
         }
-        monitor.start(queue: monitorQueue)
+        // NWPathMonitor is started lazily in configure() — we don't want it
+        // running permanently on devices that never download (e.g. stream-only
+        // users) or where configure() is never called.
     }
 
     func configure(context: ModelContext) {
         modelContext = context
+        // Start the network monitor now that the service is actually in use.
+        // safe to call multiple times — NWPathMonitor ignores duplicate starts.
+        monitor.start(queue: monitorQueue)
         scheduleScanIfPossible()
     }
 
@@ -68,8 +79,6 @@ final class BackgroundTranscriptionService {
 
     private func runScanLoop() async {
         guard let context = modelContext else { return }
-
-        UIDevice.current.isBatteryMonitoringEnabled = true
 
         while canRun, let next = nextCandidate(in: context) {
             guard let localURL = DownloadService.shared.localURL(for: next) else {

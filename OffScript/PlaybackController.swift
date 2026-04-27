@@ -91,6 +91,34 @@ final class PlaybackController: ObservableObject {
         restoreLastSessionIfNeeded(context: context)
     }
 
+    /// Load an episode into the player without starting playback.
+    /// Sets `currentEpisode`, creates the `AVPlayerItem`, seeks to the saved
+    /// position, and updates Now Playing info — but does NOT call `player.play()`
+    /// or flip `isPlaying`. Use this from deep-link / Spotlight handlers that
+    /// want to reveal the player UI for browsing without auto-starting audio.
+    func load(_ episode: Episode, in context: ModelContext? = nil) {
+        if let context { configure(context: context) }
+        recordExitEventIfNeeded(replacingWith: episode)
+        currentEpisode = episode
+        UserDefaults.standard.set(episode.audioURL.absoluteString, forKey: "offscript.lastEpisodeAudioURL")
+        let playableURL = DownloadService.shared.localURL(for: episode) ?? episode.audioURL
+        let item = AVPlayerItem(url: playableURL)
+        observeItem(item)
+        playbackError = nil
+        player.replaceCurrentItem(with: item)
+        let savedPosition = episode.playedPosition
+        if savedPosition > 0 {
+            player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
+            currentTime = savedPosition
+        } else {
+            currentTime = 0
+        }
+        lastPersistedEpisodeID = episode.id
+        lastPersistedPosition = currentTime
+        // isPlaying stays false; caller sets isPlayerPresented when ready.
+        updateNowPlaying(episode: episode)
+    }
+
     func play(_ episode: Episode, in context: ModelContext? = nil, origin: StartOrigin = .manual) {
         if let context {
             configure(context: context)
