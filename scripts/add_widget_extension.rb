@@ -88,8 +88,15 @@ else
       'CODE_SIGN_STYLE'                   => 'Automatic',
       'ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS' => 'NO',
       'LD_RUNPATH_SEARCH_PATHS'           => '$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks',
-      'MARKETING_VERSION'                 => '1.0',
-      'CURRENT_PROJECT_VERSION'           => '1',
+      # Default to the host app's current versions on first run. Re-runs
+      # of this script don't overwrite — the build_settings.merge! at the
+      # top of this block already preserves existing values when the keys
+      # are present. App Store ingest rejects extensions whose
+      # MARKETING_VERSION doesn't match the host, so when bumping the
+      # host version, bump the widget target in lockstep (the workflow
+      # uses the host's version for the TestFlight upload).
+      'MARKETING_VERSION'                 => host_target.build_configurations.first.build_settings['MARKETING_VERSION'] || '1.0',
+      'CURRENT_PROJECT_VERSION'           => host_target.build_configurations.first.build_settings['CURRENT_PROJECT_VERSION'] || '1',
       'INFOPLIST_KEY_NSHumanReadableCopyright' => '',
       'SWIFT_EMIT_LOC_STRINGS'            => 'YES'
     }
