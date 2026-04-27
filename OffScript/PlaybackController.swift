@@ -38,6 +38,14 @@ final class PlaybackController: ObservableObject {
             configure(context: context)
         }
 
+        // Re-activate the audio session immediately before starting playback.
+        // The init-time activation can fail silently (no audio queued yet, or
+        // another app holds focus); without re-activating here, the session
+        // never enters .playback, and iOS silences us on background. Calling
+        // setActive(true) right before player.play() is the supported pattern
+        // for AVPlayer-backed apps.
+        activateAudioSession()
+
         currentEpisode = episode
         let url = episode.localFileURL ?? episode.audioURL
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
@@ -61,6 +69,10 @@ final class PlaybackController: ObservableObject {
         if isPlaying {
             player.pause()
         } else {
+            // Same reason as play() — the session can be inactive when we
+            // resume from pause (especially after a long background pause
+            // or after another app interrupted us).
+            activateAudioSession()
             player.play()
             player.rate = playbackRate
         }
@@ -170,11 +182,43 @@ final class PlaybackController: ObservableObject {
         }
     }
 
+    /// Set the AVAudioSession category at app launch. Splitting category-set
+    /// from session-activation lets us call activateAudioSession() right
+    /// before each player.play() without re-setting the category every time.
+    /// Errors are logged via OSLog instead of swallowed by `try?` — silent
+    /// failure here is the difference between background audio working and
+    /// the app going mute the moment the user backgrounds.
     private func configureAudioSession() {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio, options: [.allowAirPlay, .allowBluetoothA2DP])
-        try? session.setActive(true)
+        do {
+            // .playback + .spokenAudio + .longFormAudio is the supported combo
+            // for podcast apps that need lock-screen controls and background
+            // audio. .longFormAudio prevents iOS from quietly switching us
+            // into a duck-other-audio category.
+            try session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio, options: [.allowAirPlay, .allowBluetoothA2DP])
+        } catch {
+            logger.error("AVAudioSession setCategory failed: \(error.localizedDescription, privacy: .public)")
+        }
+        // First activation attempt — may fail at app launch if no audio is
+        // queued; activateAudioSession() retries on every play() / resume.
+        activateAudioSession()
+        #endif
+    }
+
+    /// Activate the audio session right before starting playback. Idempotent —
+    /// safe to call repeatedly. This is the call that actually grabs audio
+    /// focus from iOS and enables background playback. Without this on every
+    /// resume/play, the session can sit inactive and iOS silences the app on
+    /// background.
+    private func activateAudioSession() {
+        #if os(iOS)
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setActive(true, options: [])
+        } catch {
+            logger.error("AVAudioSession setActive(true) failed: \(error.localizedDescription, privacy: .public)")
+        }
         #endif
     }
 
