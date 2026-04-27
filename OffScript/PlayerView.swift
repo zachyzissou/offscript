@@ -139,67 +139,12 @@ struct PlayerView: View {
                                 PlayerWhatsNextSection(currentEpisode: episode)
                                     .frame(maxWidth: 440)
 
-                                HStack(spacing: 10) {
-                                    Menu {
-                                        ForEach([("1.0x", Float(1.0)), ("1.25x", Float(1.25)), ("1.5x", Float(1.5)), ("2.0x", Float(2.0))], id: \.0) { label, rate in
-                                            Button {
-                                                player.setPlaybackRate(rate)
-                                            } label: {
-                                                HStack {
-                                                    Text(label)
-                                                    if player.playbackRate == rate {
-                                                        Image(systemName: "checkmark")
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    } label: {
-                                        Label(String(format: "%.2gx", player.playbackRate), systemImage: "speedometer")
-                                    }
-                                    .buttonStyle(SecondaryPillButtonStyle())
-
-                                    Menu {
-                                        Button("Play Next") {
-                                            try? QueueService.playNext(episode, in: modelContext)
-                                        }
-                                        Button("Add to End") {
-                                            try? QueueService.addToEnd(episode, in: modelContext)
-                                        }
-                                    } label: {
-                                        Label(episode.isQueued ? "Queued" : "Queue", systemImage: "text.badge.plus")
-                                    }
-                                    .buttonStyle(SecondaryPillButtonStyle())
-                                    .disabled(episode.isQueued)
-
-                                    Button("Mark Played") {
-                                        player.completeCurrentEpisode(shouldAutoAdvance: false)
-                                    }
-                                    .buttonStyle(PrimaryPillButtonStyle())
-                                }
-
-                                HStack(spacing: 10) {
-                                    Menu {
-                                        Button("15 minutes") { player.setSleepTimer(minutes: 15) }
-                                        Button("30 minutes") { player.setSleepTimer(minutes: 30) }
-                                        Button("60 minutes") { player.setSleepTimer(minutes: 60) }
-                                        if player.sleepTimerEndDate != nil {
-                                            Button("Cancel Timer", role: .destructive) { player.cancelSleepTimer() }
-                                        }
-                                    } label: {
-                                        Image(systemName: "moon.zzz.fill")
-                                    }
-                                    .buttonStyle(SecondaryPillButtonStyle())
-
-                                    AirPlayRouteButton()
-                                        .frame(width: 44, height: 36)
-
-                                    ShareLink(item: episode.audioURL) {
-                                        Image(systemName: "square.and.arrow.up")
-                                    }
-                                    .buttonStyle(SecondaryPillButtonStyle())
-
-                                    DownloadButton(episode: episode)
-                                }
+                                // Tuner-direction control strip — single
+                                // hairline-bordered panel, mono icon row,
+                                // tap labels live on long-press menus. Reads
+                                // as instrument-cluster instead of pill row.
+                                PlayerControlStrip(episode: episode)
+                                    .frame(maxWidth: 440)
 
                                 Spacer(minLength: 8)
                             }
@@ -254,6 +199,10 @@ private struct AirPlayRouteButton: UIViewRepresentable {
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
 }
 
+/// Tuner-direction transport button. Primary (play/pause) keeps the warm
+/// accent fill but gains a subtle metallic gradient + accent halo. Secondary
+/// buttons get a tight inner gradient + double hairline ring so they read as
+/// machined metal panel keys, not iOS Music transport.
 private struct PlayerCircleButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -268,17 +217,15 @@ private struct PlayerCircleButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: isPrimary ? 28 : 22, weight: .semibold))
+                .font(.system(size: isPrimary ? 28 : 20, weight: .semibold))
                 .foregroundStyle(isPrimary ? Color.black : Color.offscriptTextPrimary)
                 .frame(width: size, height: size)
-                .background(isPrimary ? Color.offscriptAccent : Color.offscriptFillLight)
+                .background(buttonFill)
                 .clipShape(Circle())
-                .overlay(
-                    Circle()
-                        .stroke(isPrimary ? Color.clear : Color.offscriptHairline, lineWidth: 1)
-                )
-                .scaleEffect(reduceMotion ? 1.0 : (isPressed ? 0.9 : 1.0))
-                .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.6), value: isPressed)
+                .overlay(buttonStroke)
+                .shadow(color: shadowColor, radius: isPrimary ? 18 : 6, y: isPrimary ? 8 : 3)
+                .scaleEffect(reduceMotion ? 1.0 : (isPressed ? 0.92 : 1.0))
+                .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.62), value: isPressed)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
@@ -287,6 +234,52 @@ private struct PlayerCircleButton: View {
                 .onChanged { _ in if !reduceMotion { isPressed = true } }
                 .onEnded { _ in isPressed = false }
         )
+    }
+
+    @ViewBuilder
+    private var buttonFill: some View {
+        if isPrimary {
+            // Warm accent disc with subtle top-light gradient. Reads as a
+            // machined illuminated key.
+            LinearGradient(
+                colors: [Color.offscriptAccent, Color.offscriptAccent.opacity(0.82)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        } else {
+            // Cool dark panel key — top-light gradient + faint inner
+            // brightness gives it the "instrument key" depth.
+            LinearGradient(
+                colors: [Color.white.opacity(0.10), Color.white.opacity(0.03)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var buttonStroke: some View {
+        if isPrimary {
+            // Inner accent halo + outer hairline.
+            Circle()
+                .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.75)
+                .padding(1)
+                .overlay(
+                    Circle().stroke(Color.offscriptAccent.opacity(0.4), lineWidth: 0.5)
+                )
+        } else {
+            // Double hairline — outer dark, inner light. Tuner panel cue.
+            Circle()
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5)
+                .padding(0.5)
+                .overlay(
+                    Circle().stroke(Color.offscriptHairline, lineWidth: 0.5)
+                )
+        }
+    }
+
+    private var shadowColor: Color {
+        isPrimary ? Color.offscriptAccent.opacity(0.35) : Color.black.opacity(0.4)
     }
 }
 
@@ -560,6 +553,167 @@ private struct PlayerTranscriptSection: View {
 /// glow tinted from the artwork. No more breathing-blur photo wallpaper —
 /// reads as instrument-cluster, not iOS Music. Hairline grid overlay sells
 /// the "panel" feel without going overboard.
+/// Tuner-direction "control strip" that replaces the two pill rows under
+/// transport. Single hairline-bordered panel, mono icon row, with grouped
+/// menus for speed / queue / sleep. Mark-played sits as the only filled
+/// accent button — it's the destructive completion action and benefits from
+/// being visually distinct.
+private struct PlayerControlStrip: View {
+    @Environment(\.modelContext) private var modelContext
+    @ObservedObject private var player = PlaybackController.shared
+    let episode: Episode
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                // Speed
+                Menu {
+                    ForEach([("1.0x", Float(1.0)), ("1.25x", Float(1.25)), ("1.5x", Float(1.5)), ("1.75x", Float(1.75)), ("2.0x", Float(2.0))], id: \.0) { label, rate in
+                        Button {
+                            player.setPlaybackRate(rate)
+                        } label: {
+                            HStack {
+                                Text(label)
+                                if player.playbackRate == rate {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    cell(icon: "speedometer", label: String(format: "%.2gx", player.playbackRate))
+                }
+
+                hairline
+
+                // Queue
+                Menu {
+                    Button("Play Next") {
+                        try? QueueService.playNext(episode, in: modelContext)
+                    }
+                    Button("Add to End") {
+                        try? QueueService.addToEnd(episode, in: modelContext)
+                    }
+                } label: {
+                    cell(icon: episode.isQueued ? "checkmark.circle" : "text.badge.plus",
+                         label: episode.isQueued ? "Queued" : "Queue")
+                }
+                .disabled(episode.isQueued)
+
+                hairline
+
+                // Sleep timer
+                Menu {
+                    Button("15 minutes") { player.setSleepTimer(minutes: 15) }
+                    Button("30 minutes") { player.setSleepTimer(minutes: 30) }
+                    Button("60 minutes") { player.setSleepTimer(minutes: 60) }
+                    if player.sleepTimerEndDate != nil {
+                        Button("Cancel Timer", role: .destructive) { player.cancelSleepTimer() }
+                    }
+                } label: {
+                    cell(icon: player.sleepTimerEndDate == nil ? "moon" : "moon.zzz.fill",
+                         label: sleepLabel)
+                }
+
+                hairline
+
+                // AirPlay route
+                cellWrapper {
+                    AirPlayRouteButton()
+                        .frame(width: 28, height: 28)
+                }
+
+                hairline
+
+                // Share
+                ShareLink(item: episode.audioURL) {
+                    cell(icon: "square.and.arrow.up", label: "Share")
+                }
+
+                hairline
+
+                // Download
+                cellWrapper {
+                    DownloadButton(episode: episode)
+                }
+            }
+            .frame(height: 64)
+
+            Rectangle()
+                .fill(Color.offscriptHairline)
+                .frame(height: 0.5)
+
+            // Mark Played — the one decisive action gets its own row + accent fill.
+            Button {
+                player.completeCurrentEpisode(shouldAutoAdvance: false)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.bold))
+                    Text("MARK PLAYED")
+                        .font(.offscriptMicro.weight(.bold))
+                        .tracking(1.4)
+                }
+                .foregroundStyle(.black)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .background(Color.offscriptAccent)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Mark episode as played")
+        }
+        .background(Color.offscriptCardUtility.opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.small, style: .continuous)
+                .stroke(Color.offscriptHairline, lineWidth: 0.5)
+        )
+    }
+
+    private var sleepLabel: String {
+        guard let end = player.sleepTimerEndDate else { return "Sleep" }
+        let remaining = max(0, end.timeIntervalSinceNow)
+        let minutes = Int(remaining / 60)
+        return minutes > 0 ? "\(minutes)m" : "<1m"
+    }
+
+    @ViewBuilder
+    private func cell(icon: String, label: String) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(Color.offscriptTextPrimary)
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(0.6)
+                .foregroundStyle(Color.offscriptTextMuted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func cellWrapper<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 4) {
+            content()
+            // Spacer to keep alignment with cell() rows that have a label.
+            Text("")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .frame(height: 12)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var hairline: some View {
+        Rectangle()
+            .fill(Color.offscriptHairline)
+            .frame(width: 0.5)
+            .frame(maxHeight: .infinity)
+    }
+}
+
 private struct PlayerAtmosphereBackground: View {
     let url: URL?
 

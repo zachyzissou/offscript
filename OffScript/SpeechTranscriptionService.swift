@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 import OSLog
 import Speech
+import SwiftData
 
 private let speechLogger = Logger(subsystem: "com.offscript", category: "SpeechTranscription")
 
@@ -54,10 +55,27 @@ final class SpeechTranscriptionService {
         case recognitionFailed(String)
     }
 
-    /// Returns cached transcript if present, otherwise nil. Synchronous —
-    /// safe for view bodies.
+    /// Returns cached transcript if present in either the in-memory cache
+    /// or persisted via SwiftData. Synchronous — safe for view bodies.
     func cachedTranscript(for episodeID: UUID) -> String? {
         cache[episodeID]
+    }
+
+    /// Persisted transcript lookup. Hits SQLite via a scoped FetchDescriptor;
+    /// fast (single uniqueIdentifier match). Hydrates the in-memory cache so
+    /// subsequent view body calls take the synchronous fast path.
+    func persistedTranscript(for episodeID: UUID, in context: ModelContext) -> String? {
+        if let inMemory = cache[episodeID] { return inMemory }
+
+        var descriptor = FetchDescriptor<EpisodeTranscriptCache>(
+            predicate: #Predicate<EpisodeTranscriptCache> { $0.episodeID == episodeID }
+        )
+        descriptor.fetchLimit = 1
+
+        guard let entry = try? context.fetch(descriptor).first else { return nil }
+        // Hydrate via LRU-aware path so the cap stays honoured.
+        storeTranscript(entry.text, for: episodeID)
+        return entry.text
     }
 
     /// Request Speech permission. Idempotent — ok to call repeatedly.
@@ -71,10 +89,21 @@ final class SpeechTranscriptionService {
 
     /// Transcribe a local audio file end-to-end on-device. Episode must already
     /// be downloaded via DownloadService (we don't stream — too slow for
-    /// long-form). Throws if the user declined permission or device can't do
-    /// on-device recognition for the locale.
-    func transcribe(episode: Episode, localAudioURL: URL) async throws -> String {
+    /// long-form). Persists to `EpisodeTranscriptCache` if a context is
+    /// supplied so the result survives app restarts. Throws if the user
+    /// declined permission or device can't do on-device recognition for the
+    /// locale.
+    func transcribe(
+        episode: Episode,
+        localAudioURL: URL,
+        persistTo context: ModelContext? = nil
+    ) async throws -> String {
         if let cached = cache[episode.id] { return cached }
+
+        // Persisted hit — return it without burning Speech cycles.
+        if let context, let stored = persistedTranscript(for: episode.id, in: context) {
+            return stored
+        }
 
         let status = await requestAuthorization()
         guard status == .authorized else {
@@ -111,7 +140,24 @@ final class SpeechTranscriptionService {
 
                 let text = result.bestTranscription.formattedString
                 Task { @MainActor [weak self] in
+                    // LRU-bounded in-memory cache (Copilot review fix) + the
+                    // SwiftData persistence layer added in push 3 — keep both.
                     self?.storeTranscript(text, for: episode.id)
+                    if let context {
+                        let entry = EpisodeTranscriptCache(
+                            episodeID: episode.id,
+                            text: text,
+                            generatedAt: .now,
+                            source: "speech",
+                            coverageSeconds: episode.duration
+                        )
+                        context.insert(entry)
+                        do {
+                            try context.save()
+                        } catch {
+                            speechLogger.error("Failed to persist transcript: \(error.localizedDescription, privacy: .public)")
+                        }
+                    }
                 }
                 resume(.success(text))
             }

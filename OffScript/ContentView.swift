@@ -97,6 +97,8 @@ struct ContentView: View {
             // Donate subscribed-show episodes to Spotlight so iOS system
             // search and Siri Suggestions can surface them. Idempotent.
             SpotlightIndexer.indexEpisodes(in: modelContext)
+            // Bridge PlaybackController → widgets + Live Activity. Idempotent.
+            NowPlayingPublisher.shared.start()
             #if DEBUG
             configureDebugSelectedTabIfNeeded()
             configureDebugPlaybackIfNeeded()
@@ -228,6 +230,7 @@ private struct OffScriptTabBar: View {
             PreferenceSignal.self,
             QueueItem.self,
             UserTasteProfile.self,
-            TelemetryEvent.self
+            TelemetryEvent.self,
+            EpisodeTranscriptCache.self
         ], inMemory: true)
 }

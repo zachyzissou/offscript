@@ -1,5 +1,6 @@
 import OSLog
 import Speech
+import SwiftData
 import SwiftUI
 
 private let panelLogger = Logger(subsystem: "com.offscript", category: "SpeechTranscriptionPanel")
@@ -12,6 +13,7 @@ private let panelLogger = Logger(subsystem: "com.offscript", category: "SpeechTr
 struct SpeechTranscriptionPanel: View {
     let episode: Episode
 
+    @Environment(\.modelContext) private var modelContext
     @ObservedObject private var downloadService = DownloadService.shared
     @State private var status: PanelStatus = .idle
     @State private var transcriptText: String?
@@ -65,9 +67,11 @@ struct SpeechTranscriptionPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .offscriptUtilitySurface()
         .task(id: episode.id) {
-            // Pre-fill from process cache if we already transcribed this run.
-            if let cached = SpeechTranscriptionService.shared.cachedTranscript(for: episode.id) {
-                transcriptText = cached
+            // Hydrate from persistent cache first (survives app restart),
+            // then in-memory cache. Either way the user sees the result
+            // instantly without re-running Speech.
+            if let stored = SpeechTranscriptionService.shared.persistedTranscript(for: episode.id, in: modelContext) {
+                transcriptText = stored
                 status = .ready
             }
         }
@@ -159,7 +163,8 @@ struct SpeechTranscriptionPanel: View {
         do {
             let text = try await SpeechTranscriptionService.shared.transcribe(
                 episode: episode,
-                localAudioURL: localURL
+                localAudioURL: localURL,
+                persistTo: modelContext
             )
             transcriptText = text
             status = .ready
