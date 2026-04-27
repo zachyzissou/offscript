@@ -4,6 +4,19 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.2.2] — 2026-04-27
+
+### Changed
+- **CI pivoted from GitHub Actions to Xcode Cloud.** Apple-managed signing certs (no per-account cap), automatic provisioning profile generation, native TestFlight upload action. The previous `.github/workflows/testflight.yml` was fighting Apple's signing infrastructure — now `.disabled`, kept as fallback.
+- New `scripts/app_store_connect.py` subcommands for fully-automated Xcode Cloud ops: `xcode-cloud probe`, `inspect`, `reconfigure`, `start-build`, `build-run`. Created/PATCHed via the App Store Connect API — no clicking through web UIs required.
+- `.github/workflows/xcode-cloud-probe.yml` — on-demand workflow for probe/inspect/reconfigure/start-build/build-run, runnable from Actions tab without local creds.
+- `ci_scripts/ci_post_clone.sh` — Xcode Cloud post-clone hook that materializes `Config/Secrets.xcconfig` from the `SENTRY_DSN` env var.
+- `CONTRIBUTING.md` "Releasing" section rewritten — two trigger paths (push to main / cut `vX.Y.Z` GitHub Release), operational tooling reference, "Why we left GH Actions behind" footnote.
+
+### Fixed
+- `.claude/worktrees/hardcore-villani` was indexed as a stale 160000 (gitlink) entry, producing `GitCloneStep` warnings on every Xcode Cloud build. Removed via `git rm --cached`.
+- App Group entitlement (`group.com.offscript.app`) on the host app was breaking the ExportArchive step because the App Group itself wasn't registered in App Store Connect. Removed pending widget extension re-add.
+
 ## [2.2.1] — 2026-04-27
 
 ### Fixed
