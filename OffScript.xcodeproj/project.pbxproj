@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5187BBF3A3CF50E78F48CAD0 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = E64624EEB7536FE73F5DF86D /* Sentry */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		1B9A23412F68C21700788880 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +31,7 @@
 		1B9A23312F68C21600788880 /* OffScript.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OffScript.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B9A23402F68C21700788880 /* OffScriptTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OffScriptTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B9A234A2F68C21700788880 /* OffScriptUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OffScriptUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		93512EB10932724A51C9695B /* Secrets.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = Secrets.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -50,11 +55,15 @@
 		};
 		1B9A23432F68C21700788880 /* OffScriptTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = OffScriptTests;
 			sourceTree = "<group>";
 		};
 		1B9A234D2F68C21700788880 /* OffScriptUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = OffScriptUITests;
 			sourceTree = "<group>";
 		};
@@ -65,6 +74,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5187BBF3A3CF50E78F48CAD0 /* Sentry in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -85,6 +95,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0AE5FFE6F4897E1559F705A5 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				93512EB10932724A51C9695B /* Secrets.xcconfig */,
+			);
+			name = Config;
+			path = Config;
+			sourceTree = "<group>";
+		};
 		1B9A23282F68C21600788880 = {
 			isa = PBXGroup;
 			children = (
@@ -92,6 +111,7 @@
 				1B9A23432F68C21700788880 /* OffScriptTests */,
 				1B9A234D2F68C21700788880 /* OffScriptUITests */,
 				1B9A23322F68C21600788880 /* Products */,
+				0AE5FFE6F4897E1559F705A5 /* Config */,
 			);
 			sourceTree = "<group>";
 		};
@@ -125,6 +145,7 @@
 			);
 			name = OffScript;
 			packageProductDependencies = (
+				E64624EEB7536FE73F5DF86D /* Sentry */,
 			);
 			productName = OffScript;
 			productReference = 1B9A23312F68C21600788880 /* OffScript.app */;
@@ -147,8 +168,6 @@
 				1B9A23432F68C21700788880 /* OffScriptTests */,
 			);
 			name = OffScriptTests;
-			packageProductDependencies = (
-			);
 			productName = OffScriptTests;
 			productReference = 1B9A23402F68C21700788880 /* OffScriptTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -170,8 +189,6 @@
 				1B9A234D2F68C21700788880 /* OffScriptUITests */,
 			);
 			name = OffScriptUITests;
-			packageProductDependencies = (
-			);
 			productName = OffScriptUITests;
 			productReference = 1B9A234A2F68C21700788880 /* OffScriptUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -208,6 +225,9 @@
 			);
 			mainGroup = 1B9A23282F68C21600788880;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F7C57827CB4EB4D08BA2AB18 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1B9A23322F68C21600788880 /* Products */;
 			projectDirPath = "";
@@ -398,6 +418,7 @@
 		};
 		1B9A23552F68C21700788880 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 93512EB10932724A51C9695B /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -412,7 +433,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = OffScript/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OffScript;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_SentryDSN = "$(SENTRY_DSN)";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -425,7 +448,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -443,6 +466,7 @@
 		};
 		1B9A23562F68C21700788880 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 93512EB10932724A51C9695B /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -457,7 +481,9 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = OffScript/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OffScript;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_SentryDSN = "$(SENTRY_DSN)";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -470,7 +496,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.offscript.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -616,6 +642,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F7C57827CB4EB4D08BA2AB18 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.39.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E64624EEB7536FE73F5DF86D /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F7C57827CB4EB4D08BA2AB18 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 1B9A23292F68C21600788880 /* Project object */;
 }

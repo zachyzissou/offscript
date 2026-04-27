@@ -1,5 +1,11 @@
 import SwiftUI
 
+// MARK: - PodcastPickerView (Tuner)
+//
+// "02 · CHANNELS / Tune the bank" — pick channels from each band.
+// Header is the Tuner instrument cluster vocabulary; rails are 3-up channel
+// selection cards with hairline borders, mono captions, signal-yellow
+// confirmations.
 struct PodcastPickerView: View {
     let selectedGenres: Set<Genre>
     let onContinue: ([PodcastSearchResult]) -> Void
@@ -34,74 +40,93 @@ struct PodcastPickerView: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Pick 3+ shows to build your feed")
-                            .font(.system(.title, design: .serif, weight: .bold))
-                            .foregroundStyle(Color.offscriptTextPrimary)
-
-                        Text("We'll subscribe you and start learning your taste.")
-                            .font(.offscriptBody)
-                            .foregroundStyle(Color.offscriptTextSecondary)
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        TunerLabel(text: "02 · CHANNELS", color: .offscriptSignalYellow, size: 10)
+                        Text("Tune the bank")
+                            .font(.system(size: 32, weight: .bold, design: .default))
+                            .tracking(-0.6)
+                            .foregroundStyle(Color.offscriptPaperWhite)
+                        Text("PICK 3+ CHANNELS · 2+ BANDS · WE'LL LEARN FROM HERE")
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .tracking(1.6)
+                            .foregroundStyle(Color.offscriptSoftPaper)
                     }
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 20)
 
-                    ForEach(prioritizedGenres) { genre in
-                        let podcasts = mergedPodcasts(for: genre)
-                        if !podcasts.isEmpty {
-                            PodcastGenreRail(
-                                genre: genre,
-                                podcasts: podcasts,
-                                selectedFeeds: $selectedFeeds,
-                                showExploreHeader: !selectedGenres.isEmpty && !selectedGenres.contains(genre)
-                            )
+                    HStack {
+                        TunerLabel(
+                            text: "\(selectedFeeds.count) PICKED",
+                            color: selectedFeeds.isEmpty ? .offscriptSoftPaper : .offscriptSignalYellow
+                        )
+                        Spacer()
+                        TunerLabel(text: "\(selectedGenreCount) BANDS")
+                    }
+                    .padding(.horizontal, 20)
+
+                    VStack(alignment: .leading, spacing: 22) {
+                        ForEach(prioritizedGenres) { genre in
+                            let podcasts = mergedPodcasts(for: genre)
+                            if !podcasts.isEmpty {
+                                PodcastGenreRail(
+                                    genre: genre,
+                                    podcasts: podcasts,
+                                    selectedFeeds: $selectedFeeds,
+                                    isExplore: !selectedGenres.isEmpty && !selectedGenres.contains(genre)
+                                )
+                            }
                         }
                     }
                 }
-                .padding(.top, 32)
-                .padding(.bottom, 120)
+                .padding(.top, 28)
+                .padding(.bottom, 140)
             }
 
-            VStack(spacing: 12) {
+            // Bottom CTA bar
+            VStack(spacing: 10) {
                 Button {
                     let selected = allPodcasts.filter { selectedFeeds.contains($0.feedURL) }
                     onContinue(selected)
                 } label: {
                     HStack {
-                        Text("Continue")
-                        if !selectedFeeds.isEmpty {
-                            Text("(\(selectedFeeds.count))")
-                                .fontWeight(.bold)
-                        }
+                        Spacer()
+                        Text(canContinue
+                             ? "CONTINUE → (\(selectedFeeds.count))"
+                             : selectedFeeds.count >= 3
+                                ? "PICK FROM 2+ BANDS"
+                                : "PICK \(max(0, 3 - selectedFeeds.count)) MORE")
+                            .font(.system(size: 13, weight: .bold, design: .default))
+                            .tracking(2)
+                            .foregroundStyle(canContinue ? Color.offscriptStudioBlack : Color.offscriptSoftPaper)
+                            .monospacedDigit()
+                        Spacer()
                     }
+                    .padding(.vertical, 16)
+                    .background(canContinue ? Color.offscriptSignalYellow : Color.clear)
+                    .overlay(
+                        Rectangle().stroke(
+                            canContinue ? Color.clear : Color.offscriptHairline,
+                            lineWidth: 1
+                        )
+                    )
                 }
-                .buttonStyle(OnboardingContinueButtonStyle())
+                .buttonStyle(.plain)
                 .disabled(!canContinue)
-                .opacity(canContinue ? 1.0 : 0.5)
 
-                if !canContinue {
-                    if selectedFeeds.count >= 3 && selectedGenreCount < 2 {
-                        Text("Pick from at least 2 genres for better recommendations")
-                            .font(.offscriptMeta)
-                            .foregroundStyle(Color.offscriptAccent)
-                    } else {
-                        Text("Pick \(max(0, 3 - selectedFeeds.count)) more")
-                            .font(.offscriptMeta)
-                            .foregroundStyle(Color.offscriptTextMuted)
-                    }
+                Button(action: onBack) {
+                    TunerLabel(text: "← BACK")
                 }
-
-                Button("Back") { onBack() }
-                    .font(.offscriptBody)
-                    .foregroundStyle(Color.offscriptTextMuted)
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
-            .background(
-                Color.offscriptBackground.opacity(0.95)
-                    .ignoresSafeArea(edges: .bottom)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(Color.offscriptStudioBlack.ignoresSafeArea(edges: .bottom))
+            .overlay(
+                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                alignment: .top
             )
         }
+        .background(Color.offscriptStudioBlack.ignoresSafeArea())
         .task { await loadLivePodcasts() }
     }
 
@@ -115,17 +140,9 @@ struct PodcastPickerView: View {
 
     @MainActor
     private func loadLivePodcasts() async {
+        // origin/main removed TopPodcastsService — fall back to the curated
+        // catalog only. Reintroducing live top-by-genre is a follow-up.
         allPodcasts = CuratedPodcastCatalog.all
-
-        for genre in prioritizedGenres {
-            let results = await TopPodcastsService.fetchTop(genre: genre, limit: 25)
-            if !results.isEmpty {
-                livePodcasts[genre] = results
-                let existingURLs = Set(allPodcasts.map(\.feedURL))
-                let newEntries = results.filter { !existingURLs.contains($0.feedURL) }
-                allPodcasts.append(contentsOf: newEntries)
-            }
-        }
     }
 }
 
@@ -133,24 +150,26 @@ private struct PodcastGenreRail: View {
     let genre: Genre
     let podcasts: [PodcastSearchResult]
     @Binding var selectedFeeds: Set<URL>
-    let showExploreHeader: Bool
+    let isExplore: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if showExploreHeader {
-                Text("Explore More")
-                    .font(.offscriptMicro.weight(.semibold))
-                    .foregroundStyle(Color.offscriptTextMuted)
-                    .padding(.horizontal, 24)
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(genre.title.uppercased())
+                    .font(.system(size: 11, weight: .bold, design: .default))
+                    .tracking(1.4)
+                    .foregroundStyle(Color.offscriptPaperWhite)
 
-            Text(genre.title)
-                .font(.offscriptSectionTitle)
-                .foregroundStyle(Color.offscriptTextPrimary)
-                .padding(.horizontal, 24)
+                if isExplore {
+                    TunerLabel(text: "EXPLORE", color: .offscriptFnInfo)
+                }
+                Spacer()
+                TunerLabel(text: "\(podcasts.count) ON BAND")
+            }
+            .padding(.horizontal, 20)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
+                HStack(spacing: 8) {
                     ForEach(podcasts, id: \.feedURL) { podcast in
                         OnboardingPodcastCard(
                             podcast: podcast,
@@ -167,7 +186,7 @@ private struct PodcastGenreRail: View {
                         )
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 20)
             }
         }
     }
@@ -180,39 +199,44 @@ private struct OnboardingPodcastCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 ZStack(alignment: .topTrailing) {
-                    OffScriptArtworkView(
-                        url: podcast.artworkURL,
-                        cornerRadius: OffScriptTheme.Radius.medium
-                    )
-                    .frame(width: 120, height: 120)
+                    OffScriptArtworkView(url: podcast.artworkURL, cornerRadius: 3)
+                        .frame(width: 120, height: 120)
 
                     if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(Color.offscriptAccent)
-                            .background(Circle().fill(Color.black.opacity(0.6)))
-                            .padding(6)
+                        ZStack {
+                            Rectangle()
+                                .fill(Color.offscriptSignalYellow)
+                                .frame(width: 22, height: 22)
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(Color.offscriptStudioBlack)
+                        }
+                        .padding(6)
                     }
                 }
                 .overlay(
-                    RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                        .stroke(isSelected ? Color.offscriptAccent : Color.clear, lineWidth: 2)
+                    Rectangle().stroke(
+                        isSelected ? Color.offscriptSignalYellow : Color.offscriptHairline,
+                        lineWidth: 1
+                    )
                 )
 
                 Text(podcast.title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.offscriptTextPrimary)
+                    .font(.system(size: 11, weight: .semibold, design: .default))
+                    .tracking(-0.1)
+                    .foregroundStyle(Color.offscriptPaperWhite)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
 
-                Text(podcast.author)
-                    .font(.caption2)
-                    .foregroundStyle(Color.offscriptTextMuted)
+                Text(podcast.author.uppercased())
+                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                    .tracking(1.2)
+                    .foregroundStyle(Color.offscriptSoftPaper)
                     .lineLimit(1)
             }
-            .frame(width: 120)
+            .frame(width: 120, alignment: .leading)
         }
         .buttonStyle(.plain)
         .sensoryFeedback(.impact(flexibility: .soft), trigger: isSelected)

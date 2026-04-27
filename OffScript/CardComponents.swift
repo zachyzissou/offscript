@@ -40,15 +40,16 @@ struct EpisodeVerticalCard: View {
             }
             .buttonStyle(.plain)
 
-            // Text + buttons zone
+            // Tuner text + transport zone
             VStack(alignment: .leading, spacing: 8) {
                 if let tag = explanationTag {
-                    OffScriptExplanationTag(text: tag)
+                    TunerTag(text: tag, color: .offscriptSignalYellow, dim: true)
                 }
 
                 Text(episode.podcast.title.uppercased())
-                    .font(.offscriptMicro.weight(.semibold))
-                    .foregroundStyle(Color.offscriptAccent)
+                    .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(Color.offscriptSignalYellow)
                     .lineLimit(1)
 
                 Button {
@@ -59,48 +60,48 @@ struct EpisodeVerticalCard: View {
                     }
                 } label: {
                     Text(episode.title)
-                        .font(.offscriptCardTitle)
-                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .font(.system(size: 14, weight: .semibold, design: .default))
+                        .tracking(-0.2)
+                        .foregroundStyle(Color.offscriptPaperWhite)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
                 .buttonStyle(.plain)
 
-                Text(metadata)
-                    .font(.offscriptMeta)
-                    .foregroundStyle(Color.offscriptTextMuted)
+                Text(metadata.uppercased())
+                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(Color.offscriptSoftPaper)
 
                 if progressValue > 0 {
-                    OffScriptProgressBar(value: progressValue, height: 4)
+                    OffScriptProgressBar(value: progressValue, height: 2)
                 }
 
-                HStack(spacing: 8) {
-                    // Play circle
+                HStack(spacing: 6) {
+                    // Tuner play key — hairline circle with signal-yellow ring
                     Button {
                         PlaybackController.shared.play(episode, in: modelContext)
                     } label: {
                         Image(systemName: playIcon)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(isCurrentlyPlaying ? Color.offscriptTextPrimary : .black)
-                            .frame(width: 36, height: 36)
-                            .background(isCurrentlyPlaying ? Color.offscriptFillLight : Color.offscriptAccent)
-                            .clipShape(Circle())
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.offscriptSignalYellow)
+                            .frame(width: 30, height: 30)
+                            .overlay(Circle().stroke(Color.offscriptSignalYellow, lineWidth: 1.25))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(isCurrentlyPlaying ? "Pause" : "Play \(episode.title)")
 
-                    // Queue circle
+                    // Tuner queue key — hairline square
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                             try? QueueService.add(episode, in: modelContext)
                         }
                     } label: {
                         Image(systemName: episode.isQueued ? "checkmark" : "plus")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.offscriptTextPrimary)
-                            .frame(width: 36, height: 36)
-                            .background(Color.offscriptFillLight)
-                            .clipShape(Circle())
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(episode.isQueued ? Color.offscriptSoftPaper : Color.offscriptPaperWhite)
+                            .frame(width: 30, height: 30)
+                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                     .disabled(episode.isQueued)
@@ -112,22 +113,8 @@ struct EpisodeVerticalCard: View {
             .padding(12)
         }
         .frame(width: 200, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.offscriptCardRaised, Color.offscriptCardUtility],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                .stroke(Color.offscriptHairline, lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.2), radius: 12, y: 6)
+        .background(Color.offscriptStudioBlack)
+        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
         .navigationDestination(isPresented: $navigateToDetail) {
             EpisodeDetailView(episode: episode)
         }
@@ -172,17 +159,14 @@ struct EpisodeCompactCard: View {
     @State private var navigateToDetail = false
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             if let rank {
-                Text("\(rank)")
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(Color.offscriptTextPrimary)
-                    .frame(width: 34, height: 34)
-                    .background(Color.offscriptFillLight)
-                    .clipShape(Circle())
-                    .overlay(
-                        Circle().stroke(Color.offscriptHairline, lineWidth: 1)
-                    )
+                Text(String(format: "%02d", rank))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .tracking(0.6)
+                    .foregroundStyle(Color.offscriptSignalYellow)
+                    .monospacedDigit()
+                    .frame(width: 28, alignment: .leading)
             }
 
             Button {
@@ -194,9 +178,9 @@ struct EpisodeCompactCard: View {
             } label: {
                 OffScriptArtworkView(
                     url: episode.artworkURL ?? episode.podcast.artworkURL,
-                    cornerRadius: OffScriptTheme.Radius.small
+                    cornerRadius: 3
                 )
-                .frame(width: 56, height: 56)
+                .frame(width: 52, height: 52)
             }
             .buttonStyle(.plain)
 
@@ -207,59 +191,84 @@ struct EpisodeCompactCard: View {
                     navigateToDetail = true
                 }
             } label: {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     if showPodcastTitle {
                         Text(episode.podcast.title.uppercased())
-                            .font(.offscriptMicro.weight(.semibold))
-                            .foregroundStyle(Color.offscriptAccent)
+                            .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                            .tracking(1.4)
+                            .foregroundStyle(Color.offscriptSignalYellow)
                             .lineLimit(1)
                     }
 
                     Text(episode.title)
-                        .font(.offscriptCardTitle)
-                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .font(.system(size: 13.5, weight: .semibold, design: .default))
+                        .tracking(-0.2)
+                        .foregroundStyle(Color.offscriptPaperWhite)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
 
-                    Text(metadata)
-                        .font(.offscriptMeta)
-                        .foregroundStyle(Color.offscriptTextMuted)
+                    Text(metadata.uppercased())
+                        .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                        .tracking(1.4)
+                        .foregroundStyle(Color.offscriptSoftPaper)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
 
-            // Play circle
+            // Tuner play key
             Button {
                 PlaybackController.shared.play(episode, in: modelContext)
             } label: {
                 Image(systemName: playIcon)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isCurrentlyPlaying ? Color.offscriptTextPrimary : .black)
-                    .frame(width: 36, height: 36)
-                    .background(isCurrentlyPlaying ? Color.offscriptFillLight : Color.offscriptAccent)
-                    .clipShape(Circle())
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.offscriptSignalYellow)
+                    .frame(width: 32, height: 32)
+                    .overlay(Circle().stroke(Color.offscriptSignalYellow, lineWidth: 1.25))
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isCurrentlyPlaying ? "Pause" : "Play \(episode.title)")
+
+            Menu {
+                // origin/main's QueueService only exposes add/remove/move —
+                // play-next / add-to-end variants are reintroduced later.
+                Button(episode.isQueued ? "Already Queued" : "Add to Queue") {
+                    try? QueueService.add(episode, in: modelContext)
+                }
+                .disabled(episode.isQueued)
+
+                Divider()
+
+                Button(episode.isPlayed ? "Mark Unplayed" : "Mark Played") {
+                    togglePlayedState()
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                    .frame(width: 30, height: 30)
+                    .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("More actions for \(episode.title)")
 
             if let onRemove {
                 Button {
                     onRemove()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.offscriptTextMuted)
-                        .frame(width: 28, height: 28)
-                        .background(Color.offscriptFillSubtle)
-                        .clipShape(Circle())
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.offscriptSoftPaper)
+                        .frame(width: 26, height: 26)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Remove \(episode.title)")
             }
         }
-        .padding(16)
-        .offscriptUtilitySurface()
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
         .navigationDestination(isPresented: $navigateToDetail) {
             EpisodeDetailView(episode: episode)
         }
@@ -285,5 +294,18 @@ struct EpisodeCompactCard: View {
 
     private var playIcon: String {
         isCurrentlyPlaying ? "pause.fill" : "play.fill"
+    }
+
+    private func togglePlayedState() {
+        if episode.isPlayed {
+            episode.isPlayed = false
+            episode.playedPosition = 0
+            episode.lastPlayedAt = nil
+        } else {
+            episode.isPlayed = true
+            episode.playedPosition = episode.duration ?? episode.playedPosition
+            episode.lastPlayedAt = .now
+        }
+        try? modelContext.save()
     }
 }

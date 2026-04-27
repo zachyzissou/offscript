@@ -1,114 +1,106 @@
+import OSLog
 import SwiftData
 import SwiftUI
 
+private let appLogger = Logger(subsystem: "com.offscript", category: "App")
+
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var player = PlaybackController.shared
-    @State private var hasSeenOnboarding = AppSettings.hasSeenOnboarding
+    @AppStorage("offscript.hasSeenOnboarding") private var hasSeenOnboarding = false
     @State private var selectedTab = 0
     @State private var isSettingsPresented = false
-    @State private var networkMonitor = NetworkMonitor.shared
+    @State private var miniPlayerHeight: CGFloat = 0
     @Query private var queueItems: [QueueItem]
 
     var body: some View {
         Group {
             if hasSeenOnboarding {
-                VStack(spacing: 0) {
-                    // Content area — only the active tab is mounted
-                    Group {
-                        switch selectedTab {
-                        case 0:
-                            NavigationStack {
-                                HomeView(onOpenSettings: { isSettingsPresented = true })
-                            }
-                        case 1:
-                            NavigationStack {
-                                LibraryView(onOpenSettings: { isSettingsPresented = true })
-                            }
-                        case 2:
-                            NavigationStack {
-                                QueueView()
-                            }
-                        case 3:
-                            NavigationStack {
-                                SearchView()
-                            }
-                        default:
-                            EmptyView()
+                GeometryReader { proxy in
+                    let bottomSafeArea = proxy.safeAreaInsets.bottom
+                    let miniPlayerInset = player.currentEpisode != nil ? miniPlayerHeight + 20 : 0
+
+                    TabView(selection: $selectedTab) {
+                        NavigationStack {
+                            HomeView(onOpenSettings: { isSettingsPresented = true })
+                        }
+                        .tag(0)
+                        .tabItem {
+                            Label("Home", systemImage: "waveform.path.ecg")
+                        }
+
+                        NavigationStack {
+                            LibraryView(onOpenSettings: { isSettingsPresented = true })
+                        }
+                        .tag(1)
+                        .tabItem {
+                            Label("Library", systemImage: "books.vertical")
+                        }
+
+                        NavigationStack {
+                            QueueView()
+                        }
+                        .tag(2)
+                        .tabItem {
+                            Label("Queue", systemImage: "text.badge.plus")
+                        }
+                        .badge(queueItems.count > 0 ? queueItems.count : 0)
+
+                        NavigationStack {
+                            SearchView()
+                        }
+                        .tag(3)
+                        .tabItem {
+                            Label("Search", systemImage: "magnifyingglass")
                         }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                    // Custom tab bar
-                    OffScriptTabBar(
-                        selectedTab: $selectedTab,
-                        queueCount: queueItems.count
-                    )
-
-                    // MiniPlayer docked at very bottom, extending into safe area
-                    if player.currentEpisode != nil {
-                        VStack(spacing: 0) {
+                    .tint(Color.offscriptAccent)
+                    .background(alignment: .bottom) {
+                        Color.offscriptBackgroundBottom
+                            .frame(height: player.currentEpisode != nil ? miniPlayerHeight + bottomSafeArea + 36 : bottomSafeArea + 96)
+                            .ignoresSafeArea(edges: .bottom)
+                    }
+                    .toolbarBackground(Color.offscriptCardUtility.opacity(0.98), for: .tabBar)
+                    .toolbarBackground(.visible, for: .tabBar)
+                    .toolbarColorScheme(.dark, for: .tabBar)
+                    .safeAreaInset(edge: .bottom) {
+                        if player.currentEpisode != nil {
+                            Color.clear.frame(height: miniPlayerInset + 12)
+                        }
+                    }
+                    .overlay(alignment: .bottom) {
+                        if player.currentEpisode != nil {
                             MiniPlayer()
-                            // Extend background color through the home indicator area
-                            Color.offscriptCardRaised.opacity(0.98)
-                                .frame(height: 34) // home indicator safe area
+                                .measureHeight($miniPlayerHeight)
+                                .padding(.bottom, bottomSafeArea + 8)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                }
-                .ignoresSafeArea(.container, edges: .bottom)
-                .animation(.spring(response: 0.35, dampingFraction: 0.86), value: player.currentEpisode != nil)
-                .sheet(isPresented: $player.isPlayerPresented) {
-                    PlayerView()
-                }
-                .sheet(isPresented: $isSettingsPresented) {
-                    SettingsView()
+                    .animation(.spring(response: 0.35, dampingFraction: 0.86), value: player.currentEpisode != nil)
+                    .fullScreenCover(isPresented: $player.isPlayerPresented) {
+                        PlayerView()
+                    }
+                    .sheet(isPresented: $isSettingsPresented) {
+                        SettingsView()
+                    }
                 }
             } else {
+                // Local renamed OnboardingView -> OnboardingFlowView (commit f314adf:
+                // "remove old OnboardingView") and the new flow doesn't have a
+                // jump-to-search affordance — onComplete is parameterless.
                 OnboardingFlowView {
                     hasSeenOnboarding = true
                 }
             }
         }
-        .overlay(alignment: .top) {
-            if !networkMonitor.isConnected {
-                HStack(spacing: 8) {
-                    Image(systemName: "wifi.slash")
-                        .font(.caption.weight(.semibold))
-                    Text("No connection")
-                        .font(.caption.weight(.semibold))
-                }
-                .foregroundStyle(Color.offscriptTextPrimary)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.offscriptDestructive.opacity(0.9))
-                .clipShape(Capsule())
-                .padding(.top, 52)
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .animation(.spring(response: 0.35), value: networkMonitor.isConnected)
-            }
-        }
         .preferredColorScheme(.dark)
         .task {
             PlaybackController.shared.configure(context: modelContext)
-            SyncCoordinator.shared.configure(context: modelContext)
-            DownloadService.shared.configure(context: modelContext)
+            do { try await SampleDataSeeder.seedIfNeeded(context: modelContext) } catch { appLogger.error("Failed to seed sample data: \(error.localizedDescription, privacy: .public)") }
             #if DEBUG
             configureDebugSelectedTabIfNeeded()
             configureDebugPlaybackIfNeeded()
             #endif
-        }
-        .onChange(of: scenePhase) { _, newValue in
-            switch newValue {
-            case .active:
-                guard hasSeenOnboarding else { return }
-                SyncCoordinator.shared.scheduleForegroundRefreshIfNeeded()
-            case .background:
-                BackgroundFeedRefresh.scheduleNextRefresh()
-            default:
-                break
-            }
         }
     }
 }
@@ -136,7 +128,7 @@ private extension ContentView {
         )
         descriptor.fetchLimit = 4
 
-        guard let episodes = try? modelContext.fetch(descriptor), let leadEpisode = episodes.first else { return }
+        guard let episodes = try? modelContext.fetch(descriptor), let leadEpisode = episodes.first else { return } // debug-only fetch, safe to ignore
 
         for episode in episodes.dropFirst().prefix(2) where !episode.isQueued {
             try? QueueService.add(episode, in: modelContext)
@@ -156,62 +148,6 @@ private extension ContentView {
 }
 #endif
 
-private struct OffScriptTabBar: View {
-    @Binding var selectedTab: Int
-    let queueCount: Int
-
-    private let tabs: [(icon: String, label: String, tag: Int)] = [
-        ("waveform.path.ecg", "Home", 0),
-        ("books.vertical", "Library", 1),
-        ("text.badge.plus", "Queue", 2),
-        ("sparkle.magnifyingglass", "Discover", 3)
-    ]
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(tabs, id: \.tag) { tab in
-                Button {
-                    selectedTab = tab.tag
-                } label: {
-                    VStack(spacing: 4) {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: tab.icon)
-                                .font(.system(size: 18, weight: .medium))
-
-                            if tab.tag == 2 && queueCount > 0 {
-                                Text("\(queueCount)")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 1)
-                                    .background(Color.offscriptAccent)
-                                    .clipShape(Capsule())
-                                    .offset(x: 10, y: -6)
-                            }
-                        }
-
-                        Text(tab.label)
-                            .font(.system(size: 10, weight: .medium))
-                    }
-                    .foregroundStyle(selectedTab == tab.tag ? Color.offscriptAccent : Color.offscriptTextMuted)
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(tab.label)
-            }
-        }
-        .padding(.top, 8)
-        .padding(.bottom, 4)
-        .background(.regularMaterial)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(Color.offscriptHairline)
-                .frame(height: 0.5)
-        }
-        .environment(\.colorScheme, .dark)
-    }
-}
-
 #Preview {
     ContentView()
         .modelContainer(for: [
@@ -220,8 +156,6 @@ private struct OffScriptTabBar: View {
             EpisodeProfile.self,
             PlaybackEvent.self,
             PreferenceSignal.self,
-            QueueItem.self,
-            UserTasteProfile.self,
-            TelemetryEvent.self
+            QueueItem.self
         ], inMemory: true)
 }

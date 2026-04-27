@@ -6,6 +6,10 @@
 	<array>
 		<string>com.offscript.feed-refresh</string>
 	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>SentryDSN</key>
+	<string>$(SENTRY_DSN)</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>PlayfairDisplay-Variable.ttf</string>

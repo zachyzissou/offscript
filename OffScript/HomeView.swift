@@ -1,17 +1,17 @@
+import OSLog
 import SwiftData
 import SwiftUI
+
+private let homeLogger = Logger(subsystem: "com.offscript", category: "Home")
 
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var sections: [HomeFeedSection] = []
     @State private var errorMessage: String?
     @State private var isLoading = true
-    @State private var discoveryPreviewResult: PodcastSearchResult?
-    @State private var importingDiscoveryID: String?
     let onOpenSettings: () -> Void
 
     private let recommendationService = RecommendationService()
-    private let syncService = FeedSyncService()
 
     var body: some View {
         ScrollView {
@@ -31,10 +31,10 @@ struct HomeView: View {
                         VStack(alignment: .leading, spacing: 16) {
                             VStack(alignment: .leading, spacing: 6) {
                                 RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.offscriptFillSubtle)
+                                    .fill(Color.offscriptSurfaceThin)
                                     .frame(width: 130, height: 16)
                                 RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.offscriptFillSubtle)
+                                    .fill(Color.offscriptSurfaceThin)
                                     .frame(width: 200, height: 12)
                             }
                             .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -55,7 +55,7 @@ struct HomeView: View {
                         OffScriptEmptyState(
                             icon: "waveform.badge.magnifyingglass",
                             headline: "Your feed starts here",
-                            message: "Subscribe to a few shows, listen, and OffScript will learn what you like. The more you play, the sharper your feed gets."
+                            message: "Add three shows you trust and OffScript will build a feed that feels curated, not algorithmic."
                         )
 
                         NavigationLink("Browse Search") {
@@ -86,27 +86,13 @@ struct HomeView: View {
                     }
 
                     ForEach(Array(sections.dropFirst().enumerated()), id: \.element.id) { offset, section in
-                        if section.isDiscoverySection {
-                            DiscoveryRail(
-                                title: section.title,
-                                subtitle: section.subtitle,
-                                results: section.discoveryResults,
-                                importingID: importingDiscoveryID,
-                                onPreview: { scored in discoveryPreviewResult = scored.result },
-                                onAdd: { scored in
-                                    Task { await addDiscoveryResult(scored.result) }
-                                }
-                            )
-                            .staggeredEntrance(index: offset + 2)
-                        } else {
-                            RecommendationRail(
-                                title: section.title,
-                                subtitle: section.subtitle,
-                                episodes: section.episodes,
-                                reasonProvider: { section.explanation(for: $0) }
-                            )
-                            .staggeredEntrance(index: offset + 2)
-                        }
+                        RecommendationRail(
+                            title: section.title,
+                            subtitle: section.subtitle,
+                            episodes: section.episodes,
+                            reasonProvider: { section.explanation(for: $0) }
+                        )
+                        .staggeredEntrance(index: offset + 2)
                     }
                 }
             }
@@ -133,57 +119,17 @@ struct HomeView: View {
         }
         .task { await loadSections() }
         .refreshable { await loadSections() }
-        .sheet(item: $discoveryPreviewResult) { result in
-            SearchResultDetailView(
-                result: result,
-                isAdded: isAlreadySubscribed(result),
-                isImporting: importingDiscoveryID == result.id,
-                onAdd: { Task { await addDiscoveryResult(result) } }
-            )
-        }
-    }
-
-    private func isAlreadySubscribed(_ result: PodcastSearchResult) -> Bool {
-        let feedURL = result.feedURL
-        let descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> { $0.feedURL == feedURL && $0.isSubscribed == true }
-        )
-        return (try? modelContext.fetchCount(descriptor)) ?? 0 > 0
-    }
-
-    @MainActor
-    private func addDiscoveryResult(_ result: PodcastSearchResult) async {
-        importingDiscoveryID = result.id
-        defer { importingDiscoveryID = nil }
-
-        do {
-            _ = try await syncService.importPodcast(from: result, into: modelContext)
-            try? TasteProfileService.refresh(in: modelContext)
-            await recommendationService.discoveryService.invalidateCache()
-            TelemetryService.track(
-                "discovery_imported",
-                metadata: ["podcast": result.title, "source": "home_discovery"],
-                in: modelContext
-            )
-            await loadSections()
-        } catch {
-            // Import failed — user can retry from the card
-        }
     }
 
     @MainActor
     private func loadSections() async {
         do {
-            var loaded = try recommendationService.homeSections(context: modelContext)
-
-            // Append discovery section after existing episode sections
-            if let discovery = await recommendationService.discoverySection(context: modelContext) {
-                loaded.append(discovery)
+            let loaded = try recommendationService.homeSections(context: modelContext)
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                sections = loaded
+                errorMessage = nil
+                isLoading = false
             }
-
-            sections = loaded
-            errorMessage = nil
-            isLoading = false
         } catch {
             errorMessage = error.localizedDescription
             isLoading = false
@@ -217,8 +163,6 @@ private struct HeroRecommendationCard: View {
     let episode: Episode
     let reason: String
 
-    @State private var navigateToDetail = false
-
     private var progressValue: Double {
         guard let duration = episode.duration, duration > 0 else { return 0 }
         return episode.playedPosition / duration
@@ -226,39 +170,34 @@ private struct HeroRecommendationCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Artwork hero zone — tappable for navigation
-            Button {
-                navigateToDetail = true
-            } label: {
-                ZStack(alignment: .bottomLeading) {
-                    OffScriptArtworkView(
-                        url: episode.artworkURL ?? episode.podcast.artworkURL,
-                        cornerRadius: 0
+            // Artwork hero zone — larger, more dominant
+            ZStack(alignment: .bottomLeading) {
+                OffScriptArtworkView(
+                    url: episode.artworkURL ?? episode.podcast.artworkURL,
+                    cornerRadius: 0
+                )
+                .frame(height: 200)
+                .clipped()
+                .overlay(
+                    LinearGradient(
+                        colors: [.clear, .clear, Color.offscriptCardStrong.opacity(0.7), Color.offscriptCardStrong],
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
-                    .frame(height: 200)
-                    .clipped()
-                    .overlay(
-                        LinearGradient(
-                            colors: [.clear, .clear, Color.offscriptCardStrong.opacity(0.7), Color.offscriptCardStrong],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
+                )
 
-                    // Overlay the explanation tag on the artwork
-                    VStack(alignment: .leading, spacing: 8) {
-                        OffScriptExplanationTag(text: reason)
+                // Overlay the explanation tag on the artwork
+                VStack(alignment: .leading, spacing: 8) {
+                    OffScriptExplanationTag(text: reason)
 
-                        Text(episode.podcast.title)
-                            .font(.offscriptMeta.weight(.semibold))
-                            .tracking(0.8)
-                            .foregroundStyle(Color.offscriptTextSecondary)
-                            .lineLimit(1)
-                    }
-                    .padding(20)
+                    Text(episode.podcast.title)
+                        .font(.offscriptMeta.weight(.semibold))
+                        .tracking(0.8)
+                        .foregroundStyle(Color.offscriptTextSecondary)
+                        .lineLimit(1)
                 }
+                .padding(20)
             }
-            .buttonStyle(.plain)
             .clipShape(
                 UnevenRoundedRectangle(
                     topLeadingRadius: OffScriptTheme.Radius.large,
@@ -271,11 +210,11 @@ private struct HeroRecommendationCard: View {
 
             // Content zone
             VStack(alignment: .leading, spacing: 14) {
-                Button {
-                    navigateToDetail = true
+                NavigationLink {
+                    EpisodeDetailView(episode: episode)
                 } label: {
                     Text(episode.title)
-                        .font(.system(.title2, design: .serif, weight: .bold))
+                        .font(.offscriptDisplay)
                         .foregroundStyle(Color.offscriptTextPrimary)
                         .multilineTextAlignment(.leading)
                         .lineLimit(3)
@@ -302,19 +241,14 @@ private struct HeroRecommendationCard: View {
                 }
 
                 HStack(spacing: 10) {
-                    Button(episode.playedPosition > 0 ? "Resume" : "Play") {
-                        TelemetryService.track(
-                            "recommendation_opened",
-                            metadata: ["source": "home_hero", "episode": episode.title, "podcast": episode.podcast.title],
-                            in: modelContext
-                        )
+                    Button("Play") {
                         PlaybackController.shared.play(episode, in: modelContext)
                     }
                     .buttonStyle(PrimaryPillButtonStyle())
 
-                    Button(episode.isQueued ? "Queued" : "Queue") {
+                    Button(episode.isQueued ? "Queued" : "Add to Queue") {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            try? QueueService.add(episode, in: modelContext)
+                            do { try QueueService.add(episode, in: modelContext) } catch { homeLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
                         }
                     }
                     .buttonStyle(SecondaryPillButtonStyle())
@@ -324,35 +258,23 @@ private struct HeroRecommendationCard: View {
                     Spacer()
 
                     Menu {
-                        Button { register(.like) } label: {
-                            Label("Like", systemImage: "hand.thumbsup")
-                        }
-                        Button { register(.moreLikeThis) } label: {
-                            Label("More like this", systemImage: "arrow.up.heart")
-                        }
-                        Button { register(.lessLikeThis) } label: {
-                            Label("Less like this", systemImage: "hand.thumbsdown")
-                        }
-                        Button(role: .destructive) { register(.notInterested) } label: {
-                            Label("Not interested", systemImage: "xmark.circle")
-                        }
+                        Button("Like") { register(.like) }
+                        Button("Less like this") { register(.lessLikeThis) }
+                        Button("Not now") { register(.notInterested) }
                     } label: {
-                        Image(systemName: "ellipsis.circle.fill")
-                            .font(.title3)
-                            .symbolRenderingMode(.hierarchical)
+                        Image(systemName: "ellipsis")
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Color.offscriptTextPrimary)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
+                            .frame(width: 38, height: 38)
+                            .background(Color.offscriptSurfaceSubtle)
+                            .clipShape(Circle())
                     }
-                    .accessibilityLabel("Rate this recommendation")
-                    .accessibilityHint("Like, dislike, or dismiss this episode")
+                    .accessibilityLabel("More actions")
+                    .accessibilityHint("Like this episode or tune future recommendations")
                 }
             }
             .padding(20)
             .padding(.bottom, 4)
-        }
-        .navigationDestination(isPresented: $navigateToDetail) {
-            EpisodeDetailView(episode: episode)
         }
         .background(
             RoundedRectangle(cornerRadius: OffScriptTheme.Radius.large, style: .continuous)
@@ -391,7 +313,7 @@ private struct HeroRecommendationCard: View {
 
     private func register(_ action: PreferenceSignal.Action) {
         modelContext.insert(PreferenceSignal(action: action, episode: episode))
-        try? modelContext.save()
+        do { try modelContext.save() } catch { homeLogger.error("Failed to save preference signal: \(error.localizedDescription, privacy: .public)") }
     }
 }
 
@@ -407,44 +329,9 @@ private struct RecommendationRail: View {
                 .padding(.horizontal, OffScriptTheme.pagePadding)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: OffScriptTheme.itemSpacing) {
-                    ForEach(episodes) { episode in
-                        EpisodeVerticalCard(
-                            episode: episode,
-                            explanationTag: reasonProvider(episode)
-                        )
-                    }
-                }
-                .padding(.horizontal, OffScriptTheme.pagePadding)
-            }
-        }
-    }
-}
-
-// MARK: - Discovery Section Views
-
-private struct DiscoveryRail: View {
-    let title: String
-    let subtitle: String
-    let results: [ScoredDiscoveryResult]
-    let importingID: String?
-    let onPreview: (ScoredDiscoveryResult) -> Void
-    let onAdd: (ScoredDiscoveryResult) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            OffScriptSectionHeader(title: title, subtitle: subtitle)
-                .padding(.horizontal, OffScriptTheme.pagePadding)
-
-            ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 18) {
-                    ForEach(results) { scored in
-                        DiscoveryRailCard(
-                            scored: scored,
-                            isImporting: importingID == scored.id,
-                            onPreview: { onPreview(scored) },
-                            onAdd: { onAdd(scored) }
-                        )
+                    ForEach(episodes) { episode in
+                        EpisodeRailCard(episode: episode, reason: reasonProvider(episode))
                     }
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -453,77 +340,91 @@ private struct DiscoveryRail: View {
     }
 }
 
-private struct DiscoveryRailCard: View {
-    let scored: ScoredDiscoveryResult
-    let isImporting: Bool
-    let onPreview: () -> Void
-    let onAdd: () -> Void
+private struct EpisodeRailCard: View {
+    @Environment(\.modelContext) private var modelContext
+
+    let episode: Episode
+    let reason: String
 
     var body: some View {
-        Button {
-            onPreview()
-        } label: {
-            VStack(alignment: .leading, spacing: 0) {
-                OffScriptArtworkView(
-                    url: scored.result.artworkURL,
-                    cornerRadius: 0
-                )
-                .frame(width: 200, height: 150)
-                .clipped()
-
-                VStack(alignment: .leading, spacing: 8) {
-                    OffScriptExplanationTag(text: scored.explanation)
-
-                    Text(scored.result.title)
-                        .font(.offscriptCardTitle)
-                        .foregroundStyle(Color.offscriptTextPrimary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-
-                    Text(scored.result.author)
-                        .font(.offscriptMicro)
-                        .foregroundStyle(Color.offscriptTextSecondary)
-                        .lineLimit(1)
-
-                    HStack(spacing: 8) {
-                        Button {
-                            onAdd()
-                        } label: {
-                            Image(systemName: isImporting ? "arrow.2.circlepath" : "plus")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(isImporting ? Color.offscriptTextMuted : Color.offscriptAccent)
-                                .frame(width: 36, height: 36)
-                                .background(Color.white.opacity(0.08), in: Circle())
-                        }
-                        .disabled(isImporting)
-
-                        Text(isImporting ? "Adding..." : "Add to Library")
-                            .font(.offscriptMeta)
-                            .foregroundStyle(Color.offscriptTextMuted)
-                    }
-                }
-                .padding(12)
-            }
-        }
-        .buttonStyle(.plain)
-        .frame(width: 200)
-        .background(
+        ZStack {
             RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [Color.offscriptCardRaised, Color.offscriptCard],
-                        startPoint: .top,
-                        endPoint: .bottom
+                        colors: [Color.offscriptCardRaised, Color.offscriptCardUtility],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     )
                 )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 12) {
+                NavigationLink {
+                    EpisodeDetailView(episode: episode)
+                } label: {
+                    VStack(alignment: .leading, spacing: 12) {
+                        OffScriptArtworkView(url: episode.artworkURL ?? episode.podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.small)
+                            .frame(width: 160, height: 160)
+                            .padding(.top, 4)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            OffScriptExplanationTag(text: reason)
+
+                            Text(episode.podcast.title.uppercased())
+                                .font(.offscriptMicro.weight(.semibold))
+                                .foregroundStyle(Color.offscriptAccent)
+
+                            Text(episode.title)
+                                .font(.offscriptCardTitle)
+                                .foregroundStyle(Color.offscriptTextPrimary)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+
+                            Text(metadata)
+                                .font(.offscriptMeta)
+                                .foregroundStyle(Color.offscriptTextMuted)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+
+                HStack(spacing: 10) {
+                    Button("Play") {
+                        PlaybackController.shared.play(episode, in: modelContext)
+                    }
+                    .buttonStyle(PrimaryPillButtonStyle())
+
+                    Button {
+                        do { try QueueService.add(episode, in: modelContext) } catch { homeLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
+                    } label: {
+                        Image(systemName: episode.isQueued ? "checkmark" : "plus")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.offscriptTextPrimary)
+                            .frame(width: 36, height: 36)
+                            .background(Color.offscriptSurfaceLight)
+                            .clipShape(Circle())
+                    }
+                    .disabled(episode.isQueued)
+
+                    Spacer()
+                }
+            }
+            .padding(16)
+        }
+        .frame(width: 196, alignment: .leading)
         .overlay(
             RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
                 .stroke(Color.offscriptHairline, lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.2), radius: 12, y: 6)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(scored.result.title) by \(scored.result.author). \(scored.explanation)")
+        .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(reason)")
+    }
+
+    private var metadata: String {
+        let dateString = episode.pubDate.formatted(date: .abbreviated, time: .omitted)
+        if let duration = episode.duration {
+            return "\(dateString) • \(EpisodeDurationFormatter.short(duration))"
+        }
+        return dateString
     }
 }

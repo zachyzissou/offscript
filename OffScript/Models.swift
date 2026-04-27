@@ -245,8 +245,10 @@ final class PreferenceSignal {
     enum Action: String, Codable { case like, notInterested, moreLikeThis, lessLikeThis }
     var date: Date = Date()
     private var actionRawValue: String = Action.like.rawValue
-    @Relationship(deleteRule: .noAction)
-    var episode: Episode?
+    // Non-optional Episode so RecommendationService keypaths (\.episode.id)
+    // resolve cleanly. SwiftData cascades the relationship — deleting an
+    // Episode also clears its preferences.
+    var episode: Episode
 
     init(action: Action, episode: Episode) {
         self.actionRawValue = action.rawValue
@@ -322,6 +324,15 @@ final class EpisodeProfile {
     private var tagsStorage: String = ""
     private var entitiesStorage: String = ""
     var summary: String?
+
+    // Recommendation-engine scoring inputs (added on origin/main).
+    // Default values keep older stores migration-safe.
+    var qualityScore: Double = 0.0
+    var confidenceScore: Double = 0.0
+    var estimatedListeningContext: String?
+    var freshnessBucket: String?
+    var introSkipSeconds: TimeInterval = 0
+    var outroSkipSeconds: TimeInterval = 0
 
     @Relationship(deleteRule: .noAction)
     var episode: Episode?

@@ -31,6 +31,12 @@ struct OffScriptApp: App {
     private static let logger = Logger(subsystem: "OffScript", category: "SwiftData")
 
     init() {
+        // Crash + perf telemetry. Sentry first so its hooks are installed
+        // before AppSettings.applyLaunchOverridesIfNeeded() (which can touch
+        // UserDefaults / debug toggles that we'd want to see in Sentry breadcrumbs
+        // if anything goes sideways during boot).
+        CrashReporter.configure()
+        MetricKitReporter.shared.configure()
         AppSettings.applyLaunchOverridesIfNeeded()
 
         let tabBarAppearance = UITabBarAppearance()
@@ -46,6 +52,11 @@ struct OffScriptApp: App {
     // Uses VersionedSchema + SchemaMigrationPlan for safe migrations.
     // Falls back to destructive reset only if the migration plan itself fails.
     var sharedModelContainer: ModelContainer = {
+        // Use the VersionedSchema so SwiftData can run our migration plan
+        // (OffScriptMigrationPlan) when the on-disk store predates the
+        // current schema. Origin/main's flat Schema([...]) was simpler but
+        // would force-wipe the store on every breaking schema change — the
+        // versioned path is what keeps user libraries intact across releases.
         let schema = Schema(versionedSchema: SchemaV1.self)
         do {
             return try Self.makeModelContainer(schema: schema)

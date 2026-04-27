@@ -7,33 +7,19 @@ struct RecommendationScoreInputs {
     let topicOverlap: Double
     let isFromSubscribedPodcast: Bool
     let isUnfinished: Bool
-    let preferredDurationMinutes: Double?
 }
 
 enum RecommendationScorer {
     static func score(_ input: RecommendationScoreInputs) -> Double {
         let recency = exp(-input.recencyDays / 10.0) * 0.28
-        let durationFit = durationScore(minutes: input.durationMinutes, preferredMinutes: input.preferredDurationMinutes) * 0.18
+        let durationFit = durationScore(minutes: input.durationMinutes) * 0.18
         let topic = min(1.0, input.topicOverlap / 3.0) * 0.26
         let subscription = (input.isFromSubscribedPodcast ? 1.0 : 0.0) * 0.12
         let unfinished = (input.isUnfinished ? 1.0 : 0.0) * 0.16
         return recency + durationFit + topic + subscription + unfinished
     }
 
-    static func genreBoost(podcastCategories: [String], preferredGenres: [String]) -> Double {
-        let normalizedCategories = Set(podcastCategories.map { $0.lowercased() })
-        let normalizedPreferred = Set(preferredGenres.map { $0.lowercased() })
-        let overlapCount = normalizedCategories.intersection(normalizedPreferred).count
-        return 0.03 * Double(min(overlapCount, 3))
-    }
-
-    static func durationScore(minutes: Double, preferredMinutes: Double? = nil) -> Double {
-        if let preferred = preferredMinutes, preferred > 0 {
-            let sigma: Double = 15.0
-            let diff = minutes - preferred
-            return exp(-(diff * diff) / (2.0 * sigma * sigma))
-        }
-        // Static fallback when no user data
+    static func durationScore(minutes: Double) -> Double {
         switch minutes {
         case ..<12:
             return 0.45
@@ -48,69 +34,31 @@ enum RecommendationScorer {
 }
 
 final class RecommendationService {
-    let discoveryService = DiscoveryService()
-
-    @MainActor
-    func discoverySection(context: ModelContext) async -> HomeFeedSection? {
-        guard let tasteProfile = try? TasteProfileService.loadOrCreate(in: context) else { return nil }
-
-        // Only show discovery if the user has some taste data
-        let hasData = !tasteProfile.topTags.isEmpty || !tasteProfile.preferredGenres.isEmpty
-        guard hasData else { return nil }
-
-        let podcasts = (try? context.fetch(FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> { $0.isSubscribed == true }
-        ))) ?? []
-        let subscribedFeedURLs = Set(podcasts.map { $0.feedURL.absoluteString })
-
-        let results = await discoveryService.discoverPodcasts(
-            tasteProfile: tasteProfile,
-            subscribedFeedURLs: subscribedFeedURLs
-        )
-
-        guard !results.isEmpty else { return nil }
-
-        return HomeFeedSection(
-            title: "Discover New Shows",
-            subtitle: "Podcasts you haven't tried that match your taste.",
-            discoveryResults: results
-        )
-    }
-
     @MainActor
     func homeSections(context: ModelContext, limit: Int = 6) throws -> [HomeFeedSection] {
-        try? TasteProfileService.refresh(in: context)
-        let episodes = try context.fetch(FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { $0.podcast.isSubscribed == true },
-            sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
-        ))
+        let episodes = try context.fetch(FetchDescriptor<Episode>())
+            .filter { $0.podcast.isSubscribed }
+            .sorted { $0.pubDate > $1.pubDate }
 
         let profiles = try context.fetch(FetchDescriptor<EpisodeProfile>())
-        // Only fetch preference signals from the last 90 days to avoid loading stale history
-        let signalCutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? .distantPast
-        let preferences = try context.fetch(FetchDescriptor<PreferenceSignal>(
-            predicate: #Predicate<PreferenceSignal> { $0.date >= signalCutoff }
-        ))
-        let tasteProfile = try? TasteProfileService.loadOrCreate(in: context)
-        let likedEpisodeIDs: Set<UUID> = Set(preferences.filter { $0.action == .like || $0.action == .moreLikeThis }.compactMap { (signal: PreferenceSignal) -> UUID? in signal.episode?.id })
-        let dislikedEpisodeIDs: Set<UUID> = Set(preferences.filter { $0.action == .notInterested || $0.action == .lessLikeThis }.compactMap { (signal: PreferenceSignal) -> UUID? in signal.episode?.id })
+        let preferences = try context.fetch(FetchDescriptor<PreferenceSignal>())
+        let likedEpisodeIDs = Set(preferences.filter { $0.action == .like || $0.action == .moreLikeThis }.map(\.episode.id))
+        let dislikedEpisodeIDs = Set(preferences.filter { $0.action == .notInterested || $0.action == .lessLikeThis }.map(\.episode.id))
         let likedTags = Set(
             profiles
                 .filter { likedEpisodeIDs.contains($0.episodeID) }
                 .flatMap(\.tags)
         )
+        let likedEntities = Set(
+            profiles
+                .filter { likedEpisodeIDs.contains($0.episodeID) }
+                .flatMap(\.entities)
+        )
 
         let scoredEpisodes = episodes
             .filter { !dislikedEpisodeIDs.contains($0.id) }
-            .enumerated()
-            .map { index, episode -> ScoredEpisode in
-                let result = scoreWithExplanation(
-                    episode: episode,
-                    profiles: profiles,
-                    likedTags: likedTags,
-                    tasteProfile: tasteProfile,
-                    diversityPenalty: Double(index) * 0.005
-                )
+            .map { episode -> ScoredEpisode in
+                let result = scoreWithExplanation(episode: episode, profiles: profiles, likedTags: likedTags, likedEntities: likedEntities)
                 return ScoredEpisode(
                     episode: episode,
                     score: result.score,
@@ -119,18 +67,14 @@ final class RecommendationService {
             }
             .sorted { $0.score > $1.score }
 
-        var usedEpisodeIDs = Set<UUID>()
-
-        let bestNext = Self.diversified(scoredEpisodes, limit: limit, excluding: &usedEpisodeIDs)
-        let quickWins = Self.diversified(
-            scoredEpisodes.filter { (($0.episode.duration ?? 0) / 60) <= 35 },
-            limit: limit,
-            excluding: &usedEpisodeIDs
-        )
-        let freshCandidates = episodes
-            .filter { !$0.isPlayed && !usedEpisodeIDs.contains($0.id) }
+        let bestNext = Array(scoredEpisodes.prefix(limit))
+        let quickWins = Array(scoredEpisodes
+            .filter { (($0.episode.duration ?? 0) / 60) <= 35 }
+            .prefix(limit))
+        let fresh = episodes
+            .filter { !$0.isPlayed }
             .sorted { $0.pubDate > $1.pubDate }
-            .prefix(limit * 2)
+            .prefix(limit)
             .map { episode -> ScoredEpisode in
                 let days = max(0, Date().timeIntervalSince(episode.pubDate) / 86_400.0)
                 let explanation: String
@@ -141,17 +85,14 @@ final class RecommendationService {
                 }
                 return ScoredEpisode(episode: episode, score: 0, explanation: explanation)
             }
-        let fresh = Self.diversified(Array(freshCandidates), limit: limit, excluding: &usedEpisodeIDs)
-        let becauseYouLiked = Self.diversified(
-            scoredEpisodes.filter { episodeHasTopicOverlap($0.episode, profiles: profiles, likedTags: likedTags) },
-            limit: limit,
-            excluding: &usedEpisodeIDs
-        )
+        let becauseYouLiked = Array(scoredEpisodes
+            .filter { episodeHasTopicOverlap($0.episode, profiles: profiles, likedTags: likedTags) }
+            .prefix(limit))
 
         var allSections = [
             HomeFeedSection(title: "Best Next", subtitle: "High-fit episodes based on your listening signals.", scoredEpisodes: bestNext),
             HomeFeedSection(title: "Quick Wins", subtitle: "Short listens that still feel worth opening right now.", scoredEpisodes: quickWins),
-            HomeFeedSection(title: "Fresh From Library", subtitle: "Recent drops from shows you already care about.", scoredEpisodes: fresh),
+            HomeFeedSection(title: "Fresh From Library", subtitle: "Recent drops from shows you already care about.", scoredEpisodes: Array(fresh)),
             HomeFeedSection(title: "Because You Liked", subtitle: "Similar ideas and voices from your recent favorites.", scoredEpisodes: becauseYouLiked)
         ].filter { !$0.episodes.isEmpty }
 
@@ -173,15 +114,10 @@ final class RecommendationService {
         return allSections
     }
 
-    private func scoreWithExplanation(
-        episode: Episode,
-        profiles: [EpisodeProfile],
-        likedTags: Set<String>,
-        tasteProfile: UserTasteProfile?,
-        diversityPenalty: Double = 0
-    ) -> (score: Double, explanation: String) {
+    private func scoreWithExplanation(episode: Episode, profiles: [EpisodeProfile], likedTags: Set<String>, likedEntities: Set<String> = []) -> (score: Double, explanation: String) {
         let profile = profiles.first(where: { $0.episodeID == episode.id })
         let matchingTags = Set(profile?.tags ?? []).intersection(likedTags)
+        let matchingEntities = Set(profile?.entities ?? []).intersection(likedEntities)
         let overlap = Double(matchingTags.count)
         let days = max(0, Date().timeIntervalSince(episode.pubDate) / 86_400.0)
         let minutes = (episode.duration ?? 30 * 60) / 60
@@ -192,49 +128,30 @@ final class RecommendationService {
             durationMinutes: minutes,
             topicOverlap: overlap,
             isFromSubscribedPodcast: episode.podcast.isSubscribed,
-            isUnfinished: isUnfinished,
-            preferredDurationMinutes: tasteProfile?.averageCompletedDurationMinutes
+            isUnfinished: isUnfinished
         )
 
-        var value = RecommendationScorer.score(inputs) - diversityPenalty
-        if AppSettings.preferShortEpisodes, minutes <= 35 {
+        var value = RecommendationScorer.score(inputs)
+        if UserDefaults.standard.bool(forKey: "offscript.preferShortEpisodes"), minutes <= 35 {
             value += 0.08
         }
 
-        if let tasteProfile {
-            value += RecommendationScorer.genreBoost(
-                podcastCategories: episode.podcast.categories.map { $0.lowercased() },
-                preferredGenres: tasteProfile.preferredGenres.map { $0.lowercased() }
-            )
-
-            if tasteProfile.showAffinity.contains(episode.podcast.title) {
-                value += 0.09
-            }
-
-            if !Set(profile?.tags ?? []).intersection(Set(tasteProfile.topTags)).isEmpty {
-                value += 0.07
-            }
-
-            if tasteProfile.prefersShortEpisodes, minutes <= 35 {
-                value += 0.05
-            }
-
-            if tasteProfile.unfinishedEpisodeAffinity < 0.2, isUnfinished {
-                value += 0.04
-            }
+        // Boost score for entity overlap
+        if !matchingEntities.isEmpty {
+            value += Double(matchingEntities.count) * 0.04
         }
 
+        // Build data-driven explanation from the strongest signal
         let explanation: String
         if isUnfinished {
             let remaining = max(0, (episode.duration ?? 0) - episode.playedPosition)
             explanation = "\(EpisodeDurationFormatter.short(remaining)) left — pick up where you stopped"
-        } else if tasteProfile?.showAffinity.contains(episode.podcast.title) == true {
-            explanation = "You keep finishing \(episode.podcast.title)"
+        } else if !matchingEntities.isEmpty {
+            let sample = Array(matchingEntities.prefix(2)).joined(separator: ", ")
+            explanation = "Mentions \(sample), a topic you've engaged with"
         } else if overlap >= 3 {
             let sample = Array(matchingTags.prefix(2)).joined(separator: ", ")
             explanation = "\(Int(overlap)) topic matches: \(sample)"
-        } else if let topTag = Set(profile?.tags ?? []).intersection(Set(tasteProfile?.topTags ?? [])).first {
-            explanation = "Fits your recent interest in \"\(topTag)\""
         } else if overlap >= 1 {
             let sample = matchingTags.first ?? ""
             explanation = "Connects to \"\(sample)\" from episodes you liked"
@@ -256,23 +173,21 @@ final class RecommendationService {
     /// Returns contextual recommendations for the player based on the currently playing episode
     @MainActor
     func playerSuggestions(currentEpisode: Episode, context: ModelContext, limit: Int = 5) throws -> [ScoredEpisode] {
-        // Filter at the database level: subscribed podcasts, unplayed episodes only
-        let currentEpisodeID = currentEpisode.id
-        let episodes = try context.fetch(FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { $0.podcast.isSubscribed == true && $0.id != currentEpisodeID && $0.isPlayed == false }
-        ))
+        let episodes = try context.fetch(FetchDescriptor<Episode>())
+            .filter { $0.podcast.isSubscribed && $0.id != currentEpisode.id && !$0.isPlayed }
 
         let profiles = try context.fetch(FetchDescriptor<EpisodeProfile>())
-        let signalCutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? .distantPast
-        let preferences = try context.fetch(FetchDescriptor<PreferenceSignal>(
-            predicate: #Predicate<PreferenceSignal> { $0.date >= signalCutoff }
-        ))
-        let tasteProfile = try? TasteProfileService.loadOrCreate(in: context)
-        let likedEpisodeIDs: Set<UUID> = Set(preferences.filter { $0.action == .like || $0.action == .moreLikeThis }.compactMap { (signal: PreferenceSignal) -> UUID? in signal.episode?.id })
+        let preferences = try context.fetch(FetchDescriptor<PreferenceSignal>())
+        let likedEpisodeIDs = Set(preferences.filter { $0.action == .like || $0.action == .moreLikeThis }.map(\.episode.id))
         let likedTags = Set(
             profiles
                 .filter { likedEpisodeIDs.contains($0.episodeID) }
                 .flatMap(\.tags)
+        )
+        let likedEntities = Set(
+            profiles
+                .filter { likedEpisodeIDs.contains($0.episodeID) }
+                .flatMap(\.entities)
         )
 
         // Also boost episodes from the same podcast
@@ -282,12 +197,7 @@ final class RecommendationService {
 
         return episodes
             .map { episode -> ScoredEpisode in
-                var result = scoreWithExplanation(
-                    episode: episode,
-                    profiles: profiles,
-                    likedTags: likedTags,
-                    tasteProfile: tasteProfile
-                )
+                var result = scoreWithExplanation(episode: episode, profiles: profiles, likedTags: likedTags, likedEntities: likedEntities)
                 var score = result.score
 
                 // Boost same podcast
@@ -313,43 +223,6 @@ final class RecommendationService {
             .sorted { $0.score > $1.score }
             .prefix(limit)
             .map { $0 }
-    }
-
-    /// Enforces max 2 episodes per podcast, filters out already-used IDs, and interleaves results.
-    private static func diversified(_ candidates: [ScoredEpisode], limit: Int, excluding usedIDs: inout Set<UUID>) -> [ScoredEpisode] {
-        let filtered = candidates.filter { !usedIDs.contains($0.episode.id) }
-
-        // Group by podcast, take at most 2 per podcast
-        var podcastBuckets: [UUID: [ScoredEpisode]] = [:]
-        var podcastOrder: [UUID] = []
-        for scored in filtered {
-            let pid = scored.episode.podcast.id
-            if podcastBuckets[pid] == nil { podcastOrder.append(pid) }
-            if (podcastBuckets[pid]?.count ?? 0) < 2 {
-                podcastBuckets[pid, default: []].append(scored)
-            }
-        }
-
-        // Interleave: round-robin across podcasts
-        var result: [ScoredEpisode] = []
-        var indices = [UUID: Int]()
-        for pid in podcastOrder { indices[pid] = 0 }
-        var added = true
-        while added && result.count < limit {
-            added = false
-            for pid in podcastOrder {
-                guard result.count < limit else { break }
-                let idx = indices[pid] ?? 0
-                if let bucket = podcastBuckets[pid], idx < bucket.count {
-                    result.append(bucket[idx])
-                    indices[pid] = idx + 1
-                    added = true
-                }
-            }
-        }
-
-        for scored in result { usedIDs.insert(scored.episode.id) }
-        return result
     }
 
     private func episodeHasTopicOverlap(_ episode: Episode, profiles: [EpisodeProfile], likedTags: Set<String>) -> Bool {

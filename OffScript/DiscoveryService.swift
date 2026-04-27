@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import SwiftData
 
 struct ScoredDiscoveryResult: Identifiable {
@@ -9,6 +10,7 @@ struct ScoredDiscoveryResult: Identifiable {
 }
 
 actor DiscoveryService {
+    private let logger = Logger(subsystem: "com.offscript", category: "Discovery")
     private var cachedResults: [ScoredDiscoveryResult] = []
     private var cacheTimestamp: Date = .distantPast
 
@@ -18,8 +20,9 @@ actor DiscoveryService {
         tasteProfile: UserTasteProfile,
         subscribedFeedURLs: Set<String>
     ) async -> [ScoredDiscoveryResult] {
-        // Return cached results if fresh, filtering out newly subscribed shows
+        // Return cached results if fresh
         if Date().timeIntervalSince(cacheTimestamp) < cacheDuration, !cachedResults.isEmpty {
+            // Filter out any results the user has since subscribed to
             let stillRelevant = cachedResults.filter { !subscribedFeedURLs.contains($0.result.feedURL.absoluteString) }
             if !stillRelevant.isEmpty {
                 return stillRelevant
@@ -29,12 +32,18 @@ actor DiscoveryService {
         let queries = buildQueries(from: tasteProfile)
         guard !queries.isEmpty else { return [] }
 
-        let searchService = await MainActor.run { PodcastSearchService() }
+        let searchService = PodcastSearchService()
         var allResults: [PodcastSearchResult] = []
         var seenFeedURLs = Set<String>()
 
         for query in queries {
-            guard let results = try? await searchService.search(query: query) else { continue }
+            let results: [PodcastSearchResult]
+            do {
+                results = try await searchService.search(query: query)
+            } catch {
+                logger.error("Discovery search failed for query '\(query, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+                continue
+            }
             for result in results {
                 let feedKey = result.feedURL.absoluteString
                 guard !subscribedFeedURLs.contains(feedKey),
@@ -73,9 +82,9 @@ actor DiscoveryService {
             queries.append(first)
         }
 
-        // Query from ALL preferred genres, not just the first
+        // Query from preferred genres
         let genres = profile.preferredGenres
-        for genre in genres.prefix(3) {
+        if let genre = genres.first {
             queries.append("\(genre) podcast")
         }
 
@@ -89,8 +98,8 @@ actor DiscoveryService {
             queries.append("podcasts like \(favoriteShow)")
         }
 
-        // Cap at 6 queries to cover more genre diversity
-        return Array(queries.prefix(6))
+        // Cap at 4 queries
+        return Array(queries.prefix(4))
     }
 
     // MARK: - Scoring
@@ -106,7 +115,7 @@ actor DiscoveryService {
         let summaryLower = (result.summary ?? "").lowercased()
         let searchableText = "\(titleLower) \(summaryLower)"
 
-        // Genre match — iTunes returns primaryGenreName in the summary field
+        // Genre match — iTunes returns primaryGenreName in summary field
         let preferredGenresLower = Set(tasteProfile.preferredGenres.map { $0.lowercased() })
         if let resultGenre = result.summary?.lowercased(),
            preferredGenresLower.contains(resultGenre) {
@@ -114,7 +123,7 @@ actor DiscoveryService {
             explanations.append("Matches your interest in \(result.summary ?? "")")
         }
 
-        // Tag overlap — check if the podcast title/summary contains user's top tags
+        // Tag overlap
         var matchedTags: [String] = []
         for tag in tasteProfile.topTags {
             if searchableText.contains(tag.lowercased()) {

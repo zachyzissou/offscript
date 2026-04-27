@@ -1,13 +1,16 @@
-import AVKit
+import OSLog
 import SwiftData
 import SwiftUI
+
+private let playerLogger = Logger(subsystem: "com.offscript", category: "Player")
 
 struct PlayerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @ObservedObject private var player = PlaybackController.shared
-    @ObservedObject private var timePublisher = PlaybackTimePublisher.shared
     @Query private var queueItems: [QueueItem]
+
+    @State private var artworkAppeared = false
 
     private var orderedQueueItems: [QueueItem] {
         queueItems.sorted { lhs, rhs in
@@ -25,10 +28,6 @@ struct PlayerView: View {
                     GeometryReader { proxy in
                         let artworkSize = min(max(proxy.size.width - 168, 196), 272)
                         let nextItem = orderedQueueItems.first
-                        let chapters = episode.resolvedChapters
-                        let transcripts = episode.transcriptReferences
-                        let isOfflineReady = DownloadService.shared.localURL(for: episode) != nil
-                        let _ = DownloadService.shared.statusText(for: episode) // keep observation
 
                         ScrollView {
                             VStack(spacing: 18) {
@@ -37,6 +36,9 @@ struct PlayerView: View {
                                     cornerRadius: OffScriptTheme.Radius.large
                                 )
                                 .frame(width: artworkSize, height: artworkSize)
+                                .scaleEffect(artworkAppeared ? 1.0 : 0.35)
+                                .opacity(artworkAppeared ? 1.0 : 0.0)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.78), value: artworkAppeared)
 
                                 VStack(spacing: 8) {
                                     Text(episode.title)
@@ -46,59 +48,44 @@ struct PlayerView: View {
                                         .fixedSize(horizontal: false, vertical: true)
 
                                     Text(episode.podcast.title)
-                                        .font(.headline)
+                                        .font(.offscriptCardTitle)
                                         .foregroundStyle(Color.offscriptTextSecondary)
 
-                                    HStack(spacing: 8) {
+                                    HStack(spacing: 10) {
+                                        OffScriptReasonBadge(text: player.currentTime > 0 ? "In session" : "Now playing")
                                         if let duration = episode.duration {
-                                            Text(EpisodeDurationFormatter.short(duration))
-                                                .font(.offscriptMeta)
-                                                .foregroundStyle(Color.offscriptTextMuted)
-                                        }
-                                        if isOfflineReady {
-                                            Image(systemName: "arrow.down.circle.fill")
-                                                .font(.caption)
-                                                .foregroundStyle(Color.offscriptAccent)
-                                        }
-                                        if !transcripts.isEmpty {
-                                            Image(systemName: "captions.bubble.fill")
-                                                .font(.caption)
-                                                .foregroundStyle(Color.offscriptAccent)
-                                        }
-                                        if let sleepTimerEndDate = player.sleepTimerEndDate {
-                                            Text("Sleep \(sleepTimerEndDate.formatted(date: .omitted, time: .shortened))")
-                                                .font(.offscriptMeta)
-                                                .foregroundStyle(Color.offscriptTextMuted)
+                                            OffScriptReasonBadge(text: EpisodeDurationFormatter.short(duration))
                                         }
                                     }
-
                                 }
 
-                                VStack(spacing: 8) {
-                                    OffScriptScrubber(
+                                VStack(alignment: .leading, spacing: 16) {
+                                    Slider(
                                         value: Binding(
-                                            get: { timePublisher.currentTime },
-                                            set: { _ in }
+                                            get: { player.currentTime },
+                                            set: { player.seek(to: $0) }
                                         ),
-                                        duration: timePublisher.duration,
-                                        onSeek: { player.seek(to: $0) }
+                                        in: 0...max(player.duration, 1)
                                     )
+                                    .tint(Color.offscriptAccent)
 
                                     HStack {
-                                        Text(time(timePublisher.currentTime))
+                                        Text(time(player.currentTime))
                                         Spacer()
                                         Text(remainingTime)
                                     }
                                     .font(.offscriptMeta.monospacedDigit())
                                     .foregroundStyle(Color.offscriptTextMuted)
+
                                 }
+                                .padding(20)
+                                .offscriptSurface()
                                 .frame(maxWidth: 440)
 
                                 HStack(spacing: 18) {
                                     PlayerCircleButton(systemImage: "gobackward.15", accessibilityLabel: "Skip back 15 seconds", isPrimary: false) {
                                         player.seek(by: -15)
                                     }
-                                    .sensoryFeedback(.impact(weight: .light), trigger: timePublisher.currentTime)
 
                                     PlayerCircleButton(
                                         systemImage: player.isPlaying ? "pause.fill" : "play.fill",
@@ -108,31 +95,18 @@ struct PlayerView: View {
                                     ) {
                                         player.togglePlayPause()
                                     }
-                                    .sensoryFeedback(.impact(flexibility: .soft), trigger: player.isPlaying)
 
                                     PlayerCircleButton(systemImage: "goforward.30", accessibilityLabel: "Skip forward 30 seconds", isPrimary: false) {
                                         player.seek(by: 30)
                                     }
-                                    .sensoryFeedback(.impact(weight: .light), trigger: timePublisher.currentTime)
 
                                     PlayerCircleButton(systemImage: "forward.end.fill", accessibilityLabel: "Play next queued episode", isPrimary: false) {
                                         player.skipToNextInQueue()
                                     }
-                                    .sensoryFeedback(.impact(weight: .medium), trigger: player.currentEpisode?.id)
                                 }
 
                                 if let nextItem {
                                     PlayerUpNextStrip(item: nextItem)
-                                        .frame(maxWidth: 440)
-                                }
-
-                                if !chapters.isEmpty {
-                                    PlayerChaptersSection(chapters: chapters)
-                                        .frame(maxWidth: 440)
-                                }
-
-                                if !transcripts.isEmpty {
-                                    PlayerTranscriptSection(transcripts: transcripts)
                                         .frame(maxWidth: 440)
                                 }
 
@@ -158,47 +132,19 @@ struct PlayerView: View {
                                     }
                                     .buttonStyle(SecondaryPillButtonStyle())
 
-                                    Menu {
-                                        Button("Play Next") {
-                                            try? QueueService.playNext(episode, in: modelContext)
+                                    if !episode.isQueued {
+                                        Button("Queue Next") {
+                                            do { try QueueService.add(episode, in: modelContext) } catch { playerLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
                                         }
-                                        Button("Add to End") {
-                                            try? QueueService.addToEnd(episode, in: modelContext)
-                                        }
-                                    } label: {
-                                        Label(episode.isQueued ? "Queued" : "Queue", systemImage: "text.badge.plus")
+                                        .buttonStyle(SecondaryPillButtonStyle())
                                     }
-                                    .buttonStyle(SecondaryPillButtonStyle())
-                                    .disabled(episode.isQueued)
 
                                     Button("Mark Played") {
-                                        player.completeCurrentEpisode(shouldAutoAdvance: false)
+                                        episode.isPlayed = true
+                                        episode.playedPosition = player.duration
+                                        do { try modelContext.save() } catch { playerLogger.error("Failed to save mark-played state: \(error.localizedDescription, privacy: .public)") }
                                     }
                                     .buttonStyle(PrimaryPillButtonStyle())
-                                }
-
-                                HStack(spacing: 10) {
-                                    Menu {
-                                        Button("15 minutes") { player.setSleepTimer(minutes: 15) }
-                                        Button("30 minutes") { player.setSleepTimer(minutes: 30) }
-                                        Button("60 minutes") { player.setSleepTimer(minutes: 60) }
-                                        if player.sleepTimerEndDate != nil {
-                                            Button("Cancel Timer", role: .destructive) { player.cancelSleepTimer() }
-                                        }
-                                    } label: {
-                                        Image(systemName: "moon.zzz.fill")
-                                    }
-                                    .buttonStyle(SecondaryPillButtonStyle())
-
-                                    AirPlayRouteButton()
-                                        .frame(width: 44, height: 36)
-
-                                    ShareLink(item: episode.audioURL) {
-                                        Image(systemName: "square.and.arrow.up")
-                                    }
-                                    .buttonStyle(SecondaryPillButtonStyle())
-
-                                    DownloadButton(episode: episode)
                                 }
 
                                 Spacer(minLength: 8)
@@ -217,19 +163,38 @@ struct PlayerView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    Button("Done") {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
                         dismiss()
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(Color.offscriptTextSecondary)
+                            .frame(width: 36, height: 36)
+                            .background(Color.offscriptSurfaceLight)
+                            .clipShape(Circle())
                     }
+                    .accessibilityLabel("Close player")
                 }
             }
         }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
+        .onAppear {
+            withAnimation {
+                artworkAppeared = true
+            }
+        }
+        .onDisappear {
+            artworkAppeared = false
+        }
+    }
+
+    private var progressValue: Double {
+        guard player.duration > 0 else { return 0 }
+        return player.currentTime / player.duration
     }
 
     private var remainingTime: String {
-        let remaining = max(timePublisher.duration - timePublisher.currentTime, 0)
+        let remaining = max(player.duration - player.currentTime, 0)
         return "-\(time(remaining))"
     }
 
@@ -240,18 +205,6 @@ struct PlayerView: View {
         let seconds = totalSeconds % 60
         return "\(minutes):\(String(format: "%02d", seconds))"
     }
-}
-
-private struct AirPlayRouteButton: UIViewRepresentable {
-    func makeUIView(context: Context) -> AVRoutePickerView {
-        let view = AVRoutePickerView()
-        view.activeTintColor = UIColor(Color.offscriptAccent)
-        view.tintColor = UIColor(Color.offscriptTextPrimary)
-        view.prioritizesVideoDevices = false
-        return view
-    }
-
-    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
 }
 
 private struct PlayerCircleButton: View {
@@ -271,7 +224,7 @@ private struct PlayerCircleButton: View {
                 .font(.system(size: isPrimary ? 28 : 22, weight: .semibold))
                 .foregroundStyle(isPrimary ? Color.black : Color.offscriptTextPrimary)
                 .frame(width: size, height: size)
-                .background(isPrimary ? Color.offscriptAccent : Color.offscriptFillLight)
+                .background(isPrimary ? Color.offscriptAccent : Color.offscriptSurfaceLight)
                 .clipShape(Circle())
                 .overlay(
                     Circle()
@@ -291,56 +244,40 @@ private struct PlayerCircleButton: View {
 }
 
 private struct PlayerUpNextStrip: View {
-    @ObservedObject private var player = PlaybackController.shared
     let item: QueueItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 14) {
-                OffScriptArtworkView(
-                    url: item.episode.artworkURL ?? item.episode.podcast.artworkURL,
-                    cornerRadius: OffScriptTheme.Radius.small
-                )
-                .frame(width: 56, height: 56)
+        HStack(spacing: 14) {
+            OffScriptArtworkView(
+                url: item.episode.artworkURL ?? item.episode.podcast.artworkURL,
+                cornerRadius: OffScriptTheme.Radius.small
+            )
+            .frame(width: 56, height: 56)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 8) {
-                        OffScriptReasonBadge(text: "Up Next")
-                        if let duration = item.episode.duration {
-                            Text(EpisodeDurationFormatter.short(duration))
-                                .font(.offscriptMeta)
-                                .foregroundStyle(Color.offscriptTextMuted)
-                        }
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    OffScriptReasonBadge(text: "Up Next")
+                    if let duration = item.episode.duration {
+                        Text(EpisodeDurationFormatter.short(duration))
+                            .font(.offscriptMeta)
+                            .foregroundStyle(Color.offscriptTextMuted)
                     }
-
-                    Text(item.episode.title)
-                        .font(.headline)
-                        .foregroundStyle(Color.offscriptTextPrimary)
-                        .lineLimit(2)
-
-                    Text(item.episode.podcast.title)
-                        .font(.offscriptBody)
-                        .foregroundStyle(Color.offscriptTextSecondary)
-                        .lineLimit(1)
                 }
 
-                Spacer()
+                Text(item.episode.title)
+                    .font(.offscriptCardTitle)
+                    .foregroundStyle(Color.offscriptTextPrimary)
+                    .lineLimit(2)
+
+                Text(item.episode.podcast.title)
+                    .font(.offscriptBody)
+                    .foregroundStyle(Color.offscriptTextSecondary)
+                    .lineLimit(1)
             }
 
-            HStack(spacing: 10) {
-                Text("Autoplays when this episode ends.")
-                    .font(.offscriptMeta)
-                    .foregroundStyle(Color.offscriptTextMuted)
-
-                Spacer()
-
-                Button("Play Next Now") {
-                    player.skipToNextInQueue()
-                }
-                .buttonStyle(SecondaryPillButtonStyle())
-            }
+            Spacer()
         }
-        .padding(18)
+        .padding(16)
         .offscriptSurface()
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Up next: \(item.episode.title) from \(item.episode.podcast.title)")
@@ -369,24 +306,27 @@ private struct PlayerWhatsNextSection: View {
                         PlayerSuggestionRow(scored: scored)
                     }
                 }
-                .padding(18)
+                .padding(16)
                 .offscriptSurface()
             }
         }
-        .task(id: currentEpisode.id) { loadSuggestions() }
+        .onAppear { loadSuggestions() }
     }
 
     @MainActor
     private func loadSuggestions() {
-        suggestions = []
-        if let results = try? recommendationService.playerSuggestions(
-            currentEpisode: currentEpisode,
-            context: modelContext,
-            limit: 3
-        ) {
+        guard suggestions.isEmpty else { return }
+        do {
+            let results = try recommendationService.playerSuggestions(
+                currentEpisode: currentEpisode,
+                context: modelContext,
+                limit: 3
+            )
             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                 suggestions = results
             }
+        } catch {
+            playerLogger.error("Failed to load player suggestions: \(error.localizedDescription, privacy: .public)")
         }
     }
 }
@@ -407,7 +347,7 @@ private struct PlayerSuggestionRow: View {
                 OffScriptExplanationTag(text: scored.explanation)
 
                 Text(scored.episode.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.offscriptCardTitle)
                     .foregroundStyle(Color.offscriptTextPrimary)
                     .lineLimit(1)
 
@@ -420,15 +360,6 @@ private struct PlayerSuggestionRow: View {
             Spacer()
 
             Button {
-                TelemetryService.track(
-                    "recommendation_opened",
-                    metadata: [
-                        "source": "player",
-                        "episode": scored.episode.title,
-                        "podcast": scored.episode.podcast.title
-                    ],
-                    in: modelContext
-                )
                 PlaybackController.shared.play(scored.episode, in: modelContext)
             } label: {
                 Image(systemName: "play.fill")
@@ -444,121 +375,8 @@ private struct PlayerSuggestionRow: View {
     }
 }
 
-private struct PlayerChaptersSection: View {
-    let chapters: [EpisodeChapter]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Chapters")
-                .font(.offscriptSectionTitle)
-                .foregroundStyle(Color.offscriptTextPrimary)
-
-            VStack(spacing: 10) {
-                ForEach(chapters) { chapter in
-                    Button {
-                        PlaybackController.shared.seek(to: chapter.startTime)
-                    } label: {
-                        HStack(spacing: 12) {
-                            Text(Self.timestamp(chapter.startTime))
-                                .font(.offscriptMeta.monospacedDigit())
-                                .foregroundStyle(Color.offscriptAccent)
-                                .frame(width: 46, alignment: .leading)
-
-                            Text(chapter.title)
-                                .font(.offscriptBody)
-                                .foregroundStyle(Color.offscriptTextPrimary)
-                                .multilineTextAlignment(.leading)
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(Color.offscriptTextMuted)
-                        }
-                        .padding(14)
-                        .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Jump to \(chapter.title) at \(Self.timestamp(chapter.startTime))")
-                }
-            }
-        }
-        .padding(18)
-        .offscriptSurface()
-    }
-
-    private static func timestamp(_ seconds: TimeInterval) -> String {
-        let totalSeconds = Int(seconds)
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-        let remainder = totalSeconds % 60
-        if hours > 0 {
-            return "\(hours):\(String(format: "%02d", minutes)):\(String(format: "%02d", remainder))"
-        }
-        return "\(minutes):\(String(format: "%02d", remainder))"
-    }
-}
-
-private struct PlayerTranscriptSection: View {
-    let transcripts: [EpisodeTranscriptReference]
-    @State private var transcriptURL: URL? = nil
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Transcript")
-                .font(.offscriptSectionTitle)
-                .foregroundStyle(Color.offscriptTextPrimary)
-
-            VStack(spacing: 10) {
-                ForEach(transcripts) { transcript in
-                    Button {
-                        transcriptURL = transcript.url
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "captions.bubble.fill")
-                                .font(.body)
-                                .foregroundStyle(Color.offscriptAccent)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(transcript.displayTitle)
-                                    .font(.offscriptBody.weight(.semibold))
-                                    .foregroundStyle(Color.offscriptTextPrimary)
-
-                                Text(transcript.accessoryLabel)
-                                    .font(.offscriptMeta)
-                                    .foregroundStyle(Color.offscriptTextMuted)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "doc.text")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(Color.offscriptTextMuted)
-                        }
-                        .padding(14)
-                        .offscriptUtilitySurface(radius: OffScriptTheme.Radius.small)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open \(transcript.displayTitle) transcript")
-                    .accessibilityHint("Opens transcript in browser")
-                }
-            }
-        }
-        .padding(18)
-        .offscriptSurface()
-        .sheet(item: Binding(
-            get: { transcriptURL.map { IdentifiableURL(url: $0) } },
-            set: { transcriptURL = $0?.url }
-        )) { item in
-            SafariView(url: item.url)
-                .ignoresSafeArea()
-        }
-    }
-}
-
 private struct PlayerAtmosphereBackground: View {
     let url: URL?
-    @State private var breathe = false
 
     var body: some View {
         ZStack {
@@ -574,9 +392,6 @@ private struct PlayerAtmosphereBackground: View {
                         .opacity(0.22)
                         .ignoresSafeArea()
                         .saturation(0.7)
-                        .scaleEffect(breathe ? 1.04 : 1.0)
-                        .animation(.easeInOut(duration: 8).repeatForever(autoreverses: true), value: breathe)
-                        .onAppear { breathe = true }
                 }
             }
 

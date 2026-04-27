@@ -1,71 +1,33 @@
+import OSLog
 import SwiftData
 import SwiftUI
+
+private let libraryLogger = Logger(subsystem: "com.offscript", category: "Library")
 
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var podcasts: [Podcast]
-    // Scope to subscribed podcasts at the database level to avoid loading all episodes
-    @Query(
-        filter: #Predicate<Episode> { $0.podcast.isSubscribed == true },
-        sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]
-    ) private var episodes: [Episode]
-    @State private var showDownloadedOnly = AppSettings.libraryShowDownloadedOnly
-    @State private var sortMode = AppSettings.LibrarySortMode.newest
-    @State private var syncError: String?
+    @Query(sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]) private var episodes: [Episode]
     let onOpenSettings: () -> Void
+
+    private let syncService = FeedSyncService()
 
     private var subscribedPodcasts: [Podcast] {
         podcasts
             .filter(\.isSubscribed)
-            .sorted(by: comparePodcasts)
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
     private var inProgressEpisodes: [Episode] {
         episodes
-            .filter { $0.playedPosition > 0 && !$0.isPlayed }
-            .filter { !showDownloadedOnly || $0.downloadState == .downloaded }
+            .filter { $0.podcast.isSubscribed && $0.playedPosition > 0 && !$0.isPlayed }
             .sorted { ($0.lastPlayedAt ?? .distantPast) > ($1.lastPlayedAt ?? .distantPast) }
     }
 
     private var freshEpisodes: [Episode] {
         episodes
-            .filter { !$0.isPlayed }
-            .filter { !showDownloadedOnly || $0.downloadState == .downloaded }
+            .filter { $0.podcast.isSubscribed && !$0.isPlayed }
             .sorted { $0.pubDate > $1.pubDate }
-    }
-
-    private var downloadedEpisodes: [Episode] {
-        episodes
-            .filter { $0.downloadState == .downloaded }
-            .sorted { ($0.downloadCompletedAt ?? .distantPast) > ($1.downloadCompletedAt ?? .distantPast) }
-    }
-
-    private var downloadActivityEpisodes: [Episode] {
-        episodes
-            .filter { $0.downloadState == .queued || $0.downloadState == .downloading || $0.downloadState == .failed }
-            .sorted { lhs, rhs in
-                let lhsDate = lhs.downloadRequestedAt ?? lhs.pubDate
-                let rhsDate = rhs.downloadRequestedAt ?? rhs.pubDate
-                return lhsDate > rhsDate
-            }
-    }
-
-    /// Pre-computed podcast-to-count dictionaries so the ForEach below is O(1) per row
-    /// instead of O(podcasts * episodes).
-    private var unplayedCountByPodcast: [UUID: Int] {
-        var counts: [UUID: Int] = [:]
-        for episode in freshEpisodes {
-            counts[episode.podcast.id, default: 0] += 1
-        }
-        return counts
-    }
-
-    private var inProgressCountByPodcast: [UUID: Int] {
-        var counts: [UUID: Int] = [:]
-        for episode in inProgressEpisodes {
-            counts[episode.podcast.id, default: 0] += 1
-        }
-        return counts
     }
 
     var body: some View {
@@ -74,9 +36,7 @@ struct LibraryView: View {
                 LibraryHeader(
                     showCount: subscribedPodcasts.count,
                     unplayedCount: freshEpisodes.count,
-                    inProgressCount: inProgressEpisodes.count,
-                    downloadedCount: downloadedEpisodes.count,
-                    showDownloadedOnly: showDownloadedOnly
+                    inProgressCount: inProgressEpisodes.count
                 )
 
                 if subscribedPodcasts.isEmpty {
@@ -119,24 +79,6 @@ struct LibraryView: View {
                         )
                     }
 
-                    if !downloadActivityEpisodes.isEmpty {
-                        LibraryDownloadActivitySection(episodes: downloadActivityEpisodes)
-                    }
-
-                    if !downloadedEpisodes.isEmpty {
-                        LibraryEpisodeRail(
-                            title: "Downloaded",
-                            subtitle: "Ready when the signal drops.",
-                            episodes: Array(downloadedEpisodes.prefix(10)),
-                            reasonProvider: { episode in
-                                if let duration = episode.duration {
-                                    return "Offline • \(EpisodeDurationFormatter.short(duration))"
-                                }
-                                return "Offline"
-                            }
-                        )
-                    }
-
                     VStack(alignment: .leading, spacing: 14) {
                         OffScriptSectionHeader(
                             title: "Shows",
@@ -151,8 +93,8 @@ struct LibraryView: View {
                                 } label: {
                                     PodcastShelfCard(
                                         podcast: podcast,
-                                        unplayedCount: unplayedCountByPodcast[podcast.id] ?? 0,
-                                        inProgressCount: inProgressCountByPodcast[podcast.id] ?? 0
+                                        unplayedCount: freshEpisodes.filter { $0.podcast.id == podcast.id }.count,
+                                        inProgressCount: inProgressEpisodes.filter { $0.podcast.id == podcast.id }.count
                                     )
                                 }
                                 .buttonStyle(.plain)
@@ -163,7 +105,7 @@ struct LibraryView: View {
                 }
             }
             .padding(.top, 16)
-            .padding(.bottom, 0)
+            .padding(.bottom, 90)
         }
         .offscriptPageBackground()
         .navigationTitle("Library")
@@ -172,21 +114,6 @@ struct LibraryView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .refreshable { await syncSubscriptions() }
-        .overlay(alignment: .top) {
-            if let syncError {
-                Text(syncError)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.offscriptDestructive.opacity(0.92))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(.horizontal, OffScriptTheme.pagePadding)
-                    .padding(.top, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .animation(.easeInOut(duration: 0.3), value: syncError != nil)
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 Button(action: onOpenSettings) {
@@ -195,79 +122,31 @@ struct LibraryView: View {
                 .accessibilityLabel("Open settings")
                 .accessibilityHint("Adjust playback and recommendation preferences")
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Toggle("Downloaded only", isOn: $showDownloadedOnly)
-
-                    Picker("Sort library", selection: $sortMode) {
-                        Text("Newest").tag(AppSettings.LibrarySortMode.newest)
-                        Text("Oldest").tag(AppSettings.LibrarySortMode.oldest)
-                        Text("Recently Played").tag(AppSettings.LibrarySortMode.recentlyPlayed)
-                    }
-                } label: {
-                    Image(systemName: "line.3.horizontal.decrease.circle")
-                }
-                .accessibilityLabel("Filter library")
-            }
-        }
-        .task {
-            sortMode = AppSettings.librarySortMode
-        }
-        .onChange(of: showDownloadedOnly) { _, newValue in
-            AppSettings.libraryShowDownloadedOnly = newValue
-        }
-        .onChange(of: sortMode) { _, newValue in
-            AppSettings.librarySortMode = newValue
         }
     }
 
     @MainActor
     private func syncSubscriptions() async {
-        syncError = nil
-        await SyncCoordinator.shared.refreshSubscriptions(subscribedPodcasts, force: true)
-
-        // Check for any sync failures after refresh completes
-        let failedPodcasts = subscribedPodcasts.filter { $0.syncStatus == "failed" }
-        if !failedPodcasts.isEmpty {
-            let names = failedPodcasts.prefix(2).map(\.title).joined(separator: ", ")
-            let suffix = failedPodcasts.count > 2 ? " and \(failedPodcasts.count - 2) more" : ""
-            syncError = "Sync failed for \(names)\(suffix)"
-
-            Task {
-                try? await Task.sleep(for: .seconds(3))
-                syncError = nil
+        for podcast in subscribedPodcasts {
+            do {
+                try await syncService.sync(podcast: podcast, in: modelContext)
+            } catch {
+                libraryLogger.error("Pull-to-refresh sync failed for '\(podcast.title, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             }
         }
-    }
-
-    private func comparePodcasts(_ lhs: Podcast, _ rhs: Podcast) -> Bool {
-        switch sortMode {
-        case .newest:
-            return (lhs.latestPubDate ?? .distantPast) > (rhs.latestPubDate ?? .distantPast)
-        case .oldest:
-            return (lhs.latestPubDate ?? .distantFuture) < (rhs.latestPubDate ?? .distantFuture)
-        case .recentlyPlayed:
-            return lastPlayedDate(for: lhs) > lastPlayedDate(for: rhs)
-        }
-    }
-
-    private func lastPlayedDate(for podcast: Podcast) -> Date {
-        episodes
-            .filter { $0.podcast.id == podcast.id }
-            .compactMap(\.lastPlayedAt)
-            .max() ?? .distantPast
     }
 }
 
 struct PodcastDetailView: View {
     @Environment(\.modelContext) private var modelContext
     let podcast: Podcast
-    @Query private var podcastEpisodes: [Episode]
+    @Query(sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]) private var allEpisodes: [Episode]
     @State private var filter: EpisodeFilter = .all
     @State private var episodeSearchQuery = ""
 
     private var episodes: [Episode] {
-        let filtered = podcastEpisodes
+        let filtered = allEpisodes
+            .filter { $0.podcast.id == podcast.id }
             .filter { filter.matches($0) }
 
         if episodeSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -281,54 +160,14 @@ struct PodcastDetailView: View {
         }
     }
 
-    private var latestUnplayedEpisode: Episode? {
-        podcastEpisodes
-            .filter { !$0.isPlayed }
-            .sorted { $0.pubDate > $1.pubDate }
-            .first
-    }
-
     init(podcast: Podcast) {
         self.podcast = podcast
-        // Scope the @Query to only episodes belonging to this podcast.
-        // Use the stable UUID instead of persistentModelID, which SwiftData
-        // cannot always translate into a reliable SQLite predicate.
-        let podcastID = podcast.id
-        _podcastEpisodes = Query(
-            filter: #Predicate<Episode> { $0.podcast.id == podcastID },
-            sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]
-        )
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
                 PodcastDetailHeader(podcast: podcast, episodeCount: episodes.count)
-
-                if let latest = latestUnplayedEpisode {
-                    HStack(spacing: 10) {
-                        Button(latest.playedPosition > 0 ? "Resume Latest" : "Play Latest") {
-                            PlaybackController.shared.play(latest, in: modelContext)
-                        }
-                        .buttonStyle(PrimaryPillButtonStyle())
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(latest.title)
-                                .font(.offscriptMeta)
-                                .foregroundStyle(Color.offscriptTextSecondary)
-                                .lineLimit(1)
-                            if let duration = latest.duration {
-                                let timeLabel = latest.playedPosition > 0
-                                    ? "\(EpisodeDurationFormatter.short(max(0, duration - latest.playedPosition))) left"
-                                    : EpisodeDurationFormatter.short(duration)
-                                Text(timeLabel)
-                                    .font(.offscriptMicro)
-                                    .foregroundStyle(Color.offscriptTextMuted)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, OffScriptTheme.pagePadding)
-                }
 
                 FilterRow(selection: $filter)
                     .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -339,17 +178,14 @@ struct PodcastDetailView: View {
                 } else {
                     LazyVStack(spacing: 14) {
                         ForEach(episodes) { episode in
-                            EpisodeCompactCard(
-                                episode: episode,
-                                showPodcastTitle: false
-                            )
-                            .padding(.horizontal, OffScriptTheme.pagePadding)
+                            PodcastEpisodeCard(episode: episode)
+                                .padding(.horizontal, OffScriptTheme.pagePadding)
                         }
                     }
                 }
             }
             .padding(.top, 16)
-            .padding(.bottom, 0)
+            .padding(.bottom, 90)
         }
         .offscriptPageBackground()
         .navigationTitle(podcast.title)
@@ -362,8 +198,6 @@ private struct LibraryHeader: View {
     let showCount: Int
     let unplayedCount: Int
     let inProgressCount: Int
-    let downloadedCount: Int
-    let showDownloadedOnly: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -381,11 +215,6 @@ private struct LibraryHeader: View {
                 LibraryStatPill(label: "Shows", value: "\(showCount)")
                 LibraryStatPill(label: "Unplayed", value: "\(unplayedCount)")
                 LibraryStatPill(label: "In Progress", value: "\(inProgressCount)")
-                LibraryStatPill(label: "Downloads", value: "\(downloadedCount)")
-            }
-
-            if showDownloadedOnly {
-                OffScriptReasonBadge(text: "Downloaded only")
             }
         }
         .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -425,12 +254,9 @@ private struct LibraryEpisodeRail: View {
                 .padding(.horizontal, OffScriptTheme.pagePadding)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: OffScriptTheme.itemSpacing) {
+                HStack(spacing: 18) {
                     ForEach(episodes) { episode in
-                        EpisodeVerticalCard(
-                            episode: episode,
-                            explanationTag: reasonProvider(episode)
-                        )
+                        LibraryEpisodeCard(episode: episode, reason: reasonProvider(episode))
                     }
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -439,79 +265,79 @@ private struct LibraryEpisodeRail: View {
     }
 }
 
-private struct LibraryDownloadActivitySection: View {
-    let episodes: [Episode]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            OffScriptSectionHeader(
-                title: "Download Activity",
-                subtitle: "Watch offline saves finish, or retry anything that got interrupted."
-            )
-            .padding(.horizontal, OffScriptTheme.pagePadding)
-
-            LazyVStack(spacing: 12) {
-                ForEach(episodes) { episode in
-                    LibraryDownloadStatusCard(episode: episode)
-                        .padding(.horizontal, OffScriptTheme.pagePadding)
-                }
-            }
-        }
-    }
-}
-
-private struct LibraryDownloadStatusCard: View {
-    @ObservedObject private var downloadService = DownloadService.shared
+private struct LibraryEpisodeCard: View {
+    @Environment(\.modelContext) private var modelContext
     let episode: Episode
+    let reason: String
 
     var body: some View {
-        HStack(spacing: 14) {
-            OffScriptArtworkView(url: episode.artworkURL ?? episode.podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.small)
-                .frame(width: 54, height: 54)
+        ZStack {
+            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.offscriptCardRaised, Color.offscriptCardUtility],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
 
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
-                    OffScriptReasonBadge(text: stateLabel)
+            VStack(alignment: .leading, spacing: 12) {
+                NavigationLink {
+                    EpisodeDetailView(episode: episode)
+                } label: {
+                    HStack(alignment: .top, spacing: 14) {
+                        OffScriptArtworkView(
+                            url: episode.artworkURL ?? episode.podcast.artworkURL,
+                            cornerRadius: OffScriptTheme.Radius.small
+                        )
+                        .frame(width: 90, height: 90)
 
-                    if let duration = episode.duration {
-                        Text(EpisodeDurationFormatter.short(duration))
-                            .font(.offscriptMeta)
-                            .foregroundStyle(Color.offscriptTextMuted)
+                        VStack(alignment: .leading, spacing: 8) {
+                            OffScriptReasonBadge(text: reason)
+
+                            Text(episode.title)
+                                .font(.offscriptCardTitle)
+                                .foregroundStyle(Color.offscriptTextPrimary)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+
+                            Text(episode.podcast.title)
+                                .font(.offscriptBody)
+                                .foregroundStyle(Color.offscriptTextSecondary)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+                .buttonStyle(.plain)
 
-                Text(episode.title)
-                    .font(.headline)
-                    .foregroundStyle(Color.offscriptTextPrimary)
-                    .lineLimit(2)
+                HStack(spacing: 10) {
+                    Button("Play") {
+                        PlaybackController.shared.play(episode, in: modelContext)
+                    }
+                    .buttonStyle(PrimaryPillButtonStyle())
 
-                Text(downloadService.statusText(for: episode) ?? "Offline status unknown")
-                    .font(.offscriptMeta)
-                    .foregroundStyle(episode.downloadState == .failed ? Color.offscriptDestructive : Color.offscriptTextSecondary)
-                    .lineLimit(2)
+                    Button {
+                        do { try QueueService.add(episode, in: modelContext) } catch { libraryLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
+                    } label: {
+                        Image(systemName: episode.isQueued ? "checkmark" : "plus")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.offscriptTextPrimary)
+                            .frame(width: 36, height: 36)
+                            .background(Color.offscriptSurfaceLight)
+                            .clipShape(Circle())
+                    }
+                    .disabled(episode.isQueued)
+                }
             }
-
-            Spacer()
-
-            DownloadButton(episode: episode)
+            .padding(16)
         }
-        .padding(16)
-        .offscriptUtilitySurface()
-    }
-
-    private var stateLabel: String {
-        switch episode.downloadState {
-        case .queued:
-            return "Queued"
-        case .downloading:
-            return "Downloading"
-        case .failed:
-            return "Needs Retry"
-        case .downloaded:
-            return "Offline"
-        case .notDownloaded:
-            return "Not Saved"
-        }
+        .frame(width: 286, alignment: .leading)
+        .overlay(
+            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
+                .stroke(Color.offscriptHairline, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.2), radius: 12, y: 6)
     }
 }
 
@@ -543,22 +369,12 @@ private struct PodcastShelfCard: View {
                         OffScriptReasonBadge(text: "\(inProgressCount) in progress")
                     }
                     OffScriptReasonBadge(text: "\(unplayedCount) unplayed")
-                    if podcast.syncStatus == "failed" {
-                        OffScriptReasonBadge(text: "Sync issue")
-                    }
                 }
 
                 if let latestPubDate = podcast.latestPubDate {
                     Text("Updated \(latestPubDate.formatted(date: .abbreviated, time: .omitted))")
                         .font(.offscriptMeta)
                         .foregroundStyle(Color.offscriptTextMuted)
-                }
-
-                if let syncErrorMessage = podcast.syncErrorMessage, podcast.syncStatus == "failed" {
-                    Text(syncErrorMessage)
-                        .font(.offscriptMeta)
-                        .foregroundStyle(Color.offscriptDestructive)
-                        .lineLimit(2)
                 }
             }
 
@@ -568,30 +384,33 @@ private struct PodcastShelfCard: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(Color.offscriptTextMuted)
         }
-        .padding(18)
+        .padding(16)
         .offscriptSurface()
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(podcast.title)\(podcast.author.map { ", by \($0)" } ?? ""), \(unplayedCount) unplayed")
     }
 }
 
 private struct PodcastDetailHeader: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openURL) private var openURL
     let podcast: Podcast
     let episodeCount: Int
+    @State private var showUnsubscribeConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top, spacing: 18) {
                 OffScriptArtworkView(url: podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.large)
-                    .frame(width: 96, height: 96)
+                    .frame(width: 122, height: 122)
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(podcast.title)
+                        .font(.offscriptDisplay)
+                        .foregroundStyle(Color.offscriptTextPrimary)
+
                     if let author = podcast.author {
                         Text(author)
-                            .font(.offscriptMeta)
-                            .foregroundStyle(Color.offscriptTextMuted)
-                            .lineLimit(1)
+                            .font(.offscriptCardTitle)
+                            .foregroundStyle(Color.offscriptTextSecondary)
                     }
 
                     HStack(spacing: 8) {
@@ -603,33 +422,135 @@ private struct PodcastDetailHeader: View {
                 }
             }
 
-            Text(podcast.title)
-                .font(.offscriptDisplay)
-                .foregroundStyle(Color.offscriptTextPrimary)
-                .lineLimit(3)
-
             if let summary = podcast.summary {
-                Text(summary.strippingHTML)
+                Text(summary)
                     .font(.offscriptBody)
                     .foregroundStyle(Color.offscriptTextSecondary)
-                    .lineLimit(4)
             }
 
-            if podcast.isSubscribed {
-                Button("Unsubscribe") {
-                    withAnimation {
-                        podcast.isSubscribed = false
-                        try? modelContext.save()
+            HStack(spacing: 12) {
+                if podcast.isSubscribed {
+                    Button("Unsubscribe") {
+                        showUnsubscribeConfirmation = true
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.red.opacity(0.85))
+                    .confirmationDialog(
+                        "Unsubscribe from \(podcast.title)?",
+                        isPresented: $showUnsubscribeConfirmation,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Unsubscribe", role: .destructive) {
+                            withAnimation {
+                                podcast.isSubscribed = false
+                                do {
+                                    let queueItems = try QueueService.orderedItems(in: modelContext)
+                                    for item in queueItems where item.episode.podcast.id == podcast.id {
+                                        try QueueService.remove(item, in: modelContext)
+                                    }
+                                    try modelContext.save()
+                                } catch {
+                                    libraryLogger.error("Failed to save unsubscribe: \(error.localizedDescription, privacy: .public)")
+                                }
+                            }
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("This will remove the show from your library and dequeue its episodes.")
                     }
                 }
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.red.opacity(0.85))
+
+                if let url = podcast.websiteURL {
+                    Button {
+                        openURL(url)
+                    } label: {
+                        Label("Visit Website", systemImage: "safari")
+                    }
+                    .buttonStyle(SecondaryPillButtonStyle())
+                }
             }
         }
         .padding(.horizontal, OffScriptTheme.pagePadding)
     }
 }
 
+private struct PodcastEpisodeCard: View {
+    @Environment(\.modelContext) private var modelContext
+    let episode: Episode
+
+    private var progressValue: Double {
+        guard let duration = episode.duration, duration > 0 else { return 0 }
+        return episode.playedPosition / duration
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            NavigationLink {
+                EpisodeDetailView(episode: episode)
+            } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(episode.title)
+                        .font(.offscriptCardTitle)
+                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .multilineTextAlignment(.leading)
+
+                    Text(metadata)
+                        .font(.offscriptMeta)
+                        .foregroundStyle(Color.offscriptTextMuted)
+
+                    if let summary = episode.summary {
+                        Text(summary)
+                            .font(.offscriptBody)
+                            .foregroundStyle(Color.offscriptTextSecondary)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+
+            if progressValue > 0 {
+                OffScriptProgressBar(value: progressValue, height: 5)
+            }
+
+            HStack(spacing: 10) {
+                Button("Play") {
+                    PlaybackController.shared.play(episode, in: modelContext)
+                }
+                .buttonStyle(PrimaryPillButtonStyle())
+
+                Button {
+                    do { try QueueService.add(episode, in: modelContext) } catch { libraryLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
+                } label: {
+                    Image(systemName: episode.isQueued ? "checkmark" : "plus")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .frame(width: 36, height: 36)
+                        .background(Color.offscriptSurfaceLight)
+                        .clipShape(Circle())
+                }
+                .disabled(episode.isQueued)
+            }
+        }
+        .padding(16)
+        .offscriptSurface()
+    }
+
+    private var metadata: String {
+        var parts: [String] = []
+        if let s = episode.seasonNumber, let e = episode.episodeNumber {
+            parts.append("S\(s) E\(e)")
+        } else if let e = episode.episodeNumber {
+            parts.append("E\(e)")
+        }
+        parts.append(episode.pubDate.formatted(date: .abbreviated, time: .omitted))
+        if let duration = episode.duration {
+            parts.append(EpisodeDurationFormatter.short(duration))
+        }
+        return parts.joined(separator: " \u{2022} ")
+    }
+}
 
 private struct FilterRow: View {
     @Binding var selection: EpisodeFilter
@@ -658,7 +579,7 @@ private struct FilterChipStyle: ButtonStyle {
             .foregroundStyle(isSelected ? Color.black : Color.offscriptTextPrimary)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .background(isSelected ? Color.offscriptAccent : Color.white.opacity(configuration.isPressed ? 0.12 : 0.08))
+            .background(isSelected ? Color.offscriptAccent : (configuration.isPressed ? Color.offscriptSurfaceMedium : Color.offscriptSurfaceLight))
             .clipShape(Capsule())
             .overlay(
                 Capsule()

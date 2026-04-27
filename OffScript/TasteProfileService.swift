@@ -24,7 +24,7 @@ enum TasteProfileService {
         let likedEpisodeIDs = Set(
             preferenceSignals
                 .filter { $0.action == .like || $0.action == .moreLikeThis }
-                .compactMap(\.episode?.id)
+                .map(\.episode.id)
         )
 
         let likedTags = episodeProfiles
