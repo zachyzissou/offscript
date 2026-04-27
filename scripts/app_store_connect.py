@@ -688,6 +688,82 @@ def command_xcode_cloud_probe(args: argparse.Namespace) -> None:
             print(f"    workflows query failed: {exc}")
 
 
+def command_xcode_cloud_inspect(args: argparse.Namespace) -> None:
+    """
+    Drill into a single Xcode Cloud workflow: dump the start condition,
+    actions, and the last N build runs with their status. Tells us
+    whether the existing workflow does what we want before we either
+    rely on it or create a new one.
+    """
+    client = ASCClient()
+    workflow_id = args.workflow_id
+
+    print(f"Workflow {workflow_id}")
+    body = client.request(
+        "GET",
+        f"/v1/ciWorkflows/{workflow_id}",
+        params={"include": "macOsVersion,xcodeVersion,product"},
+    )
+    wf = body.get("data", {})
+    a = attrs(wf)
+    print(f"  name: {a.get('name')!r}")
+    print(f"  description: {a.get('description')!r}")
+    print(f"  enabled: {a.get('isEnabled')}")
+    print(f"  lastModified: {a.get('lastModifiedDate')}")
+    print(f"  branchStartCondition: {json.dumps(a.get('branchStartCondition'), indent=2)}")
+    print(f"  pullRequestStartCondition: {json.dumps(a.get('pullRequestStartCondition'), indent=2)}")
+    print(f"  tagStartCondition: {json.dumps(a.get('tagStartCondition'), indent=2)}")
+    print(f"  scheduledStartCondition: {json.dumps(a.get('scheduledStartCondition'), indent=2)}")
+    actions = a.get("actions") or []
+    print(f"  actions: {len(actions)}")
+    for action in actions:
+        print(f"    - {json.dumps(action, indent=6)}")
+
+    print()
+    print(f"Recent build runs (limit {args.limit}):")
+    try:
+        runs_body = client.request(
+            "GET",
+            f"/v1/ciWorkflows/{workflow_id}/buildRuns",
+            params={"limit": args.limit, "sort": "-number"},
+        )
+        for run in runs_body.get("data", []):
+            ra = attrs(run)
+            print(f"  RUN #{ra.get('number')} {run.get('id')} "
+                  f"status={ra.get('executionProgress')}/{ra.get('completionStatus')}, "
+                  f"start={ra.get('startReason')}, src={ra.get('sourceCommit', {}).get('htmlUrl', '?')}")
+    except ASCError as exc:
+        print(f"  buildRuns query failed: {exc}")
+
+
+def command_xcode_cloud_start_build(args: argparse.Namespace) -> None:
+    """
+    Manually kick off a build via POST /v1/ciBuildRuns. Useful for
+    one-shot validation that the workflow + signing are healthy without
+    pushing a code change.
+    """
+    client = ASCClient()
+    payload = {
+        "data": {
+            "type": "ciBuildRuns",
+            "relationships": {
+                "workflow": {
+                    "data": {
+                        "type": "ciWorkflows",
+                        "id": args.workflow_id,
+                    }
+                }
+            }
+        }
+    }
+    body = client.request("POST", "/v1/ciBuildRuns", json=payload)
+    run = body.get("data", {})
+    a = attrs(run)
+    print(f"Started build run {run.get('id')} (number {a.get('number')})")
+    print(f"  executionProgress: {a.get('executionProgress')}")
+    print(f"  startReason: {a.get('startReason')}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Read App Store Connect status for OffScript.")
     parser.add_argument("--env", type=Path, help="Optional env file to load before defaults.")
@@ -737,6 +813,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Check whether Xcode Cloud is provisioned for this app and list any existing workflows.",
     )
     xcc_probe.set_defaults(func=command_xcode_cloud_probe)
+
+    xcc_inspect = xcc_subparsers.add_parser(
+        "inspect",
+        help="Dump a workflow's start condition, actions, and recent build runs.",
+    )
+    xcc_inspect.add_argument("workflow_id", help="Xcode Cloud workflow UUID (from `probe`).")
+    xcc_inspect.add_argument("--limit", type=int, default=10, help="Build runs to list (default 10).")
+    xcc_inspect.set_defaults(func=command_xcode_cloud_inspect)
+
+    xcc_start = xcc_subparsers.add_parser(
+        "start-build",
+        help="Manually trigger a build run for a workflow (no source change needed).",
+    )
+    xcc_start.add_argument("workflow_id", help="Xcode Cloud workflow UUID.")
+    xcc_start.set_defaults(func=command_xcode_cloud_start_build)
 
     notes_parser = subparsers.add_parser("set-beta-notes", help="Create or update TestFlight What to Test notes.")
     notes_parser.add_argument("--build-id")

@@ -13,6 +13,17 @@ name: Xcode Cloud Probe
 
 on:
   workflow_dispatch:
+    inputs:
+      command:
+        description: "Subcommand: probe / inspect / start-build"
+        required: false
+        default: "probe"
+        type: choice
+        options: [probe, inspect, start-build]
+      workflow_id:
+        description: "Workflow UUID (required for inspect/start-build)"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -48,5 +59,25 @@ jobs:
         env:
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
 
-      - name: Probe Xcode Cloud
-        run: scripts/app_store_connect.py xcode-cloud probe
+      - name: Probe / inspect / start build
+        env:
+          CMD: ${{ github.event.inputs.command || 'probe' }}
+          WF_ID: ${{ github.event.inputs.workflow_id }}
+        run: |
+          set -euo pipefail
+          case "$CMD" in
+            probe)
+              scripts/app_store_connect.py xcode-cloud probe
+              ;;
+            inspect)
+              test -n "${WF_ID:-}" || { echo "workflow_id input required"; exit 1; }
+              scripts/app_store_connect.py xcode-cloud inspect "$WF_ID"
+              ;;
+            start-build)
+              test -n "${WF_ID:-}" || { echo "workflow_id input required"; exit 1; }
+              scripts/app_store_connect.py xcode-cloud start-build "$WF_ID"
+              ;;
+            *)
+              echo "Unknown command: $CMD"; exit 1
+              ;;
+          esac
