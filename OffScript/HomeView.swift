@@ -4,6 +4,18 @@ import SwiftUI
 
 private let homeLogger = Logger(subsystem: "com.offscript", category: "Home")
 
+// MARK: - HomeView (Tuner instrument cluster)
+//
+// Tuner vocabulary for the launch screen:
+//   ┌── TODAY · MON · APR 27 ────────────────────────┐
+//   │  HOME · CHANNEL FEED                            │
+//   │  ─── HEADLINE ────────────────────────────      │
+//   │  [hero panel: artwork tile + readouts]          │
+//   │                                                 │
+//   │  ── SECTION NAME ─────────────────────          │
+//   │  [horizontal rail of channel cards]             │
+//   └─────────────────────────────────────────────────┘
+
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var sections: [HomeFeedSection] = []
@@ -15,106 +27,63 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
-                HomeEditorialHeader()
+            VStack(alignment: .leading, spacing: 18) {
+                HomeTunerHeader()
 
                 if let errorMessage {
-                    ContentUnavailableView("Feed unavailable", systemImage: "wifi.exclamationmark", description: Text(errorMessage))
-                        .padding(.horizontal, OffScriptTheme.pagePadding)
+                    HomeErrorRow(message: errorMessage)
                 }
 
                 if isLoading {
-                    VStack(alignment: .leading, spacing: OffScriptTheme.sectionSpacing) {
-                        SkeletonHeroCard()
-                            .padding(.horizontal, OffScriptTheme.pagePadding)
-
-                        VStack(alignment: .leading, spacing: 16) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.offscriptSurfaceThin)
-                                    .frame(width: 130, height: 16)
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.offscriptSurfaceThin)
-                                    .frame(width: 200, height: 12)
-                            }
-                            .padding(.horizontal, OffScriptTheme.pagePadding)
-                            .shimmer()
-
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 18) {
-                                    ForEach(0..<3, id: \.self) { _ in
-                                        SkeletonRailCard()
-                                    }
-                                }
-                                .padding(.horizontal, OffScriptTheme.pagePadding)
-                            }
-                        }
-                    }
+                    HomeSkeletonStack()
                 } else if sections.isEmpty {
-                    VStack(spacing: 20) {
-                        OffScriptEmptyState(
-                            icon: "waveform.badge.magnifyingglass",
-                            headline: "Your feed starts here",
-                            message: "Add three shows you trust and OffScript will build a feed that feels curated, not algorithmic."
-                        )
-
-                        NavigationLink("Browse Search") {
-                            SearchView()
-                        }
-                        .buttonStyle(PrimaryPillButtonStyle())
-                    }
-                    .padding(.top, 40)
+                    HomeEmptyState()
                 } else {
                     if let leadSection = sections.first, let leadEpisode = leadSection.episodes.first {
-                        HeroRecommendationCard(
+                        HeroTunerCard(
                             episode: leadEpisode,
                             reason: leadSection.explanation(for: leadEpisode)
                         )
-                        .padding(.horizontal, OffScriptTheme.spaciousPadding)
-                        .staggeredEntrance(index: 0)
+                        .padding(.horizontal, OffScriptTheme.pagePadding)
+                        .padding(.bottom, 6)
 
                         let remainingLeadEpisodes = Array(leadSection.episodes.dropFirst())
                         if !remainingLeadEpisodes.isEmpty {
-                            RecommendationRail(
-                                title: "Next Best Picks",
-                                subtitle: "More picks in the same lane.",
+                            TunerRail(
+                                title: "NEXT BEST PICKS",
                                 episodes: remainingLeadEpisodes,
                                 reasonProvider: { leadSection.explanation(for: $0) }
                             )
-                            .staggeredEntrance(index: 1)
                         }
                     }
 
-                    ForEach(Array(sections.dropFirst().enumerated()), id: \.element.id) { offset, section in
-                        RecommendationRail(
-                            title: section.title,
-                            subtitle: section.subtitle,
+                    ForEach(Array(sections.dropFirst().enumerated()), id: \.element.id) { _, section in
+                        TunerRail(
+                            title: section.title.uppercased(),
                             episodes: section.episodes,
                             reasonProvider: { section.explanation(for: $0) }
                         )
-                        .staggeredEntrance(index: offset + 2)
                     }
                 }
             }
-            .padding(.top, 16)
+            .padding(.top, 8)
             .padding(.bottom, 28)
         }
-        .offscriptPageBackground()
-        .navigationTitle("Home")
+        .background(Color.offscriptStudioBlack.ignoresSafeArea())
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color.offscriptBackgroundTop.opacity(0.98), for: .navigationBar)
+        .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 Button(action: onOpenSettings) {
                     Image(systemName: "slider.horizontal.3")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.offscriptTextMuted)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.offscriptSignalYellow)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open settings")
-                .accessibilityHint("Adjust playback and recommendation preferences")
             }
         }
         .task { await loadSections() }
@@ -125,39 +94,145 @@ struct HomeView: View {
     private func loadSections() async {
         do {
             let loaded = try recommendationService.homeSections(context: modelContext)
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            withAnimation(.easeInOut(duration: 0.25)) {
                 sections = loaded
                 errorMessage = nil
                 isLoading = false
             }
         } catch {
+            homeLogger.error("loadSections failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
             isLoading = false
         }
     }
-
 }
 
-private struct HomeEditorialHeader: View {
+// MARK: - Header
+
+private struct HomeTunerHeader: View {
     private var dayString: String {
-        Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day())
+        Date.now.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Ready when you are")
-                .font(.offscriptUtilityTitle)
-                .foregroundStyle(Color.offscriptTextPrimary)
+            HStack {
+                TunerLabel(text: "TODAY · \(dayString.uppercased())", color: .offscriptSoftPaper)
+                Spacer()
+                TunerLabel(text: "OFFSCRIPT · CHANNEL FEED", color: .offscriptFnInfo)
+            }
 
-            Text(dayString.uppercased())
-                .font(.offscriptMeta.weight(.semibold))
-                .foregroundStyle(Color.offscriptTextMuted)
+            // Big spec-sheet headline
+            Text("Home")
+                .font(.system(size: 32, weight: .bold))
+                .tracking(-0.5)
+                .foregroundStyle(Color.offscriptPaperWhite)
+
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                .padding(.top, 4)
         }
         .padding(.horizontal, OffScriptTheme.pagePadding)
+        .padding(.top, 4)
     }
 }
 
-private struct HeroRecommendationCard: View {
+// MARK: - Error / Empty / Skeleton
+
+private struct HomeErrorRow: View {
+    let message: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TunerLabel(text: "● FEED UNAVAILABLE", color: .offscriptFnRecord)
+            Text(message)
+                .font(.system(size: 12.5))
+                .foregroundStyle(Color.offscriptPaperWhite)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, OffScriptTheme.pagePadding)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .top
+        )
+    }
+}
+
+private struct HomeEmptyState: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            TunerLabel(text: "● NO CHANNELS TUNED", color: .offscriptFnInfo)
+            Text("Add three shows you trust")
+                .font(.system(size: 22, weight: .semibold))
+                .tracking(-0.3)
+                .foregroundStyle(Color.offscriptPaperWhite)
+            Text("OffScript will build a feed that feels curated, not algorithmic. Open Search to find your first three.")
+                .font(.system(size: 13.5))
+                .foregroundStyle(Color.offscriptPaperWhite)
+                .lineSpacing(2)
+
+            NavigationLink {
+                SearchView()
+            } label: {
+                HStack {
+                    TunerLabel(text: "→ BROWSE SEARCH", color: .offscriptSignalYellow, size: 11)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
+        .padding(.horizontal, OffScriptTheme.pagePadding)
+        .padding(.top, 24)
+    }
+}
+
+private struct HomeSkeletonStack: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Hero placeholder
+            VStack(alignment: .leading, spacing: 0) {
+                Rectangle()
+                    .fill(Color.offscriptFillSubtle)
+                    .frame(height: 200)
+                VStack(alignment: .leading, spacing: 8) {
+                    Rectangle().fill(Color.offscriptFillSubtle).frame(height: 14)
+                    Rectangle().fill(Color.offscriptFillSubtle).frame(width: 240, height: 14)
+                }
+                .padding(14)
+            }
+            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+            .padding(.horizontal, OffScriptTheme.pagePadding)
+            .shimmer()
+
+            // Rail header placeholder
+            VStack(alignment: .leading, spacing: 10) {
+                Rectangle().fill(Color.offscriptFillSubtle).frame(width: 130, height: 9)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            Rectangle()
+                                .fill(Color.offscriptFillSubtle)
+                                .frame(width: 180, height: 200)
+                                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        }
+                    }
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+                }
+            }
+            .padding(.horizontal, OffScriptTheme.pagePadding)
+            .shimmer()
+        }
+        .padding(.top, 8)
+    }
+}
+
+// MARK: - Hero card
+
+private struct HeroTunerCard: View {
     @Environment(\.modelContext) private var modelContext
 
     let episode: Episode
@@ -170,168 +245,170 @@ private struct HeroRecommendationCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Artwork hero zone — larger, more dominant
-            ZStack(alignment: .bottomLeading) {
-                OffScriptArtworkView(
-                    url: episode.artworkURL ?? episode.podcast.artworkURL,
-                    cornerRadius: 0
-                )
-                .frame(height: 200)
-                .clipped()
-                .overlay(
-                    LinearGradient(
-                        colors: [.clear, .clear, Color.offscriptCardStrong.opacity(0.7), Color.offscriptCardStrong],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-
-                // Overlay the explanation tag on the artwork
-                VStack(alignment: .leading, spacing: 8) {
-                    OffScriptExplanationTag(text: reason)
-
-                    Text(episode.podcast.title)
-                        .font(.offscriptMeta.weight(.semibold))
-                        .tracking(0.8)
-                        .foregroundStyle(Color.offscriptTextSecondary)
-                        .lineLimit(1)
-                }
-                .padding(20)
+            // Header strip — two TunerLabels mirroring the spec-sheet header
+            HStack(spacing: 8) {
+                TunerLabel(text: "● HEADLINE", color: .offscriptSignalYellow)
+                Spacer()
+                TunerLabel(text: episode.podcast.title.uppercased(), color: .offscriptFnInfo)
+                    .lineLimit(1)
             }
-            .clipShape(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: OffScriptTheme.Radius.large,
-                    bottomLeadingRadius: 0,
-                    bottomTrailingRadius: 0,
-                    topTrailingRadius: OffScriptTheme.Radius.large,
-                    style: .continuous
-                )
-            )
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 10)
 
-            // Content zone
-            VStack(alignment: .leading, spacing: 14) {
+            // Artwork — flat, sharp corners (3pt), hairline border
+            OffScriptArtworkView(
+                url: episode.artworkURL ?? episode.podcast.artworkURL,
+                cornerRadius: 3
+            )
+            .frame(height: 200)
+            .clipped()
+            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+            .padding(.horizontal, 14)
+
+            // Title + reason
+            VStack(alignment: .leading, spacing: 10) {
                 NavigationLink {
                     EpisodeDetailView(episode: episode)
                 } label: {
                     Text(episode.title)
-                        .font(.offscriptDisplay)
-                        .foregroundStyle(Color.offscriptTextPrimary)
+                        .font(.system(size: 20, weight: .semibold))
+                        .tracking(-0.3)
+                        .foregroundStyle(Color.offscriptPaperWhite)
                         .multilineTextAlignment(.leading)
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .buttonStyle(.plain)
 
-                HStack(spacing: 12) {
-                    Label(metadata, systemImage: "clock")
+                // Reason as a TunerTag with signal yellow accent
+                TunerTag(text: reason, color: .offscriptSignalYellow, dim: true)
+
+                // Mono metadata — date · duration · progress
+                HStack(spacing: 10) {
+                    TunerLabel(text: metadata, color: .offscriptSoftPaper)
                     if episode.playedPosition > 0, !episode.isPlayed {
-                        Label(timeRemaining, systemImage: "arrow.trianglehead.clockwise")
+                        TunerLabel(text: "● \(timeRemaining)", color: .offscriptFnInfo)
                     }
+                    Spacer()
                 }
-                .font(.offscriptMeta)
-                .foregroundStyle(Color.offscriptTextMuted)
 
                 if progressValue > 0 {
-                    VStack(alignment: .leading, spacing: 8) {
-                        OffScriptProgressBar(value: progressValue, height: 6)
-                        Text("Resume from where you left off")
-                            .font(.offscriptMeta)
-                            .foregroundStyle(Color.offscriptTextMuted)
-                    }
-                }
-
-                HStack(spacing: 10) {
-                    Button("Play") {
-                        PlaybackController.shared.play(episode, in: modelContext)
-                    }
-                    .buttonStyle(PrimaryPillButtonStyle())
-
-                    Button(episode.isQueued ? "Queued" : "Add to Queue") {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            do { try QueueService.add(episode, in: modelContext) } catch { homeLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
+                    GeometryReader { proxy in
+                        let clamped = min(max(progressValue, 0), 1)
+                        ZStack(alignment: .leading) {
+                            Rectangle().fill(Color.offscriptHairline)
+                            Rectangle()
+                                .fill(Color.offscriptSignalYellow)
+                                .frame(width: proxy.size.width * clamped)
                         }
                     }
-                    .buttonStyle(SecondaryPillButtonStyle())
-                    .disabled(episode.isQueued)
-                    .sensoryFeedback(.impact(flexibility: .soft), trigger: episode.isQueued)
+                    .frame(height: 1)
+                }
+
+                // Tuner action keys — flat hairline-bordered, mono labels
+                HStack(spacing: 8) {
+                    tunerKey(
+                        title: episode.playedPosition > 0 ? "→ RESUME" : "→ PLAY",
+                        color: .offscriptSignalYellow
+                    ) {
+                        PlaybackController.shared.play(episode, in: modelContext)
+                    }
+
+                    tunerKey(
+                        title: episode.isQueued ? "✓ QUEUED" : "+ QUEUE",
+                        color: episode.isQueued ? .offscriptSoftPaper : .offscriptPaperWhite,
+                        disabled: episode.isQueued
+                    ) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            do { try QueueService.add(episode, in: modelContext) }
+                            catch { homeLogger.error("Failed to queue: \(error.localizedDescription, privacy: .public)") }
+                        }
+                    }
 
                     Spacer()
 
                     Menu {
                         Button("Like") { register(.like) }
+                        Button("More like this") { register(.moreLikeThis) }
                         Button("Less like this") { register(.lessLikeThis) }
-                        Button("Not now") { register(.notInterested) }
+                        Button(role: .destructive) { register(.notInterested) } label: { Text("Not interested") }
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.offscriptTextPrimary)
-                            .frame(width: 38, height: 38)
-                            .background(Color.offscriptSurfaceSubtle)
-                            .clipShape(Circle())
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Color.offscriptSignalYellow)
+                            .frame(width: 38, height: 32)
+                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                     }
                     .accessibilityLabel("More actions")
-                    .accessibilityHint("Like this episode or tune future recommendations")
                 }
+                .padding(.top, 4)
             }
-            .padding(20)
-            .padding(.bottom, 4)
+            .padding(14)
         }
-        .background(
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.large, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.offscriptCardStrong, Color.offscriptCardRaised],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .offscriptGrain(opacity: 0.035)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.large, style: .continuous)
-                .stroke(Color.offscriptHairline, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: OffScriptTheme.Radius.large, style: .continuous))
-        .shadow(color: Color.black.opacity(0.38), radius: 28, y: 14)
+        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(reason)")
+    }
+
+    @ViewBuilder
+    private func tunerKey(
+        title: String,
+        color: Color,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            TunerLabel(text: title, color: color.opacity(disabled ? 0.5 : 1.0), size: 10)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .overlay(Rectangle().stroke(color.opacity(disabled ? 0.3 : 1.0), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
     }
 
     private var metadata: String {
         let dateString = episode.pubDate.formatted(date: .abbreviated, time: .omitted)
         if let duration = episode.duration {
-            return "\(dateString) • \(EpisodeDurationFormatter.short(duration))"
+            return "\(dateString) · \(EpisodeDurationFormatter.short(duration))".uppercased()
         }
-        return dateString
+        return dateString.uppercased()
     }
 
     private var timeRemaining: String {
-        guard let duration = episode.duration else { return "In progress" }
+        guard let duration = episode.duration else { return "IN PROGRESS" }
         let remaining = max(0, duration - episode.playedPosition)
-        return "\(EpisodeDurationFormatter.short(remaining)) left"
+        return "\(EpisodeDurationFormatter.short(remaining)) LEFT".uppercased()
     }
 
     private func register(_ action: PreferenceSignal.Action) {
         modelContext.insert(PreferenceSignal(action: action, episode: episode))
-        do { try modelContext.save() } catch { homeLogger.error("Failed to save preference signal: \(error.localizedDescription, privacy: .public)") }
+        do { try modelContext.save() }
+        catch { homeLogger.error("Failed to save preference: \(error.localizedDescription, privacy: .public)") }
     }
 }
 
-private struct RecommendationRail: View {
+// MARK: - Tuner rail
+
+private struct TunerRail: View {
     let title: String
-    let subtitle: String
     let episodes: [Episode]
     let reasonProvider: (Episode) -> String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            OffScriptSectionHeader(title: title, subtitle: subtitle)
-                .padding(.horizontal, OffScriptTheme.pagePadding)
+        VStack(alignment: .leading, spacing: 10) {
+            // Hairline rule + TunerLabel header
+            VStack(alignment: .leading, spacing: 8) {
+                Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                TunerLabel(text: title, color: .offscriptSignalYellow)
+            }
+            .padding(.horizontal, OffScriptTheme.pagePadding)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 18) {
+                HStack(spacing: 10) {
                     ForEach(episodes) { episode in
-                        EpisodeRailCard(episode: episode, reason: reasonProvider(episode))
+                        TunerRailCard(episode: episode, reason: reasonProvider(episode))
                     }
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -340,90 +417,81 @@ private struct RecommendationRail: View {
     }
 }
 
-private struct EpisodeRailCard: View {
+private struct TunerRailCard: View {
     @Environment(\.modelContext) private var modelContext
-
     let episode: Episode
     let reason: String
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.offscriptCardRaised, Color.offscriptCardUtility],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationLink {
+                EpisodeDetailView(episode: episode)
+            } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    OffScriptArtworkView(url: episode.artworkURL ?? episode.podcast.artworkURL, cornerRadius: 3)
+                        .frame(width: 168, height: 168)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
 
-            VStack(alignment: .leading, spacing: 12) {
-                NavigationLink {
-                    EpisodeDetailView(episode: episode)
-                } label: {
-                    VStack(alignment: .leading, spacing: 12) {
-                        OffScriptArtworkView(url: episode.artworkURL ?? episode.podcast.artworkURL, cornerRadius: OffScriptTheme.Radius.small)
-                            .frame(width: 160, height: 160)
-                            .padding(.top, 4)
+                    TunerLabel(text: episode.podcast.title.uppercased(), color: .offscriptFnInfo, size: 8)
+                        .lineLimit(1)
 
-                        VStack(alignment: .leading, spacing: 6) {
-                            OffScriptExplanationTag(text: reason)
+                    Text(episode.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.offscriptPaperWhite)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .frame(width: 168, alignment: .leading)
 
-                            Text(episode.podcast.title.uppercased())
-                                .font(.offscriptMicro.weight(.semibold))
-                                .foregroundStyle(Color.offscriptAccent)
+                    TunerTag(text: reason, color: .offscriptSignalYellow, dim: true)
 
-                            Text(episode.title)
-                                .font(.offscriptCardTitle)
-                                .foregroundStyle(Color.offscriptTextPrimary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
-
-                            Text(metadata)
-                                .font(.offscriptMeta)
-                                .foregroundStyle(Color.offscriptTextMuted)
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-
-                HStack(spacing: 10) {
-                    Button("Play") {
-                        PlaybackController.shared.play(episode, in: modelContext)
-                    }
-                    .buttonStyle(PrimaryPillButtonStyle())
-
-                    Button {
-                        do { try QueueService.add(episode, in: modelContext) } catch { homeLogger.error("Failed to add episode to queue: \(error.localizedDescription, privacy: .public)") }
-                    } label: {
-                        Image(systemName: episode.isQueued ? "checkmark" : "plus")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.offscriptTextPrimary)
-                            .frame(width: 36, height: 36)
-                            .background(Color.offscriptSurfaceLight)
-                            .clipShape(Circle())
-                    }
-                    .disabled(episode.isQueued)
-
-                    Spacer()
+                    TunerLabel(text: metadata, color: .offscriptSoftPaper, size: 8)
                 }
             }
-            .padding(16)
+            .buttonStyle(.plain)
+
+            // Sharp action row — single signal-yellow play key + queue toggle
+            HStack(spacing: 6) {
+                Button {
+                    PlaybackController.shared.play(episode, in: modelContext)
+                } label: {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.black)
+                        .frame(width: 30, height: 30)
+                        .background(Color.offscriptSignalYellow)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Play \(episode.title)")
+
+                Button {
+                    do { try QueueService.add(episode, in: modelContext) }
+                    catch { homeLogger.error("Queue add failed: \(error.localizedDescription, privacy: .public)") }
+                } label: {
+                    Image(systemName: episode.isQueued ? "checkmark" : "plus")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.offscriptPaperWhite)
+                        .frame(width: 30, height: 30)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .disabled(episode.isQueued)
+                .accessibilityLabel(episode.isQueued ? "Already queued" : "Add to queue")
+
+                Spacer()
+            }
+            .padding(.top, 8)
         }
-        .frame(width: 196, alignment: .leading)
-        .overlay(
-            RoundedRectangle(cornerRadius: OffScriptTheme.Radius.medium, style: .continuous)
-                .stroke(Color.offscriptHairline, lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.2), radius: 12, y: 6)
+        .padding(10)
+        .frame(width: 188, alignment: .leading)
+        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(reason)")
     }
 
     private var metadata: String {
-        let dateString = episode.pubDate.formatted(date: .abbreviated, time: .omitted)
+        let dateString = episode.pubDate.formatted(date: .abbreviated, time: .omitted).uppercased()
         if let duration = episode.duration {
-            return "\(dateString) • \(EpisodeDurationFormatter.short(duration))"
+            return "\(dateString) · \(EpisodeDurationFormatter.short(duration).uppercased())"
         }
         return dateString
     }
