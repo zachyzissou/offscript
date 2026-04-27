@@ -21,6 +21,7 @@ struct LibraryView: View {
     let onOpenSettings: () -> Void
 
     private let syncService = FeedSyncService()
+    @State private var isImportPresented = false
 
     private var subscribedPodcasts: [Podcast] {
         podcasts
@@ -47,6 +48,7 @@ struct LibraryView: View {
                     showCount: subscribedPodcasts.count,
                     unplayedCount: freshEpisodes.count,
                     inProgressCount: inProgressEpisodes.count,
+                    onOpenImport: { isImportPresented = true },
                     onOpenSettings: onOpenSettings
                 )
 
@@ -93,8 +95,11 @@ struct LibraryView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .refreshable { await syncSubscriptions() }
-        // Settings button rendered inline in LibraryTunerHeader, not as a
-        // toolbar item — iOS 26 wraps toolbar buttons in glass chrome.
+        // Settings + Import buttons render inline in LibraryTunerHeader, not
+        // as toolbar items — iOS 26 wraps toolbar buttons in glass chrome.
+        .sheet(isPresented: $isImportPresented) {
+            LibraryImportSheet()
+        }
     }
 
     private var emptyState: some View {
@@ -171,6 +176,7 @@ private struct LibraryTunerHeader: View {
     let showCount: Int
     let unplayedCount: Int
     let inProgressCount: Int
+    let onOpenImport: () -> Void
     let onOpenSettings: () -> Void
 
     var body: some View {
@@ -187,6 +193,19 @@ private struct LibraryTunerHeader: View {
                     .tracking(-0.5)
                     .foregroundStyle(Color.offscriptPaperWhite)
                 Spacer()
+                // Import key — paste URL or import OPML. The most-asked-for
+                // missing feature in podcast apps; lives next to settings
+                // since both are operational chrome rather than per-content.
+                Button(action: onOpenImport) {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.offscriptSignalYellow)
+                        .frame(width: 36, height: 30)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Import podcasts")
+
                 Button(action: onOpenSettings) {
                     Image(systemName: "slider.horizontal.3")
                         .font(.system(size: 13, weight: .semibold))

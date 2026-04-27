@@ -4,6 +4,17 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.3.3] — 2026-04-27
+
+### Added — import functionality
+- **Paste-URL import.** Library header has a new Import key (`square.and.arrow.down`, next to the settings cog). Pasting a podcast feed URL fetches the feed once, parses title + author + artwork + summary, and lands the show in the library indistinguishably from a search-tap import. Tolerates URLs without a scheme (auto-prefixes `https://`), tolerates `feed://` URLs, rejects obvious non-URLs (search terms, single words). All errors surface inline in the import sheet with the actual reason — no silent failures.
+- **OPML import.** Same Import key opens the file picker for OPML files exported from Apple Podcasts, Pocket Casts, Overcast, AntennaPod, and gPodder. Parser is forgiving across the slight format variations between exporters (xmlUrl casing, text vs. title attribute, missing type=rss). Preview screen shows every feed found in the file with `01·02·03` rank prefixes. "→ IMPORT ALL" runs them sequentially with per-row status (`○ STANDBY / ● IMPORTING / ✓ ADDED / ✕ FAILED`) — one bad feed doesn't fail the whole batch.
+- **`PodcastImportService`** — single source of truth for "raw URL or OPML entry → `PodcastSearchResult`" resolution. URL paste, OPML, and the existing search-tap path all converge on `FeedSyncService.importPodcast(...)` so subscribed-state, sync, and library-display behavior is identical across all three.
+- **`LibraryImportSheet`** — Tuner-styled sheet with a three-mode state machine (menu → paste URL or OPML preview). Hairline-rule sections, mono status badges, function-coded colors, sharp-rectangle keys throughout — same vocabulary as every other Tuner surface.
+
+### Why this was missing
+Until now, the only way to add a podcast was to type the title into Search and hope iTunes had it indexed. No feed-URL paste, no OPML, no migration path from another podcast app. That's the highest-friction gap in the app for anyone arriving from Overcast / Pocket Casts / Apple Podcasts.
+
 ## [2.3.2] — 2026-04-27
 
 ### Fixed — playback (root-cause fix for two reported bugs)
