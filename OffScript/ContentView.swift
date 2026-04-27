@@ -109,6 +109,9 @@ struct ContentView: View {
                 SyncCoordinator.shared.scheduleForegroundRefreshIfNeeded()
             case .background:
                 BackgroundFeedRefresh.scheduleNextRefresh()
+                // Cancel any pending taste-profile refresh so it doesn't fire
+                // against a suspended context when the OS resumes the app.
+                TasteProfileService.cancelPendingRefresh()
             default:
                 break
             }

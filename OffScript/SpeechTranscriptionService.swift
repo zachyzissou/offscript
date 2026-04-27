@@ -23,9 +23,29 @@ final class SpeechTranscriptionService {
     static let shared = SpeechTranscriptionService()
 
     private var cache: [UUID: String] = [:]
+    /// Insertion-order tracking for LRU eviction. We keep at most `maxCachedTranscripts`
+    /// entries — a full-episode transcript can easily be 100 KB, so an unbounded
+    /// process-lifetime cache is a real memory-pressure risk.
+    private var cacheOrder: [UUID] = []
+    private let maxCachedTranscripts = 5
     private var inFlightTask: Task<String?, Error>?
 
     private init() {}
+
+    /// Stores a transcript, evicting the oldest entry if the cap is exceeded.
+    private func storeTranscript(_ text: String, for id: UUID) {
+        if cache[id] != nil {
+            // Already present — refresh position in order list.
+            if let idx = cacheOrder.firstIndex(of: id) {
+                cacheOrder.remove(at: idx)
+            }
+        } else if cache.count >= maxCachedTranscripts, let oldest = cacheOrder.first {
+            cache.removeValue(forKey: oldest)
+            cacheOrder.removeFirst()
+        }
+        cache[id] = text
+        cacheOrder.append(id)
+    }
 
     enum TranscriptionError: Error {
         case notAuthorized
@@ -91,7 +111,7 @@ final class SpeechTranscriptionService {
 
                 let text = result.bestTranscription.formattedString
                 Task { @MainActor [weak self] in
-                    self?.cache[episode.id] = text
+                    self?.storeTranscript(text, for: episode.id)
                 }
                 resume(.success(text))
             }

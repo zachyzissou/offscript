@@ -21,12 +21,20 @@ enum SpotlightIndexer {
     static let domainIdentifier = "com.offscript.episodes"
     private static let maxEpisodesToIndex = 500
     private static let batchSize = 200
+    private static let indexTTL: TimeInterval = 86_400 // 24 hours
+    private static let lastIndexedKey = "offscript.spotlightLastIndexedAt"
 
     /// Index newest subscribed episodes. Safe to call repeatedly — Spotlight
     /// dedupes on uniqueIdentifier. Skips silently when CoreSpotlight is
     /// unavailable (Mac Catalyst on certain configs).
+    ///
+    /// Debounced: re-indexes at most once every 24 hours. The 30-day TTL on
+    /// each item naturally ages out unsubscribed/old episodes, so running on
+    /// every launch is unnecessary and wastes CPU on startup.
     static func indexEpisodes(in context: ModelContext) {
-        let index = CSSearchableIndex.default()
+        let lastIndexed = UserDefaults.standard.double(forKey: lastIndexedKey)
+        let elapsed = Date().timeIntervalSince1970 - lastIndexed
+        guard elapsed >= indexTTL else { return }
 
         var descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { $0.podcast.isSubscribed == true },
@@ -36,6 +44,11 @@ enum SpotlightIndexer {
 
         guard let episodes = try? context.fetch(descriptor), !episodes.isEmpty else { return }
 
+        // Stamp the last-indexed time before batching so a crash mid-run
+        // doesn't cause a retry loop on the next launch.
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: lastIndexedKey)
+
+        let index = CSSearchableIndex.default()
         var batch: [CSSearchableItem] = []
         batch.reserveCapacity(min(batchSize, episodes.count))
 
@@ -91,5 +104,12 @@ enum SpotlightIndexer {
                 spotlightLogger.error("Spotlight wipe failed: \(error.localizedDescription, privacy: .public)")
             }
         }
+    }
+
+    /// Bypass the 24h TTL and schedule a full re-index on next `indexEpisodes`
+    /// call. Use this after subscription changes so new shows appear in Spotlight
+    /// immediately rather than waiting up to a day.
+    static func invalidateIndex() {
+        UserDefaults.standard.removeObject(forKey: lastIndexedKey)
     }
 }

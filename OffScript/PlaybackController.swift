@@ -67,6 +67,11 @@ final class PlaybackController: ObservableObject {
     private var itemStallObserver: NSObjectProtocol?
     private var sleepTimerTask: Task<Void, Never>?
     private var modelContext: ModelContext?
+
+    /// True once `configure(context:)` has been called. App Intents running
+    /// in-process should check this before supplying a new context so they
+    /// don't replace the live app context with an intent-scoped one.
+    var isModelContextConfigured: Bool { modelContext != nil }
     private var isFinishingCurrentEpisode = false
     private var lastPersistedPosition: TimeInterval = 0
     private var lastPersistedEpisodeID: UUID?
@@ -165,6 +170,9 @@ final class PlaybackController: ObservableObject {
         // Resume library episode if one was loaded
         if let episode = currentEpisode {
             let item = AVPlayerItem(url: DownloadService.shared.localURL(for: episode) ?? episode.audioURL)
+            // Re-attach KVO/notification observers to the restored item so that
+            // stall / failure signals continue working for library playback.
+            observeItem(item)
             player.replaceCurrentItem(with: item)
             let time = CMTime(seconds: episode.playedPosition, preferredTimescale: 600)
             player.seek(to: time)

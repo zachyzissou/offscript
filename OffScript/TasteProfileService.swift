@@ -35,6 +35,13 @@ enum TasteProfileService {
         }
     }
 
+    /// Cancel any pending tail-end refresh. Call on app-backgrounding so a
+    /// scheduled refresh doesn't fire against a suspended context on resume.
+    static func cancelPendingRefresh() {
+        pendingRefreshTask?.cancel()
+        pendingRefreshTask = nil
+    }
+
     static func loadOrCreate(in context: ModelContext) throws -> UserTasteProfile {
         let descriptor = FetchDescriptor<UserTasteProfile>()
         if let existing = try context.fetch(descriptor).first {

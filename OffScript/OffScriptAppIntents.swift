@@ -107,9 +107,16 @@ struct PlayNextInQueueIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let context = try OffScriptAppIntents.makeContext()
         let player = PlaybackController.shared
-        player.configure(context: context)
+        // Only supply a fresh intent-scoped context when the controller hasn't
+        // been configured yet (i.e., the intent is running out-of-process).
+        // When the main app is in the foreground (in-process execution), reusing
+        // the existing context avoids opening a second writer on the same store,
+        // which risks in-memory divergence between the two contexts.
+        if !player.isModelContextConfigured {
+            let context = try OffScriptAppIntents.makeContext()
+            player.configure(context: context)
+        }
         player.skipToNextInQueue()
 
         if let title = player.currentEpisode?.title {
