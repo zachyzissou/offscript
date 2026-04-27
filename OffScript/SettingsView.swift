@@ -7,8 +7,8 @@ private let settingsLogger = Logger(subsystem: "com.offscript", category: "Setti
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @Query private var podcasts: [Podcast]
-    @Query private var episodes: [Episode]
     @AppStorage("offscript.autoPlayNext") private var autoPlayNext = true
     @AppStorage("offscript.preferShortEpisodes") private var preferShortEpisodes = false
     @AppStorage("offscript.cloudSyncEnabled") private var cloudSyncEnabled = false
@@ -16,6 +16,14 @@ struct SettingsView: View {
     @AppStorage("offscript.appleUserName") private var appleUserName: String = ""
     @State private var showSignOutConfirmation = false
     @State private var signInMessage: String?
+
+    // Episode counts via fetchCount instead of @Query var episodes: [Episode] —
+    // Settings only needs three integers, not the full episode list. Loading
+    // every episode just to call .count was making this view unusable once
+    // the library got past a couple hundred episodes.
+    @State private var episodeCount: Int = 0
+    @State private var unplayedCount: Int = 0
+    @State private var queuedCount: Int = 0
 
     private var isSignedIn: Bool { !appleUserID.isEmpty }
 
@@ -36,9 +44,9 @@ struct SettingsView: View {
                         spacing: 12
                     ) {
                         statCard("Subscribed", value: "\(podcasts.filter(\.isSubscribed).count)")
-                        statCard("Episodes", value: "\(episodes.count)")
-                        statCard("Unplayed", value: "\(episodes.filter { !$0.isPlayed }.count)")
-                        statCard("Queued", value: "\(episodes.filter(\.isQueued).count)")
+                        statCard("Episodes", value: "\(episodeCount)")
+                        statCard("Unplayed", value: "\(unplayedCount)")
+                        statCard("Queued", value: "\(queuedCount)")
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
 
@@ -148,6 +156,9 @@ struct SettingsView: View {
             .offscriptPageBackground()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                refreshCounts()
+            }
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Button("Done") { dismiss() }
@@ -196,6 +207,18 @@ struct SettingsView: View {
         appleUserName = ""
         cloudSyncEnabled = false
         settingsLogger.info("User signed out; sync disabled")
+    }
+
+    /// Counts via fetchCount instead of @Query → never materializes the
+    /// Episode array. SwiftData translates these into SQL COUNT queries.
+    private func refreshCounts() {
+        episodeCount  = (try? modelContext.fetchCount(FetchDescriptor<Episode>())) ?? 0
+        unplayedCount = (try? modelContext.fetchCount(
+            FetchDescriptor<Episode>(predicate: #Predicate<Episode> { !$0.isPlayed })
+        )) ?? 0
+        queuedCount   = (try? modelContext.fetchCount(
+            FetchDescriptor<Episode>(predicate: #Predicate<Episode> { $0.isQueued })
+        )) ?? 0
     }
 
     private func statCard(_ title: String, value: String) -> some View {

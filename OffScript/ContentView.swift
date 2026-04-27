@@ -10,79 +10,66 @@ struct ContentView: View {
     @AppStorage("offscript.hasSeenOnboarding") private var hasSeenOnboarding = false
     @State private var selectedTab = 0
     @State private var isSettingsPresented = false
-    @State private var miniPlayerHeight: CGFloat = 0
     @Query private var queueItems: [QueueItem]
 
     var body: some View {
         Group {
             if hasSeenOnboarding {
-                GeometryReader { proxy in
-                    let bottomSafeArea = proxy.safeAreaInsets.bottom
-                    let miniPlayerInset = player.currentEpisode != nil ? miniPlayerHeight + 20 : 0
+                // Previously this whole tree was wrapped in a GeometryReader so we
+                // could push a tinted background behind the tab bar at exactly the
+                // right safe-area height. The trade was bad: GeometryReader at the
+                // root invalidates the entire TabView (and every child screen) on
+                // every layout pass, making tab-switching feel sluggish once the
+                // library has any real content.
+                //
+                // Replaced with native primitives:
+                //   - .safeAreaInset(edge: .bottom) for the MiniPlayer slot
+                //   - SwiftUI's own safe-area for the tab bar tint
+                // No more root-level GeometryReader.
+                TabView(selection: $selectedTab) {
+                    NavigationStack {
+                        HomeView(onOpenSettings: { isSettingsPresented = true })
+                    }
+                    .tag(0)
+                    .tabItem { Label("Home", systemImage: "waveform.path.ecg") }
 
-                    TabView(selection: $selectedTab) {
-                        NavigationStack {
-                            HomeView(onOpenSettings: { isSettingsPresented = true })
-                        }
-                        .tag(0)
-                        .tabItem {
-                            Label("Home", systemImage: "waveform.path.ecg")
-                        }
+                    NavigationStack {
+                        LibraryView(onOpenSettings: { isSettingsPresented = true })
+                    }
+                    .tag(1)
+                    .tabItem { Label("Library", systemImage: "books.vertical") }
 
-                        NavigationStack {
-                            LibraryView(onOpenSettings: { isSettingsPresented = true })
-                        }
-                        .tag(1)
-                        .tabItem {
-                            Label("Library", systemImage: "books.vertical")
-                        }
+                    NavigationStack {
+                        QueueView()
+                    }
+                    .tag(2)
+                    .tabItem { Label("Queue", systemImage: "text.badge.plus") }
+                    .badge(queueItems.count > 0 ? queueItems.count : 0)
 
-                        NavigationStack {
-                            QueueView()
-                        }
-                        .tag(2)
-                        .tabItem {
-                            Label("Queue", systemImage: "text.badge.plus")
-                        }
-                        .badge(queueItems.count > 0 ? queueItems.count : 0)
-
-                        NavigationStack {
-                            SearchView()
-                        }
-                        .tag(3)
-                        .tabItem {
-                            Label("Search", systemImage: "magnifyingglass")
-                        }
+                    NavigationStack {
+                        SearchView()
                     }
-                    .tint(Color.offscriptAccent)
-                    .background(alignment: .bottom) {
-                        Color.offscriptBackgroundBottom
-                            .frame(height: player.currentEpisode != nil ? miniPlayerHeight + bottomSafeArea + 36 : bottomSafeArea + 96)
-                            .ignoresSafeArea(edges: .bottom)
+                    .tag(3)
+                    .tabItem { Label("Search", systemImage: "magnifyingglass") }
+                }
+                .tint(Color.offscriptAccent)
+                .toolbarBackground(Color.offscriptCardUtility.opacity(0.98), for: .tabBar)
+                .toolbarBackground(.visible, for: .tabBar)
+                .toolbarColorScheme(.dark, for: .tabBar)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    // MiniPlayer slot — empty when nothing is playing so the tab
+                    // bar takes its natural height.
+                    if player.currentEpisode != nil {
+                        MiniPlayer()
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                    .toolbarBackground(Color.offscriptCardUtility.opacity(0.98), for: .tabBar)
-                    .toolbarBackground(.visible, for: .tabBar)
-                    .toolbarColorScheme(.dark, for: .tabBar)
-                    .safeAreaInset(edge: .bottom) {
-                        if player.currentEpisode != nil {
-                            Color.clear.frame(height: miniPlayerInset + 12)
-                        }
-                    }
-                    .overlay(alignment: .bottom) {
-                        if player.currentEpisode != nil {
-                            MiniPlayer()
-                                .measureHeight($miniPlayerHeight)
-                                .padding(.bottom, bottomSafeArea + 8)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-                    }
-                    .animation(.spring(response: 0.35, dampingFraction: 0.86), value: player.currentEpisode != nil)
-                    .fullScreenCover(isPresented: $player.isPlayerPresented) {
-                        PlayerView()
-                    }
-                    .sheet(isPresented: $isSettingsPresented) {
-                        SettingsView()
-                    }
+                }
+                .animation(.spring(response: 0.35, dampingFraction: 0.86), value: player.currentEpisode != nil)
+                .fullScreenCover(isPresented: $player.isPlayerPresented) {
+                    PlayerView()
+                }
+                .sheet(isPresented: $isSettingsPresented) {
+                    SettingsView()
                 }
             } else {
                 // Local renamed OnboardingView -> OnboardingFlowView (commit f314adf:

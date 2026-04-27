@@ -66,45 +66,85 @@ struct ImportProgressView: View {
         }
     }
 
+    // Onboarding-time tuning. We deliberately import only the most recent
+    // episodes per podcast so first-launch isn't waiting on a 500-episode
+    // back catalog (common for shows like NPR, etc). Background sync can
+    // backfill the rest later.
+    private let onboardingEpisodeLimit = 15
+    private let maxConcurrentImports = 4
+
     @MainActor
     private func runImports() async {
+        // Persist genre preferences immediately — doesn't depend on imports.
+        UserDefaults.standard.set(selectedGenres.map(\.rawValue), forKey: "offscript.preferredGenres")
+
+        // Mark all selected podcasts as importing up front so the UI shows
+        // every row pulsing — better feedback than rows lighting up serially.
         for podcast in podcasts {
             statuses[podcast.feedURL] = .importing
+        }
 
-            do {
-                let imported = try await syncService.importPodcast(from: podcast, into: modelContext)
+        // Bounded-concurrency parallel imports. TaskGroup with `maxConcurrentImports`
+        // keeps us from saturating the network or the SwiftData write queue
+        // while still cutting wall time roughly N× for N selected podcasts.
+        await withTaskGroup(of: (URL, Result<Podcast, Error>).self) { group in
+            var inFlight = 0
+            var iterator = podcasts.makeIterator()
 
-                // Seed taste: like the most recent episode
-                if let newestEpisode = imported.episodes
-                    .sorted(by: { $0.pubDate > $1.pubDate })
-                    .first {
-                    let signal = PreferenceSignal(action: .like, episode: newestEpisode)
-                    modelContext.insert(signal)
-                    do { try modelContext.save() } catch { importLogger.error("Failed to save taste seed signal for '\(podcast.title, privacy: .public)': \(error.localizedDescription, privacy: .public)") }
+            func enqueueNext() {
+                guard let podcast = iterator.next() else { return }
+                inFlight += 1
+                group.addTask { [syncService, modelContext, onboardingEpisodeLimit] in
+                    do {
+                        let imported = try await syncService.importPodcast(
+                            from: podcast,
+                            into: modelContext,
+                            episodeLimit: onboardingEpisodeLimit
+                        )
+                        return (podcast.feedURL, .success(imported))
+                    } catch {
+                        return (podcast.feedURL, .failure(error))
+                    }
                 }
+            }
 
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    statuses[podcast.feedURL] = .done
+            // Seed the pipeline.
+            for _ in 0..<min(maxConcurrentImports, podcasts.count) {
+                enqueueNext()
+            }
+
+            // Drain results, enqueueing the next podcast each time one finishes.
+            while let (feedURL, result) = await group.next() {
+                inFlight -= 1
+                switch result {
+                case .success(let imported):
+                    // Seed taste signal off-main since SwiftData inserts can stall the
+                    // main thread when there are many models in flight.
+                    if let newestEpisode = imported.episodes
+                        .sorted(by: { $0.pubDate > $1.pubDate })
+                        .first {
+                        modelContext.insert(PreferenceSignal(action: .like, episode: newestEpisode))
+                    }
+                    statuses[feedURL] = .done
+                case .failure(let error):
+                    importLogger.error("Onboarding import failed for \(feedURL, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    statuses[feedURL] = .failed
                 }
-            } catch {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    statuses[podcast.feedURL] = .failed
-                }
+                enqueueNext()
             }
         }
 
-        // Persist genre preferences
-        let genreStrings = selectedGenres.map(\.rawValue)
-        UserDefaults.standard.set(genreStrings, forKey: "offscript.preferredGenres")
-
-        // Brief pause to show completion state
-        try? await Task.sleep(for: .seconds(1.2))
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-            isComplete = true
+        // Single batched save at the end — far cheaper than saving after each
+        // import (every save runs migration checks + flushes the WAL).
+        do {
+            try modelContext.save()
+        } catch {
+            importLogger.error("Failed to save imported feed: \(error.localizedDescription, privacy: .public)")
         }
 
-        // Auto-advance after a beat — notify parent to set hasSeenOnboarding
-        try? await Task.sleep(for: .seconds(1.5))
+        // Done. No artificial sleep — we already showed live progress; the
+        // user wants to get to their feed, not watch a checkmark for 2.7s.
+        isComplete = true
         onComplete()
     }
 }
