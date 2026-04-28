@@ -4,6 +4,164 @@ import SwiftUI
 
 private let libraryLogger = Logger(subsystem: "com.offscript", category: "Library")
 
+enum LibraryDirectoryScope: String, CaseIterable, Identifiable {
+    case all
+    case unplayed
+    case inProgress
+    case needsSync
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .all: "ALL"
+        case .unplayed: "UNPLAYED"
+        case .inProgress: "IN PROGRESS"
+        case .needsSync: "NEEDS SYNC"
+        }
+    }
+}
+
+enum LibraryDirectorySort: String, CaseIterable, Identifiable {
+    case title
+    case latest
+    case attention
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .title: "A-Z"
+        case .latest: "LATEST"
+        case .attention: "ATTN"
+        }
+    }
+}
+
+enum LibraryDirectoryDensity: String, CaseIterable, Identifiable {
+    case compact
+    case artwork
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .compact: "COMPACT"
+        case .artwork: "ARTWORK"
+        }
+    }
+}
+
+struct LibraryDirectorySection: Identifiable {
+    let id: String
+    let title: String
+    let podcasts: [Podcast]
+}
+
+enum LibraryDirectoryOrganizer {
+    static func filteredPodcasts(
+        _ podcasts: [Podcast],
+        query: String,
+        scope: LibraryDirectoryScope,
+        sort: LibraryDirectorySort,
+        unplayedCounts: [UUID: Int],
+        inProgressCounts: [UUID: Int]
+    ) -> [Podcast] {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        let filtered = podcasts.filter { podcast in
+            if !normalizedQuery.isEmpty {
+                let fields = [
+                    podcast.title,
+                    podcast.author ?? "",
+                    podcast.categories.joined(separator: " ")
+                ].joined(separator: " ").lowercased()
+                guard fields.contains(normalizedQuery) else { return false }
+            }
+
+            switch scope {
+            case .all:
+                return true
+            case .unplayed:
+                return (unplayedCounts[podcast.id] ?? 0) > 0
+            case .inProgress:
+                return (inProgressCounts[podcast.id] ?? 0) > 0
+            case .needsSync:
+                return podcast.syncFailureCount > 0
+                    || podcast.syncStatus == "failed"
+                    || podcast.syncStatus == "retrying"
+            }
+        }
+
+        return filtered.sorted { lhs, rhs in
+            switch sort {
+            case .title:
+                return titleSort(lhs, rhs)
+            case .latest:
+                let lhsDate = lhs.latestPubDate ?? lhs.subscribedAt ?? .distantPast
+                let rhsDate = rhs.latestPubDate ?? rhs.subscribedAt ?? .distantPast
+                if lhsDate == rhsDate { return titleSort(lhs, rhs) }
+                return lhsDate > rhsDate
+            case .attention:
+                let lhsScore = attentionScore(lhs, unplayedCounts: unplayedCounts, inProgressCounts: inProgressCounts)
+                let rhsScore = attentionScore(rhs, unplayedCounts: unplayedCounts, inProgressCounts: inProgressCounts)
+                if lhsScore == rhsScore { return titleSort(lhs, rhs) }
+                return lhsScore > rhsScore
+            }
+        }
+    }
+
+    static func sections(for podcasts: [Podcast]) -> [LibraryDirectorySection] {
+        let grouped = Dictionary(grouping: podcasts) { podcast in
+            sectionTitle(for: podcast.title)
+        }
+
+        return grouped.keys.sorted(by: sectionSort).map { title in
+            LibraryDirectorySection(
+                id: "library-section-\(title)",
+                title: title,
+                podcasts: grouped[title] ?? []
+            )
+        }
+    }
+
+    private static func attentionScore(
+        _ podcast: Podcast,
+        unplayedCounts: [UUID: Int],
+        inProgressCounts: [UUID: Int]
+    ) -> Int {
+        let syncPenalty = podcast.syncFailureCount > 0 || podcast.syncStatus == "failed" ? 10_000 : 0
+        let inProgress = min(inProgressCounts[podcast.id] ?? 0, 99) * 100
+        let unplayed = min(unplayedCounts[podcast.id] ?? 0, 99)
+        return syncPenalty + inProgress + unplayed
+    }
+
+    private static func sectionTitle(for title: String) -> String {
+        guard let first = title.trimmingCharacters(in: .whitespacesAndNewlines).first else {
+            return "#"
+        }
+        let scalar = String(first).uppercased()
+        return scalar.range(of: "[A-Z]", options: .regularExpression) == nil ? "#" : scalar
+    }
+
+    private static func sectionSort(_ lhs: String, _ rhs: String) -> Bool {
+        if lhs == "#" { return false }
+        if rhs == "#" { return true }
+        return lhs < rhs
+    }
+
+    private static func titleSort(_ lhs: Podcast, _ rhs: Podcast) -> Bool {
+        lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+    }
+}
+
+private extension BatchImportService.Phase {
+    var isRunning: Bool {
+        if case .running = self { return true }
+        return false
+    }
+}
+
 // MARK: - LibraryView (Tuner channel directory)
 //
 //   ┌── LIBRARY · CHANNEL DIRECTORY ──────────────────┐
@@ -16,7 +174,12 @@ private let libraryLogger = Logger(subsystem: "com.offscript", category: "Librar
 
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var podcasts: [Podcast]
+    @ObservedObject private var batchImporter = BatchImportService.shared
+    @Query(
+        filter: #Predicate<Podcast> { $0.isSubscribed },
+        sort: [SortDescriptor(\Podcast.title)]
+    )
+    private var podcasts: [Podcast]
 
     // Predicate-filtered query for the small in-progress set. Fresh/unplayed
     // summary data is loaded below with fetch limits and fetchCount so Library
@@ -31,14 +194,40 @@ struct LibraryView: View {
 
     private let syncService = FeedSyncService()
     @State private var isImportPresented = false
+    @State private var directoryQuery = ""
+    @State private var directoryScope: LibraryDirectoryScope = .all
+    @State private var directorySort: LibraryDirectorySort = .title
+    @State private var directoryDensity: LibraryDirectoryDensity = .compact
     @State private var freshEpisodes: [Episode] = []
     @State private var unplayedEpisodeCount = 0
     @State private var freshCountsByPodcastID: [UUID: Int] = [:]
+    @State private var summaryLoadTask: Task<Void, Never>?
 
     private var subscribedPodcasts: [Podcast] {
         podcasts
-            .filter(\.isSubscribed)
-            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    private var directoryPodcasts: [Podcast] {
+        LibraryDirectoryOrganizer.filteredPodcasts(
+            subscribedPodcasts,
+            query: directoryQuery,
+            scope: directoryScope,
+            sort: directorySort,
+            unplayedCounts: freshCountsByPodcastID,
+            inProgressCounts: inProgressCountsByPodcastID
+        )
+    }
+
+    private var directorySections: [LibraryDirectorySection] {
+        LibraryDirectoryOrganizer.sections(for: directoryPodcasts)
+    }
+
+    private var directoryNumbersByPodcastID: [UUID: Int] {
+        Dictionary(uniqueKeysWithValues: directoryPodcasts.enumerated().map { ($0.element.id, $0.offset + 1) })
+    }
+
+    private var isCompactDirectory: Bool {
+        directoryDensity == .compact || subscribedPodcasts.count >= 120
     }
 
     private var inProgressCountsByPodcastID: [UUID: Int] {
@@ -50,56 +239,67 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                LibraryTunerHeader(
-                    showCount: subscribedPodcasts.count,
-                    unplayedCount: unplayedEpisodeCount,
-                    inProgressCount: inProgressEpisodes.count,
-                    onOpenImport: { isImportPresented = true },
-                    onOpenSettings: onOpenSettings
-                )
+        ScrollViewReader { scrollProxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    LibraryTunerHeader(
+                        showCount: subscribedPodcasts.count,
+                        visibleCount: directoryPodcasts.count,
+                        unplayedCount: unplayedEpisodeCount,
+                        inProgressCount: inProgressEpisodes.count,
+                        onOpenImport: { isImportPresented = true },
+                        onOpenSettings: onOpenSettings
+                    )
 
-                // Background OPML import status — visible whenever the
-                // batch importer is mid-flight or has just finished and
-                // hasn't been dismissed yet.
-                LibraryBatchImportStrip()
+                    // Background OPML import status — visible whenever the
+                    // batch importer is mid-flight or has just finished and
+                    // hasn't been dismissed yet.
+                    LibraryBatchImportStrip()
 
-                if subscribedPodcasts.isEmpty {
-                    emptyState
-                } else {
-                    if !inProgressEpisodes.isEmpty {
-                        TunerEpisodeRail(
-                            title: "CONTINUE LISTENING",
-                            episodes: Array(inProgressEpisodes.prefix(8)),
-                            reasonProvider: { ep in
-                                if let dur = ep.duration {
-                                    return "\(EpisodeDurationFormatter.short(max(dur - ep.playedPosition, 0))) LEFT"
+                    if subscribedPodcasts.isEmpty {
+                        emptyState
+                    } else {
+                        if !inProgressEpisodes.isEmpty {
+                            TunerEpisodeRail(
+                                title: "CONTINUE LISTENING",
+                                episodes: Array(inProgressEpisodes.prefix(8)),
+                                reasonProvider: { ep in
+                                    if let dur = ep.duration {
+                                        return "\(EpisodeDurationFormatter.short(max(dur - ep.playedPosition, 0))) LEFT"
+                                    }
+                                    return "IN PROGRESS"
                                 }
-                                return "IN PROGRESS"
-                            }
-                        )
-                    }
+                            )
+                        }
 
-                    if !freshEpisodes.isEmpty {
-                        TunerEpisodeRail(
-                            title: "FRESH EPISODES",
-                            episodes: Array(freshEpisodes.prefix(10)),
-                            reasonProvider: { ep in
-                                if let dur = ep.duration {
-                                    return "FRESH · \(EpisodeDurationFormatter.short(dur).uppercased())"
+                        if !freshEpisodes.isEmpty {
+                            TunerEpisodeRail(
+                                title: "FRESH EPISODES",
+                                episodes: Array(freshEpisodes.prefix(10)),
+                                reasonProvider: { ep in
+                                    if let dur = ep.duration {
+                                        return "FRESH · \(EpisodeDurationFormatter.short(dur).uppercased())"
+                                    }
+                                    return "FRESH"
                                 }
-                                return "FRESH"
-                            }
-                        )
-                    }
+                            )
+                        }
 
-                    showsSection
+                        LibraryDirectoryControls(
+                            query: $directoryQuery,
+                            scope: $directoryScope,
+                            sort: $directorySort,
+                            density: $directoryDensity,
+                            isForcedCompact: subscribedPodcasts.count >= 120
+                        )
+
+                        showsSection(scrollProxy: scrollProxy)
+                    }
                 }
+                .padding(.horizontal, OffScriptTheme.pagePadding)
+                .padding(.top, 8)
+                .padding(.bottom, 90)
             }
-            .padding(.horizontal, OffScriptTheme.pagePadding)
-            .padding(.top, 8)
-            .padding(.bottom, 90)
         }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
         .accessibilityIdentifier("LibraryScreen")
@@ -108,8 +308,14 @@ struct LibraryView: View {
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .task(id: subscribedPodcastIDs) { loadLibraryEpisodeSummary() }
-        .onAppear { loadLibraryEpisodeSummary() }
+        .task { loadLibraryEpisodeSummary() }
+        .onChange(of: subscribedPodcastIDs) { _, _ in scheduleLibraryEpisodeSummaryLoad() }
+        .onChange(of: batchImporter.phase) { _, phase in
+            if !phase.isRunning {
+                loadLibraryEpisodeSummary()
+            }
+        }
+        .onDisappear { summaryLoadTask?.cancel() }
         .refreshable { await syncSubscriptions() }
         // Settings + Import buttons render inline in LibraryTunerHeader, not
         // as toolbar items — iOS 26 wraps toolbar buttons in glass chrome.
@@ -147,35 +353,73 @@ struct LibraryView: View {
         .padding(.top, 16)
     }
 
-    private var showsSection: some View {
+    private func showsSection(scrollProxy: ScrollViewProxy) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
-            TunerLabel(text: "SHOWS · SUBSCRIBED", color: .offscriptSignalYellow)
+            HStack {
+                TunerLabel(text: "SHOWS · DIRECTORY", color: .offscriptSignalYellow)
+                Spacer()
+                TunerLabel(
+                    text: directoryPodcasts.count == subscribedPodcasts.count
+                        ? "\(subscribedPodcasts.count) VISIBLE"
+                        : "\(directoryPodcasts.count)/\(subscribedPodcasts.count) VISIBLE",
+                    color: .offscriptSoftPaper,
+                    size: 8
+                )
+            }
 
-            LazyVStack(spacing: 0) {
-                ForEach(Array(subscribedPodcasts.enumerated()), id: \.element.id) { idx, podcast in
-                    NavigationLink {
-                        PodcastDetailView(podcast: podcast)
-                    } label: {
-                        PodcastShelfRow(
-                            podcast: podcast,
-                            channelNumber: idx + 1,
-                            unplayedCount: freshCountsByPodcastID[podcast.id] ?? 0,
-                            inProgressCount: inProgressCountsByPodcastID[podcast.id] ?? 0
-                        )
+            if directoryPodcasts.isEmpty {
+                LibraryDirectoryEmptyState(query: directoryQuery, scope: directoryScope)
+            } else {
+                LibraryAlphabetRail(sections: directorySections) { sectionID in
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        scrollProxy.scrollTo(sectionID, anchor: .top)
                     }
-                    .buttonStyle(.plain)
-                    if idx < subscribedPodcasts.count - 1 {
+                }
+
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(directorySections) { section in
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack {
+                                TunerLabel(text: section.title, color: .offscriptSignalYellow, size: 10)
+                                Spacer()
+                                TunerLabel(text: "\(section.podcasts.count) CH", color: .offscriptSoftPaper, size: 8)
+                            }
+                            .padding(.top, 12)
+                            .padding(.bottom, 6)
+                            .id(section.id)
+
+                            ForEach(Array(section.podcasts.enumerated()), id: \.element.id) { idx, podcast in
+                                NavigationLink {
+                                    PodcastDetailView(podcast: podcast)
+                                } label: {
+                                    PodcastShelfRow(
+                                        podcast: podcast,
+                                        channelNumber: directoryNumbersByPodcastID[podcast.id] ?? (idx + 1),
+                                        unplayedCount: freshCountsByPodcastID[podcast.id] ?? 0,
+                                        inProgressCount: inProgressCountsByPodcastID[podcast.id] ?? 0,
+                                        isCompact: isCompactDirectory
+                                    )
+                                }
+                                .buttonStyle(.plain)
+
+                                if idx < section.podcasts.count - 1 {
+                                    Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                                }
+                            }
+                        }
+
                         Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                     }
                 }
+                .padding(.top, 2)
             }
-            .padding(.top, 4)
         }
     }
 
     @MainActor
     private func loadLibraryEpisodeSummary() {
+        summaryLoadTask?.cancel()
         guard !subscribedPodcasts.isEmpty else {
             freshEpisodes = []
             unplayedEpisodeCount = 0
@@ -207,6 +451,18 @@ struct LibraryView: View {
     }
 
     @MainActor
+    private func scheduleLibraryEpisodeSummaryLoad() {
+        summaryLoadTask?.cancel()
+        summaryLoadTask = Task { @MainActor in
+            if batchImporter.isRunning {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                guard !Task.isCancelled, !batchImporter.isRunning else { return }
+            }
+            loadLibraryEpisodeSummary()
+        }
+    }
+
+    @MainActor
     private func syncSubscriptions() async {
         for podcast in subscribedPodcasts {
             do {
@@ -223,6 +479,7 @@ struct LibraryView: View {
 
 private struct LibraryTunerHeader: View {
     let showCount: Int
+    let visibleCount: Int
     let unplayedCount: Int
     let inProgressCount: Int
     let onOpenImport: () -> Void
@@ -274,6 +531,8 @@ private struct LibraryTunerHeader: View {
             HStack(spacing: 14) {
                 statReadout(label: "SHOWS", value: showCount)
                 Rectangle().fill(Color.offscriptHairline).frame(width: 1, height: 24)
+                statReadout(label: "VISIBLE", value: visibleCount)
+                Rectangle().fill(Color.offscriptHairline).frame(width: 1, height: 24)
                 statReadout(label: "UNPLAYED", value: unplayedCount)
                 Rectangle().fill(Color.offscriptHairline).frame(width: 1, height: 24)
                 statReadout(label: "IN PROGRESS", value: inProgressCount)
@@ -295,6 +554,185 @@ private struct LibraryTunerHeader: View {
                 .monospacedDigit()
             TunerLabel(text: label, color: .offscriptSoftPaper, size: 8)
         }
+    }
+}
+
+// MARK: - Directory controls
+
+private struct LibraryDirectoryControls: View {
+    @Binding var query: String
+    @Binding var scope: LibraryDirectoryScope
+    @Binding var sort: LibraryDirectorySort
+    @Binding var density: LibraryDirectoryDensity
+    let isForcedCompact: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TunerLabel(text: "DIRECTORY · CONTROL", color: .offscriptSignalYellow)
+            tunerSearchField
+
+            VStack(alignment: .leading, spacing: 8) {
+                controlRow(label: "SCOPE") {
+                    ForEach(LibraryDirectoryScope.allCases) { item in
+                        modeButton(item.label, isSelected: scope == item) {
+                            scope = item
+                        }
+                    }
+                }
+
+                controlRow(label: "SORT") {
+                    ForEach(LibraryDirectorySort.allCases) { item in
+                        modeButton(item.label, isSelected: sort == item) {
+                            sort = item
+                        }
+                    }
+                }
+
+                controlRow(label: "ROWS") {
+                    ForEach(LibraryDirectoryDensity.allCases) { item in
+                        modeButton(item.label, isSelected: effectiveDensity == item, isDisabled: isForcedCompact && item == .artwork) {
+                            guard !(isForcedCompact && item == .artwork) else { return }
+                            density = item
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 12)
+        .overlay(Rectangle().fill(Color.offscriptHairline).frame(height: 1), alignment: .top)
+        .overlay(Rectangle().fill(Color.offscriptHairline).frame(height: 1), alignment: .bottom)
+    }
+
+    private var effectiveDensity: LibraryDirectoryDensity {
+        isForcedCompact ? .compact : density
+    }
+
+    private var tunerSearchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.offscriptSignalYellow)
+
+            TextField("",
+                      text: $query,
+                      prompt: Text("FILTER SHOWS BY TITLE, AUTHOR, OR CATEGORY")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.offscriptSoftPaper))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .font(.system(size: 13))
+                .foregroundStyle(Color.offscriptPaperWhite)
+                .accentColor(Color.offscriptSignalYellow)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if !query.isEmpty {
+                Button { query = "" } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.offscriptSoftPaper)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear library filter")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+    }
+
+    private func controlRow<Content: View>(
+        label: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            TunerLabel(text: label, color: .offscriptSoftPaper, size: 8)
+                .frame(width: 44, alignment: .leading)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    content()
+                }
+            }
+        }
+    }
+
+    private func modeButton(
+        _ title: String,
+        isSelected: Bool,
+        isDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            TunerLabel(
+                text: title,
+                color: isDisabled ? .offscriptSoftPaper.opacity(0.5) : (isSelected ? .black : .offscriptPaperWhite),
+                size: 9
+            )
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(isSelected && !isDisabled ? Color.offscriptSignalYellow : Color.clear)
+            .overlay(
+                Rectangle().stroke(
+                    isSelected && !isDisabled ? Color.offscriptSignalYellow : Color.offscriptHairline,
+                    lineWidth: 1
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+private struct LibraryAlphabetRail: View {
+    let sections: [LibraryDirectorySection]
+    let onSelect: (String) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(sections) { section in
+                    Button {
+                        onSelect(section.id)
+                    } label: {
+                        Text(section.title)
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(Color.offscriptSignalYellow)
+                            .frame(width: 28, height: 30)
+                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Jump to \(section.title)")
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct LibraryDirectoryEmptyState: View {
+    let query: String
+    let scope: LibraryDirectoryScope
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TunerLabel(text: "○ NO DIRECTORY MATCH", color: .offscriptSoftPaper)
+            Text(message)
+                .font(.system(size: 13))
+                .foregroundStyle(Color.offscriptPaperWhite.opacity(0.72))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var message: String {
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "No subscribed shows match this filter."
+        }
+        return "No shows in \(scope.label.lowercased()) scope."
     }
 }
 
@@ -395,6 +833,7 @@ private struct PodcastShelfRow: View {
     let channelNumber: Int
     let unplayedCount: Int
     let inProgressCount: Int
+    let isCompact: Bool
 
     var body: some View {
         HStack(spacing: 12) {
@@ -404,9 +843,11 @@ private struct PodcastShelfRow: View {
                 .foregroundStyle(Color.offscriptSignalYellow)
                 .frame(width: 28, alignment: .leading)
 
-            OffScriptArtworkView(url: podcast.artworkURL, cornerRadius: 3)
-                .frame(width: 56, height: 56)
-                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+            if !isCompact {
+                OffScriptArtworkView(url: podcast.artworkURL, cornerRadius: 3)
+                    .frame(width: 56, height: 56)
+                    .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(podcast.title)
@@ -427,11 +868,19 @@ private struct PodcastShelfRow: View {
 
             Spacer()
 
+            if isCompact, unplayedCount > 0 {
+                Text("\(unplayedCount)")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.offscriptSignalYellow)
+                    .monospacedDigit()
+                    .frame(minWidth: 24, alignment: .trailing)
+            }
+
             Image(systemName: "chevron.right")
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(Color.offscriptSignalYellow)
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, isCompact ? 7 : 10)
     }
 }
 

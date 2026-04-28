@@ -4,6 +4,14 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added — large-library directory controls
+- **Library now behaves like a real channel directory for 250+ show libraries.** The shows list has Tuner-styled search, scope filters, sort modes, compact/artwork row density, visible-count readouts, and an A-Z jump rail so large OPML imports are navigable without endless scrolling.
+- **Large libraries default to compact rows.** Artwork-heavy rows remain available for smaller libraries, but 120+ show libraries automatically use dense Tuner rows to reduce scroll distance and image/layout churn.
+
+### Changed — Library performance
+- **The root Library podcast query now filters subscribed shows in SwiftData instead of fetching every historical podcast and filtering in Swift.**
+- **Library summary reloads are coalesced during background OPML imports** so each imported show does not immediately retrigger the expensive per-show count path while the list is being scrolled.
+
 ### Added — recommendation tuner and signal discovery
 - **Settings now has a three-position recommendation tuner** (`SIGNAL`, `BALANCED`, `DISCOVERY`) so listeners can choose whether OffScript stays strictly inside known local evidence or opens a new-show discovery lane.
 - **Home can render a Tuner-styled discovery rail** sourced from the existing taste profile, with trace rows explaining whether each new podcast came from genre, tag, show-affinity, or discovery signal. Discovery rows can be tuned into the library without leaving Home.

@@ -444,6 +444,78 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func libraryDirectoryOrganizerFiltersAndSortsLargeLibraries() {
+        let stale = Podcast(
+            title: "Stale Sync",
+            author: "Ops Desk",
+            feedURL: URL(string: "https://example.com/stale.xml")!,
+            categories: ["News"]
+        )
+        stale.syncStatus = "failed"
+        stale.syncFailureCount = 2
+
+        let active = Podcast(
+            title: "Audio Craft",
+            author: "Studio Team",
+            feedURL: URL(string: "https://example.com/audio.xml")!,
+            categories: ["Technology", "Design"]
+        )
+        let quiet = Podcast(
+            title: "Quiet Archive",
+            author: "Library",
+            feedURL: URL(string: "https://example.com/archive.xml")!,
+            categories: ["History"]
+        )
+
+        let unplayedCounts = [active.id: 8, quiet.id: 0, stale.id: 1]
+        let inProgressCounts = [active.id: 1]
+
+        let queryFiltered = LibraryDirectoryOrganizer.filteredPodcasts(
+            [stale, active, quiet],
+            query: "studio",
+            scope: .all,
+            sort: .title,
+            unplayedCounts: unplayedCounts,
+            inProgressCounts: inProgressCounts
+        )
+        #expect(queryFiltered.map(\.title) == ["Audio Craft"])
+
+        let attentionSorted = LibraryDirectoryOrganizer.filteredPodcasts(
+            [quiet, active, stale],
+            query: "",
+            scope: .all,
+            sort: .attention,
+            unplayedCounts: unplayedCounts,
+            inProgressCounts: inProgressCounts
+        )
+        #expect(attentionSorted.map(\.title) == ["Stale Sync", "Audio Craft", "Quiet Archive"])
+
+        let inProgressOnly = LibraryDirectoryOrganizer.filteredPodcasts(
+            [quiet, active, stale],
+            query: "",
+            scope: .inProgress,
+            sort: .title,
+            unplayedCounts: unplayedCounts,
+            inProgressCounts: inProgressCounts
+        )
+        #expect(inProgressOnly.map(\.title) == ["Audio Craft"])
+    }
+
+    @Test
+    @MainActor
+    func libraryDirectoryOrganizerBuildsAlphabetSections() {
+        let numeric = Podcast(title: "99 Invisible", feedURL: URL(string: "https://example.com/99.xml")!)
+        let alpha = Podcast(title: "Audio Craft", feedURL: URL(string: "https://example.com/audio.xml")!)
+        let beta = Podcast(title: "Beta Feed", feedURL: URL(string: "https://example.com/beta.xml")!)
+
+        let sections = LibraryDirectoryOrganizer.sections(for: [numeric, alpha, beta])
+
+        #expect(sections.map(\.title) == ["A", "B", "#"])
+        #expect(sections.flatMap(\.podcasts).map(\.title) == ["Audio Craft", "Beta Feed", "99 Invisible"])
+    }
+
+    @Test
+    @MainActor
     func tasteProfileRefreshAggregatesSignals() throws {
         let container = try makeContainer()
         let context = container.mainContext
