@@ -418,24 +418,28 @@ struct OffScriptTests {
         let originalDownloadedOnly = AppSettings.libraryShowDownloadedOnly
         let originalSortMode = AppSettings.librarySortMode
         let originalGenres = AppSettings.preferredGenres
+        let originalRecommendationMode = AppSettings.recommendationMode
 
         AppSettings.autoPlayNext = false
         AppSettings.preferShortEpisodes = true
         AppSettings.libraryShowDownloadedOnly = true
         AppSettings.librarySortMode = .recentlyPlayed
         AppSettings.preferredGenres = [.technology, .newsAndPolitics]
+        AppSettings.recommendationMode = .discovery
 
         #expect(AppSettings.autoPlayNext == false)
         #expect(AppSettings.preferShortEpisodes == true)
         #expect(AppSettings.libraryShowDownloadedOnly == true)
         #expect(AppSettings.librarySortMode == .recentlyPlayed)
         #expect(AppSettings.preferredGenres == [.technology, .newsAndPolitics])
+        #expect(AppSettings.recommendationMode == .discovery)
 
         AppSettings.autoPlayNext = originalAutoPlay
         AppSettings.preferShortEpisodes = originalPreferShort
         AppSettings.libraryShowDownloadedOnly = originalDownloadedOnly
         AppSettings.librarySortMode = originalSortMode
         AppSettings.preferredGenres = originalGenres
+        AppSettings.recommendationMode = originalRecommendationMode
     }
 
     @Test
@@ -509,6 +513,99 @@ struct OffScriptTests {
 
         #expect(tasteProfile?.topTags.contains("workflow") == true)
         #expect(tasteProfile?.topTags.contains("craft") == true)
+    }
+
+    @Test
+    @MainActor
+    func tasteProfileRefreshWeightsRecentExplicitSignalAboveOldCompletion() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let legacyShow = Podcast(title: "Legacy Show", feedURL: URL(string: "https://example.com/legacy.xml")!)
+        let freshShow = Podcast(title: "Fresh Show", feedURL: URL(string: "https://example.com/fresh-signal.xml")!)
+        let oldCompleted = Episode(
+            title: "Old Completed",
+            pubDate: Date().addingTimeInterval(-320 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/legacy.mp3")!,
+            podcast: legacyShow
+        )
+        let freshLiked = Episode(
+            title: "Fresh Explicit Signal",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/fresh-signal.mp3")!,
+            podcast: freshShow
+        )
+        let oldProfile = EpisodeProfile(episodeID: oldCompleted.id)
+        oldProfile.tags = ["legacy"]
+        let freshProfile = EpisodeProfile(episodeID: freshLiked.id)
+        freshProfile.tags = ["fresh"]
+        let oldEvent = PlaybackEvent(kind: .completed, position: 1_800, episode: oldCompleted)
+        oldEvent.date = Date().addingTimeInterval(-320 * 86_400)
+        let freshSignal = PreferenceSignal(action: .moreLikeThis, episode: freshLiked)
+        freshSignal.date = .now
+
+        context.insert(legacyShow)
+        context.insert(freshShow)
+        context.insert(oldCompleted)
+        context.insert(freshLiked)
+        context.insert(oldProfile)
+        context.insert(freshProfile)
+        context.insert(oldEvent)
+        context.insert(freshSignal)
+        try context.save()
+
+        try TasteProfileService.refresh(in: context, force: true)
+        let tasteProfile = try #require(try context.fetch(FetchDescriptor<UserTasteProfile>()).first)
+
+        #expect(tasteProfile.topTags.first == "fresh")
+    }
+
+    @Test
+    @MainActor
+    func tasteProfileRefreshDemotesNegativePreferenceSignals() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let blockedShow = Podcast(title: "Blocked Show", feedURL: URL(string: "https://example.com/blocked-signal.xml")!)
+        let trustedShow = Podcast(title: "Trusted Show", feedURL: URL(string: "https://example.com/trusted-signal.xml")!)
+        let blocked = Episode(
+            title: "Do Not Learn This",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/blocked-signal.mp3")!,
+            podcast: blockedShow
+        )
+        let trusted = Episode(
+            title: "Learn This",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/trusted-signal.mp3")!,
+            podcast: trustedShow
+        )
+        let blockedProfile = EpisodeProfile(episodeID: blocked.id)
+        blockedProfile.tags = ["blocked"]
+        let trustedProfile = EpisodeProfile(episodeID: trusted.id)
+        trustedProfile.tags = ["trusted"]
+
+        context.insert(blockedShow)
+        context.insert(trustedShow)
+        context.insert(blocked)
+        context.insert(trusted)
+        context.insert(blockedProfile)
+        context.insert(trustedProfile)
+        context.insert(PlaybackEvent(kind: .completed, position: 1_800, episode: blocked))
+        context.insert(PreferenceSignal(action: .notInterested, episode: blocked))
+        context.insert(PreferenceSignal(action: .like, episode: trusted))
+        try context.save()
+
+        try TasteProfileService.refresh(in: context, force: true)
+        let tasteProfile = try #require(try context.fetch(FetchDescriptor<UserTasteProfile>()).first)
+
+        #expect(tasteProfile.topTags.contains("trusted"))
+        #expect(!tasteProfile.topTags.contains("blocked"))
+        #expect(!tasteProfile.showAffinity.contains("Blocked Show"))
     }
 
     @Test

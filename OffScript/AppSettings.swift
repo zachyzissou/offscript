@@ -31,6 +31,7 @@ enum AppSettings {
         static let autoPlayNext = "offscript.autoPlayNext"
         static let preferShortEpisodes = "offscript.preferShortEpisodes"
         static let preferredGenres = "offscript.preferredGenres"
+        static let recommendationMode = "offscript.recommendationMode"
         static let recentSearches = "offscript.recentSearches"
         static let libraryShowDownloadedOnly = "offscript.libraryShowDownloadedOnly"
         static let librarySortMode = "offscript.librarySortMode"
@@ -42,6 +43,43 @@ enum AppSettings {
         case newest
         case oldest
         case recentlyPlayed
+    }
+
+    enum RecommendationMode: String, CaseIterable {
+        case signalLocked
+        case balanced
+        case discovery
+
+        var label: String {
+            switch self {
+            case .signalLocked: "SIGNAL"
+            case .balanced: "BALANCED"
+            case .discovery: "DISCOVERY"
+            }
+        }
+
+        var detail: String {
+            switch self {
+            case .signalLocked:
+                "Only episodes with explicit local evidence. No new-show discovery."
+            case .balanced:
+                "Prioritize queue, resume, completion, and topic signal with a small discovery lane."
+            case .discovery:
+                "Keep local signal first, then surface more new-show candidates from your taste profile."
+            }
+        }
+
+        var allowsDiscovery: Bool {
+            self != .signalLocked
+        }
+
+        var discoveryLimit: Int {
+            switch self {
+            case .signalLocked: 0
+            case .balanced: 6
+            case .discovery: 10
+            }
+        }
     }
 
     private static let defaults = UserDefaults.standard
@@ -72,6 +110,17 @@ enum AppSettings {
         set {
             defaults.set(newValue.map(\.rawValue), forKey: Key.preferredGenres)
         }
+    }
+
+    static var recommendationMode: RecommendationMode {
+        get {
+            guard let raw = defaults.string(forKey: Key.recommendationMode),
+                  let mode = RecommendationMode(rawValue: raw) else {
+                return .balanced
+            }
+            return mode
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.recommendationMode) }
     }
 
     static var recentSearchesStorage: String {

@@ -18,9 +18,11 @@ private let homeLogger = Logger(subsystem: "com.offscript", category: "Home")
 
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
+    @AppStorage("offscript.recommendationMode") private var recommendationModeRaw = AppSettings.RecommendationMode.balanced.rawValue
     @State private var sections: [HomeFeedSection] = []
     @State private var errorMessage: String?
     @State private var isLoading = true
+    @State private var isLoadingDiscovery = false
     let onOpenSettings: () -> Void
 
     private let recommendationService = RecommendationService()
@@ -43,7 +45,10 @@ struct HomeView: View {
                     // to work with, `sections` populates and this hides.
                     HomeStarterRail()
                 } else {
-                    if let leadSection = sections.first, let leadScoredEpisode = leadSection.scoredEpisodes.first {
+                    let episodeSections = sections.filter { !$0.isDiscoverySection }
+                    let discoverySections = sections.filter(\.isDiscoverySection)
+
+                    if let leadSection = episodeSections.first, let leadScoredEpisode = leadSection.scoredEpisodes.first {
                         HeroTunerCard(
                             episode: leadScoredEpisode.episode,
                             reason: leadScoredEpisode.explanation,
@@ -63,13 +68,22 @@ struct HomeView: View {
                         }
                     }
 
-                    ForEach(Array(sections.dropFirst().enumerated()), id: \.element.id) { _, section in
+                    ForEach(Array(episodeSections.dropFirst().enumerated()), id: \.element.id) { _, section in
                         TunerRail(
                             title: section.title.uppercased(),
                             episodes: section.episodes,
                             reasonProvider: { section.explanation(for: $0) },
                             signalProvider: { section.signalTrace(for: $0) }
                         )
+                    }
+
+                    ForEach(discoverySections) { section in
+                        TunerDiscoveryRail(section: section)
+                    }
+
+                    if isLoadingDiscovery {
+                        HomeDiscoveryLoadingStrip()
+                            .padding(.horizontal, OffScriptTheme.pagePadding)
                     }
                 }
             }
@@ -88,23 +102,40 @@ struct HomeView: View {
         // styling and our color tokens — that's the gray-circle chrome we
         // saw in the screenshot. The settings affordance is rendered inline
         // in HomeTunerHeader instead, where we have full control.
-        .task { await loadSections() }
+        .task(id: recommendationModeRaw) { await loadSections() }
         .refreshable { await loadSections() }
     }
 
     @MainActor
     private func loadSections() async {
         do {
+            let mode = AppSettings.recommendationMode
             let loaded = try recommendationService.homeSections(context: modelContext)
             withAnimation(.easeInOut(duration: 0.25)) {
                 sections = loaded
                 errorMessage = nil
                 isLoading = false
+                isLoadingDiscovery = false
             }
+            await loadDiscovery(mode: mode, existingSections: loaded)
         } catch {
             homeLogger.error("loadSections failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
             isLoading = false
+        }
+    }
+
+    @MainActor
+    private func loadDiscovery(mode: AppSettings.RecommendationMode, existingSections: [HomeFeedSection]) async {
+        guard mode.allowsDiscovery else { return }
+        isLoadingDiscovery = true
+        defer { isLoadingDiscovery = false }
+
+        if let discovery = await recommendationService.discoverySection(context: modelContext, mode: mode) {
+            guard !Task.isCancelled, AppSettings.recommendationMode == mode else { return }
+            withAnimation(.easeInOut(duration: 0.25)) {
+                sections = existingSections + [discovery]
+            }
         }
     }
 }
@@ -414,6 +445,133 @@ private struct HomeSkeletonStack: View {
             .shimmer()
         }
         .padding(.top, 8)
+    }
+}
+
+private struct HomeDiscoveryLoadingStrip: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            TunerLabel(text: "○ SCANNING NEW FREQUENCIES", color: .offscriptSoftPaper, size: 9)
+            Spacer()
+        }
+        .padding(.vertical, 12)
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .top
+        )
+    }
+}
+
+private struct TunerDiscoveryRail: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var subscribed: [Podcast]
+    @State private var importingID: String?
+    @State private var addedIDs: Set<String> = []
+    @State private var errorMessage: String?
+
+    let section: HomeFeedSection
+    private let syncService = FeedSyncService()
+
+    private var subscribedFeedURLs: Set<String> {
+        Set(subscribed.filter(\.isSubscribed).map { $0.feedURL.normalizedFeedKey })
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
+                Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                HStack {
+                    TunerLabel(text: section.title.uppercased(), color: .offscriptFnInfo)
+                    Spacer()
+                    TunerLabel(text: "NEW CHANNELS", color: .offscriptSoftPaper, size: 8)
+                }
+                Text(section.subtitle)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.72))
+                    .lineSpacing(2)
+            }
+            .padding(.horizontal, OffScriptTheme.pagePadding)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(section.discoveryResults) { scored in
+                        discoveryCard(scored)
+                    }
+                }
+                .padding(.horizontal, OffScriptTheme.pagePadding)
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.offscriptFnRecord)
+                    .padding(.horizontal, OffScriptTheme.pagePadding)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    private func discoveryCard(_ scored: ScoredDiscoveryResult) -> some View {
+        let result = scored.result
+        let key = result.feedURL.normalizedFeedKey
+        let isAdded = addedIDs.contains(key) || subscribedFeedURLs.contains(key)
+        let isImporting = importingID == key
+
+        return VStack(alignment: .leading, spacing: 8) {
+            OffScriptArtworkView(url: result.artworkURL, cornerRadius: 3)
+                .frame(width: 168, height: 168)
+                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+
+            TunerLabel(text: result.author.uppercased(), color: .offscriptFnInfo, size: 8)
+                .lineLimit(1)
+
+            Text(result.title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.offscriptPaperWhite)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .frame(width: 168, alignment: .leading)
+
+            TunerTag(text: scored.explanation, color: .offscriptFnInfo, dim: true)
+            RecommendationSignalTraceView(signals: scored.signalTrace, limit: 2, color: .offscriptSoftPaper)
+
+            Button {
+                Task { await add(scored.result) }
+            } label: {
+                TunerLabel(
+                    text: isAdded ? "✓ TUNED" : (isImporting ? "○ TUNING…" : "+ TUNE"),
+                    color: isAdded ? .offscriptFnMode : .offscriptSignalYellow,
+                    size: 10
+                )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .overlay(
+                    Rectangle().stroke(isAdded ? Color.offscriptFnMode : Color.offscriptSignalYellow, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(isAdded || isImporting)
+            .padding(.top, 2)
+        }
+        .frame(width: 168, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(result.title) from \(result.author). \(scored.explanation)")
+    }
+
+    @MainActor
+    private func add(_ result: PodcastSearchResult) async {
+        let key = result.feedURL.normalizedFeedKey
+        importingID = key
+        defer { importingID = nil }
+        errorMessage = nil
+
+        do {
+            _ = try await syncService.importPodcast(from: result, into: modelContext, episodeLimit: 25)
+            addedIDs.insert(key)
+        } catch {
+            homeLogger.error("Discovery add failed for \(result.title, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            errorMessage = "Couldn't tune \(result.title). Try Search if the feed moved."
+        }
     }
 }
 

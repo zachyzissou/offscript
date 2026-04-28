@@ -7,6 +7,7 @@ struct ScoredDiscoveryResult: Identifiable {
     let result: PodcastSearchResult
     let score: Double
     let explanation: String
+    let signalTrace: [RecommendationSignal]
 }
 
 actor DiscoveryService {
@@ -18,14 +19,15 @@ actor DiscoveryService {
 
     func discoverPodcasts(
         tasteProfile: UserTasteProfile,
-        subscribedFeedURLs: Set<String>
+        subscribedFeedURLs: Set<String>,
+        limit: Int = 10
     ) async -> [ScoredDiscoveryResult] {
         // Return cached results if fresh
         if Date().timeIntervalSince(cacheTimestamp) < cacheDuration, !cachedResults.isEmpty {
             // Filter out any results the user has since subscribed to
             let stillRelevant = cachedResults.filter { !subscribedFeedURLs.contains($0.result.feedURL.absoluteString) }
             if !stillRelevant.isEmpty {
-                return stillRelevant
+                return Array(stillRelevant.prefix(limit))
             }
         }
 
@@ -58,10 +60,11 @@ actor DiscoveryService {
         }
         .sorted { $0.score > $1.score }
 
-        let topResults = Array(scored.prefix(10))
+        let cacheLimit = max(limit, AppSettings.RecommendationMode.discovery.discoveryLimit)
+        let topResults = Array(scored.prefix(cacheLimit))
         cachedResults = topResults
         cacheTimestamp = Date()
-        return topResults
+        return Array(topResults.prefix(limit))
     }
 
     func invalidateCache() {
@@ -110,6 +113,7 @@ actor DiscoveryService {
     ) -> ScoredDiscoveryResult {
         var score: Double = 0.0
         var explanations: [String] = []
+        var signals: [RecommendationSignal] = []
 
         let titleLower = result.title.lowercased()
         let summaryLower = (result.summary ?? "").lowercased()
@@ -121,6 +125,8 @@ actor DiscoveryService {
            preferredGenresLower.contains(resultGenre) {
             score += 0.35
             explanations.append("Matches your interest in \(result.summary ?? "")")
+            signals.append(RecommendationSignal(label: "source", value: "genre"))
+            signals.append(RecommendationSignal(label: "lane", value: result.summary ?? "saved genre"))
         }
 
         // Tag overlap
@@ -132,7 +138,10 @@ actor DiscoveryService {
             }
         }
         if !matchedTags.isEmpty {
-            explanations.append("Covers topics you like: \(matchedTags.prefix(2).joined(separator: ", "))")
+            let sample = matchedTags.prefix(2).joined(separator: ", ")
+            explanations.append("Covers topics you like: \(sample)")
+            signals.append(RecommendationSignal(label: "source", value: "taste tag"))
+            signals.append(RecommendationSignal(label: "tags", value: sample))
         }
 
         // Show affinity: boost if title resembles a favorite show
@@ -143,6 +152,7 @@ actor DiscoveryService {
             if !overlap.isEmpty {
                 score += 0.10
                 explanations.append("Similar to shows you finish")
+                signals.append(RecommendationSignal(label: "source", value: "show affinity"))
                 break
             }
         }
@@ -160,6 +170,10 @@ actor DiscoveryService {
             explanation = "Discovery match from your saved signals"
         }
 
-        return ScoredDiscoveryResult(result: result, score: score, explanation: explanation)
+        if signals.isEmpty {
+            signals.append(RecommendationSignal(label: "source", value: "discovery"))
+        }
+
+        return ScoredDiscoveryResult(result: result, score: score, explanation: explanation, signalTrace: signals)
     }
 }
