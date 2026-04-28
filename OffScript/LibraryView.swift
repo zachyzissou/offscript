@@ -4,7 +4,7 @@ import SwiftUI
 
 private let libraryLogger = Logger(subsystem: "com.offscript", category: "Library")
 
-enum LibraryDirectoryScope: String, CaseIterable, Identifiable {
+nonisolated enum LibraryDirectoryScope: String, CaseIterable, Identifiable {
     case all
     case unplayed
     case inProgress
@@ -22,7 +22,7 @@ enum LibraryDirectoryScope: String, CaseIterable, Identifiable {
     }
 }
 
-enum LibraryDirectorySort: String, CaseIterable, Identifiable {
+nonisolated enum LibraryDirectorySort: String, CaseIterable, Identifiable {
     case title
     case latest
     case attention
@@ -38,7 +38,7 @@ enum LibraryDirectorySort: String, CaseIterable, Identifiable {
     }
 }
 
-enum LibraryDirectoryDensity: String, CaseIterable, Identifiable {
+nonisolated enum LibraryDirectoryDensity: String, CaseIterable, Identifiable {
     case compact
     case artwork
 
@@ -52,13 +52,13 @@ enum LibraryDirectoryDensity: String, CaseIterable, Identifiable {
     }
 }
 
-struct LibraryDirectorySection: Identifiable {
+nonisolated struct LibraryDirectorySection: Identifiable {
     let id: String
     let title: String
     let podcasts: [Podcast]
 }
 
-enum LibraryDirectoryOrganizer {
+nonisolated enum LibraryDirectoryOrganizer {
     static func filteredPodcasts(
         _ podcasts: [Podcast],
         query: String,
