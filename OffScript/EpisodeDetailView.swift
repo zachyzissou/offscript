@@ -20,6 +20,7 @@ import SwiftUI
 struct EpisodeDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @ObservedObject private var player = PlaybackController.shared
+    @ObservedObject private var downloadService = DownloadService.shared
     @State private var feedbackGiven: PreferenceSignal.Action? = nil
     let episode: Episode
 
@@ -41,6 +42,7 @@ struct EpisodeDetailView: View {
                     progressTickStrip
                 }
                 actionRow
+                offlineSection
                 summarySection
                 // Apple-native AI surfaces — all on-device, all hidden when
                 // unavailable for the device/episode. Order intentional:
@@ -207,11 +209,84 @@ struct EpisodeDetailView: View {
             .buttonStyle(.plain)
             .disabled(episode.isQueued)
 
-            // Note: download / chapter / transcript surfaces are gated to a
-            // future build — the origin/main Episode model doesn't expose them
-            // yet. Reintroduce alongside DownloadService / EpisodeChapter.
+            DownloadButton(episode: episode)
 
             Spacer()
+        }
+    }
+
+    // ── Offline trust ────────────────────────────────────────────────
+    @ViewBuilder
+    private var offlineSection: some View {
+        if episode.downloadState != .notDownloaded || episode.localFileURL != nil {
+            VStack(alignment: .leading, spacing: 8) {
+                TunerLabel(text: "OFFLINE · \(offlineStateLabel)", color: offlineStateColor)
+                Text(offlineDetail)
+                    .font(.system(size: 12.5, weight: .regular))
+                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.78))
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if episode.downloadState == .failed {
+                    Button {
+                        downloadService.startDownload(for: episode)
+                    } label: {
+                        TunerLabel(text: "↻ RETRY DOWNLOAD", color: .offscriptFnRecord, size: 10)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 9)
+                            .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(
+                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                alignment: .top
+            )
+        }
+    }
+
+    private var offlineStateLabel: String {
+        switch episode.downloadState {
+        case .notDownloaded:
+            return "STREAM ONLY"
+        case .queued:
+            return "QUEUED"
+        case .downloading:
+            return "\(Int((episode.downloadProgress * 100).rounded()))%"
+        case .downloaded:
+            return "READY"
+        case .failed:
+            return "FAILED"
+        }
+    }
+
+    private var offlineStateColor: Color {
+        switch episode.downloadState {
+        case .downloaded:
+            return .offscriptFnMode
+        case .failed:
+            return .offscriptFnRecord
+        case .queued, .downloading:
+            return .offscriptSignalYellow
+        case .notDownloaded:
+            return .offscriptSoftPaper
+        }
+    }
+
+    private var offlineDetail: String {
+        switch episode.downloadState {
+        case .notDownloaded:
+            return "This episode will stream unless you save it first."
+        case .queued:
+            return "Waiting for an open download slot. Downloads continue in the background."
+        case .downloading:
+            return "Saving for offline playback. Progress is checkpointed without hammering the local store."
+        case .downloaded:
+            return "Saved on this device. Playback will use the local file when available."
+        case .failed:
+            return episode.downloadErrorMessage ?? "The last offline save failed. Retry when connected."
         }
     }
 

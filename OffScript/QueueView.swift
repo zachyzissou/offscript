@@ -48,6 +48,7 @@ struct QueueView: View {
             .padding(.bottom, 90)
         }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
+        .accessibilityIdentifier("QueueScreen")
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)

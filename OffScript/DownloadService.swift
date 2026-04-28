@@ -1,6 +1,9 @@
 import Combine
 import Foundation
+import OSLog
 import SwiftData
+
+private let downloadLogger = Logger(subsystem: "com.offscript", category: "DownloadService")
 
 @MainActor
 final class DownloadService: NSObject, ObservableObject {
@@ -26,6 +29,8 @@ final class DownloadService: NSObject, ObservableObject {
     private var taskToEpisodeID: [Int: UUID] = [:]
     private var episodeIDToTask: [UUID: URLSessionDownloadTask] = [:]
     private var hasReconciledPersistedState = false
+    private var lastPersistedProgressByEpisodeID: [UUID: Double] = [:]
+    private var lastProgressSaveDateByEpisodeID: [UUID: Date] = [:]
 
     private override init() {
         super.init()
@@ -60,9 +65,6 @@ final class DownloadService: NSObject, ObservableObject {
             return
         }
 
-        let task = session.downloadTask(with: episode.audioURL)
-        taskToEpisodeID[task.taskIdentifier] = episode.id
-        episodeIDToTask[episode.id] = task
         episode.downloadRequestedAt = .now
         episode.downloadCompletedAt = nil
         episode.downloadErrorMessage = nil
@@ -90,6 +92,7 @@ final class DownloadService: NSObject, ObservableObject {
             episode.downloadErrorMessage = nil
             episode.downloadRequestedAt = nil
             episode.isDownloaded = false
+            clearProgressThrottle(for: episode.id)
             modelContext?.saveOrLog("DownloadService")
             TelemetryService.track(
                 "download_cancelled",
@@ -101,6 +104,7 @@ final class DownloadService: NSObject, ObservableObject {
 
         episodeIDToTask[episode.id]?.cancel()
         episodeIDToTask[episode.id] = nil
+        clearProgressThrottle(for: episode.id)
         episode.downloadState = episode.localFileURL == nil ? .notDownloaded : .downloaded
         episode.downloadProgress = episode.localFileURL == nil ? 0 : 1
         episode.isDownloaded = episode.localFileURL != nil
@@ -117,7 +121,7 @@ final class DownloadService: NSObject, ObservableObject {
         objectWillChange.send()
         cancelDownload(for: episode)
         if let url = episode.localFileURL {
-            try? FileManager.default.removeItem(at: url)
+            removeFileIfPresent(at: url)
         }
         episode.localFileURL = nil
         episode.downloadState = .notDownloaded
@@ -125,6 +129,7 @@ final class DownloadService: NSObject, ObservableObject {
         episode.downloadCompletedAt = nil
         episode.downloadErrorMessage = nil
         episode.isDownloaded = false
+        clearProgressThrottle(for: episode.id)
         modelContext?.saveOrLog("DownloadService")
         TelemetryService.track(
             "download_deleted",
@@ -238,9 +243,12 @@ final class DownloadService: NSObject, ObservableObject {
 
     private func resumeQueuedDownloadsIfNeeded() {
         guard activeDownloadCount < maximumConcurrentDownloads, let modelContext else { return }
-        let descriptor = FetchDescriptor<Episode>()
-        guard let queuedEpisodes = try? modelContext.fetch(descriptor)
-            .filter({ $0.downloadState == .queued }) else { return }
+        let queuedState = Episode.DownloadState.queued.rawValue
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.downloadStateRawValue == queuedState },
+            sortBy: [SortDescriptor(\Episode.downloadRequestedAt)]
+        )
+        guard let queuedEpisodes = try? modelContext.fetch(descriptor) else { return }
 
         let availableSlots = max(maximumConcurrentDownloads - activeDownloadCount, 0)
         for episode in queuedEpisodes.prefix(availableSlots) {
@@ -250,7 +258,16 @@ final class DownloadService: NSObject, ObservableObject {
 
     func reconcilePersistedDownloads() {
         guard let modelContext else { return }
-        let descriptor = FetchDescriptor<Episode>()
+        let downloadedState = Episode.DownloadState.downloaded.rawValue
+        let queuedState = Episode.DownloadState.queued.rawValue
+        let downloadingState = Episode.DownloadState.downloading.rawValue
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> {
+                $0.downloadStateRawValue == downloadedState
+                    || $0.downloadStateRawValue == queuedState
+                    || $0.downloadStateRawValue == downloadingState
+            }
+        )
         guard let storedEpisodes = try? modelContext.fetch(descriptor) else { return }
 
         for episode in storedEpisodes {
@@ -276,6 +293,34 @@ final class DownloadService: NSObject, ObservableObject {
 
         modelContext.saveOrLog("DownloadService")
     }
+
+    private func removeFileIfPresent(at url: URL) {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch {
+            downloadLogger.error("Failed to remove downloaded file at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func shouldPersistProgress(_ progress: Double, for episodeID: UUID) -> Bool {
+        if progress >= 1 { return true }
+        let lastProgress = lastPersistedProgressByEpisodeID[episodeID] ?? 0
+        let progressedEnough = progress - lastProgress >= 0.05
+        let lastSave = lastProgressSaveDateByEpisodeID[episodeID] ?? .distantPast
+        let waitedEnough = Date().timeIntervalSince(lastSave) >= 3
+        return progressedEnough || waitedEnough
+    }
+
+    private func markProgressPersisted(_ progress: Double, for episodeID: UUID) {
+        lastPersistedProgressByEpisodeID[episodeID] = progress
+        lastProgressSaveDateByEpisodeID[episodeID] = .now
+    }
+
+    private func clearProgressThrottle(for episodeID: UUID) {
+        lastPersistedProgressByEpisodeID.removeValue(forKey: episodeID)
+        lastProgressSaveDateByEpisodeID.removeValue(forKey: episodeID)
+    }
 }
 
 extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
@@ -300,10 +345,13 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
                 downloadTask.cancel()
                 self.taskToEpisodeID.removeValue(forKey: downloadTask.taskIdentifier)
                 self.episodeIDToTask.removeValue(forKey: episodeID)
+                self.clearProgressThrottle(for: episodeID)
                 return
             }
             episode.downloadState = .downloading
             episode.downloadProgress = progress
+            guard self.shouldPersistProgress(progress, for: episodeID) else { return }
+            self.markProgressPersisted(progress, for: episodeID)
             self.modelContext?.saveOrLog("DownloadService")
         }
     }
@@ -322,12 +370,13 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
                 // file that already landed.
                 self.taskToEpisodeID.removeValue(forKey: downloadTask.taskIdentifier)
                 self.episodeIDToTask.removeValue(forKey: episodeID)
-                try? FileManager.default.removeItem(at: location)
+                self.clearProgressThrottle(for: episodeID)
+                self.removeFileIfPresent(at: location)
                 return
             }
             do {
                 let destinationURL = try self.destinationURL(for: episodeID, originalURL: episode.audioURL)
-                try? FileManager.default.removeItem(at: destinationURL)
+                self.removeFileIfPresent(at: destinationURL)
                 try FileManager.default.moveItem(at: location, to: destinationURL)
                 episode.localFileURL = destinationURL
                 episode.downloadState = .downloaded
@@ -362,6 +411,7 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
 
             self.episodeIDToTask[episodeID] = nil
             self.taskToEpisodeID[downloadTask.taskIdentifier] = nil
+            self.clearProgressThrottle(for: episodeID)
             self.resumeQueuedDownloadsIfNeeded()
         }
     }
@@ -375,6 +425,7 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
                 guard let episodeID = self.taskToEpisodeID[task.taskIdentifier] else { return }
                 self.taskToEpisodeID[task.taskIdentifier] = nil
                 self.episodeIDToTask[episodeID] = nil
+                self.clearProgressThrottle(for: episodeID)
                 self.resumeQueuedDownloadsIfNeeded()
             }
             return
@@ -388,6 +439,7 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
                 // Drop the dict entries so they don't pin the IDs forever.
                 self.taskToEpisodeID.removeValue(forKey: task.taskIdentifier)
                 self.episodeIDToTask.removeValue(forKey: episodeID)
+                self.clearProgressThrottle(for: episodeID)
                 self.resumeQueuedDownloadsIfNeeded()
                 return
             }
@@ -397,6 +449,7 @@ extension DownloadService: URLSessionDownloadDelegate, URLSessionTaskDelegate {
             episode.isDownloaded = false
             self.episodeIDToTask[episodeID] = nil
             self.taskToEpisodeID[task.taskIdentifier] = nil
+            self.clearProgressThrottle(for: episodeID)
             self.modelContext?.saveOrLog("DownloadService")
             TelemetryService.track(
                 "download_failed",

@@ -34,16 +34,17 @@ enum BackgroundFeedRefresh {
         let context = ModelContext(container)
         let service = FeedSyncService()
 
-        let descriptor = FetchDescriptor<Podcast>()
+        let descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.isSubscribed == true }
+        )
         guard let podcasts = try? context.fetch(descriptor) else {
             logger.warning("Background refresh: failed to fetch podcasts")
             return
         }
 
-        let subscribed = podcasts.filter(\.isSubscribed)
-        logger.info("Background refresh: syncing \(subscribed.count, privacy: .public) subscriptions")
+        logger.info("Background refresh: syncing \(podcasts.count, privacy: .public) subscriptions")
 
-        for podcast in subscribed {
+        for podcast in podcasts {
             guard !Task.isCancelled else {
                 logger.info("Background refresh: cancelled by system")
                 return

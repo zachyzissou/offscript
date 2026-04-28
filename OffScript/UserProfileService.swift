@@ -5,9 +5,16 @@ enum UserProfileService {
     private static let serviceName = "com.offscript.apple-id"
     private static let userIDKey = "userIdentifier"
     private static let displayNameKey = "offscript.displayName"
+    #if DEBUG
+    private static let debugUserIDFallbackKey = "offscript.debug.keychainFallback.userIdentifier"
+    #endif
 
     static var currentUserID: String? {
+        #if DEBUG
+        readKeychain(account: userIDKey) ?? UserDefaults.standard.string(forKey: debugUserIDFallbackKey)
+        #else
         readKeychain(account: userIDKey)
+        #endif
     }
 
     static var displayName: String? {
@@ -16,7 +23,22 @@ enum UserProfileService {
     }
 
     static func saveCredential(userID: String, displayName: String?) throws {
-        try writeKeychain(account: userIDKey, value: userID)
+        do {
+            try writeKeychain(account: userIDKey, value: userID)
+            #if DEBUG
+            UserDefaults.standard.removeObject(forKey: debugUserIDFallbackKey)
+            #endif
+        } catch KeychainError.unhandled(errSecMissingEntitlement) {
+            #if DEBUG
+            // Simulator/unit-test hosts can fail Keychain writes with
+            // -34018 even when the app target is configured correctly. Keep
+            // production strict, but let DEBUG tests exercise profile
+            // round-tripping without requiring a signed app-host keychain.
+            UserDefaults.standard.set(userID, forKey: debugUserIDFallbackKey)
+            #else
+            throw KeychainError.unhandled(errSecMissingEntitlement)
+            #endif
+        }
         if let displayName {
             self.displayName = displayName
         }
@@ -24,6 +46,9 @@ enum UserProfileService {
 
     static func deleteCredential() {
         deleteKeychain(account: userIDKey)
+        #if DEBUG
+        UserDefaults.standard.removeObject(forKey: debugUserIDFallbackKey)
+        #endif
         UserDefaults.standard.removeObject(forKey: displayNameKey)
     }
 

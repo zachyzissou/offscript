@@ -12,13 +12,13 @@ The app is currently shipping the **Tuner OLED** design direction — pure black
 
 | Area | State |
 |------|-------|
-| Platform | iOS 17+ (SwiftUI / SwiftData) |
+| Platform | iOS 26.2+ (SwiftUI / SwiftData) |
 | Distribution | TestFlight beta — internal + external groups |
-| CI | GitHub Actions → TestFlight on push to `main` |
+| CI | Xcode Cloud on `main` / `v*`; GitHub Actions probe workflow only |
 | Crash + perf telemetry | Sentry (errors-only, quota-aware) + MetricKit |
-| Marketing version | `2.0` (Tuner redesign) |
+| Marketing version | `2.3.11` |
 
-[![TestFlight Beta](https://github.com/zachyzissou/offscript/actions/workflows/testflight.yml/badge.svg)](https://github.com/zachyzissou/offscript/actions/workflows/testflight.yml)
+[![Xcode Cloud Probe](https://github.com/zachyzissou/offscript/actions/workflows/xcode-cloud-probe.yml/badge.svg)](https://github.com/zachyzissou/offscript/actions/workflows/xcode-cloud-probe.yml)
 
 ---
 
@@ -74,7 +74,7 @@ open OffScript.xcodeproj
 
 ### Required tooling
 
-- **Xcode 26+** (uses Swift 6 / iOS 17 SDK targets)
+- **Xcode 26+** (iOS 26.2+ simulator/device targets; project currently uses Swift 5 mode)
 - **Ruby + xcodeproj gem** for the project-mutation scripts in `scripts/` (`gem install xcodeproj`)
 - Optional: **Sentry account + DSN** — without it, Sentry init silently no-ops and dev builds work fine
 
@@ -85,7 +85,7 @@ cp Config/Secrets.xcconfig.example Config/Secrets.xcconfig
 # Edit Config/Secrets.xcconfig and paste your DSN
 ```
 
-`Config/Secrets.xcconfig` is `.gitignore`d. Don't commit it. CI materializes its own copy from the `SENTRY_DSN` GitHub secret.
+`Config/Secrets.xcconfig` is `.gitignore`d. Don't commit it. Xcode Cloud materializes its own copy from the `SENTRY_DSN` environment variable.
 
 ### Building locally
 
@@ -102,33 +102,32 @@ xcodebuild test -project OffScript.xcodeproj -scheme OffScript \
 
 ## Shipping
 
-We ship via **GitHub Actions → App Store Connect → TestFlight**. Push to `main` → CI archives, runs tests, uploads, waits for ASC processing, then sets the beta release notes from the commit log.
+We ship via **Xcode Cloud → App Store Connect → TestFlight**. Push to `main` or create a `v*` tag/release and Xcode Cloud archives, signs, and uploads with Apple-managed signing.
 
 ```bash
-# Manual trigger (e.g. for an out-of-band hotfix)
-gh workflow run testflight.yml --ref main \
-  -f marketing_version=2.0 \
-  -f summary="Hotfix: scrubber crash on background-resume"
+# Inspect or manually trigger the Xcode Cloud workflow via the repo tooling
+scripts/app_store_connect.py xcode-cloud probe
+scripts/app_store_connect.py xcode-cloud start-build <workflow-uuid>
 ```
 
-The full flow lives in [`.github/workflows/testflight.yml`](.github/workflows/testflight.yml). Required secrets:
+The active GitHub workflow is [`.github/workflows/xcode-cloud-probe.yml`](.github/workflows/xcode-cloud-probe.yml), an on-demand operations wrapper for App Store Connect/Xcode Cloud checks. The old GitHub Actions TestFlight flow remains at [`.github/workflows/testflight.yml.disabled`](.github/workflows/testflight.yml.disabled) only as a fallback reference.
+
+Required App Store Connect credentials for local/probe tooling:
 
 | Secret | Purpose |
 |--------|---------|
 | `ASC_KEY_ID` | App Store Connect API key id |
 | `ASC_ISSUER_ID` | ASC issuer UUID |
-| `ASC_KEY_P8_BASE64` | Base64-encoded `.p8` private key |
+| `ASC_KEY_PATH` or `ASC_KEY_P8_BASE64` | `.p8` private key path or base64-encoded contents |
 | `SENTRY_DSN` *(optional)* | Sentry project DSN — when absent, Sentry is disabled in the resulting build |
 
-The build number is auto-generated as `YYYYMMDD<run>.<attempt>` so consecutive pushes never collide.
+Build numbers must be greater than the latest App Store Connect build before an upload; bump `CURRENT_PROJECT_VERSION` when preparing a candidate unless Xcode Cloud is configured to override it.
 
 ---
 
 ## Design
 
-The full Tuner direction is documented in [`DESIGN.md`](DESIGN.md). Per-component design tokens live in [`OffScript/AppTheme.swift`](OffScript/AppTheme.swift) — palette, typography, `TunerTag` / `TunerRingMeter` / `TunerReadout` / `TunerTransportButton` primitives. Don't introduce inline `Color.white.opacity(0.XX)` or raw `Font.system(...)` — use the named tokens.
-
-The agent-readable design bible is [`CLAUDE.md`](CLAUDE.md).
+The current shipped Tuner direction is documented in [`CLAUDE.md`](CLAUDE.md). Per-component design tokens live in [`OffScript/AppTheme.swift`](OffScript/AppTheme.swift) — palette, typography, `TunerLabel`, `TunerTag`, artwork, surface, and readout primitives. [`DESIGN.md`](DESIGN.md) is aspirational vNext design context and should not override the Tuner OLED implementation bible.
 
 ---
 

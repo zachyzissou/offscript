@@ -198,6 +198,147 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func homeRecommendationsPutQueueIntentBeforeFreshness() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        AppSettings.preferredGenres = []
+        defer { AppSettings.preferredGenres = originalGenres }
+
+        let queuedShow = Podcast(title: "Queued Signal", feedURL: URL(string: "https://example.com/queued.xml")!)
+        let freshShow = Podcast(title: "Fresh But Random", feedURL: URL(string: "https://example.com/fresh.xml")!)
+        let queued = Episode(
+            title: "Older Episode You Chose",
+            pubDate: Date().addingTimeInterval(-14 * 86_400),
+            duration: 2_400,
+            audioURL: URL(string: "https://example.com/queued.mp3")!,
+            podcast: queuedShow
+        )
+        let fresh = Episode(
+            title: "Brand New But Unanchored",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/fresh.mp3")!,
+            podcast: freshShow
+        )
+
+        context.insert(queuedShow)
+        context.insert(freshShow)
+        context.insert(queued)
+        context.insert(fresh)
+        try QueueService.playNext(queued, in: context)
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+
+        #expect(sections.first?.title == "Signal Lock")
+        #expect(sections.first?.episodes.first?.id == queued.id)
+        #expect(sections.first?.explanation(for: queued).contains("queue") == true)
+        #expect(sections.flatMap(\.episodes).contains(where: { $0.id == fresh.id }) == false)
+    }
+
+    @Test
+    @MainActor
+    func homeRecommendationsPreferCompletedShowAffinityOverRecency() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        AppSettings.preferredGenres = []
+        defer { AppSettings.preferredGenres = originalGenres }
+
+        let affinityShow = Podcast(title: "Finished Show", feedURL: URL(string: "https://example.com/finished.xml")!)
+        let randomShow = Podcast(title: "Random Fresh", feedURL: URL(string: "https://example.com/random.xml")!)
+        let completed = Episode(
+            title: "Already Completed",
+            pubDate: Date().addingTimeInterval(-20 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/completed.mp3")!,
+            podcast: affinityShow
+        )
+        let olderFromAffinity = Episode(
+            title: "Older But Earned",
+            pubDate: Date().addingTimeInterval(-10 * 86_400),
+            duration: 2_100,
+            audioURL: URL(string: "https://example.com/earned.mp3")!,
+            podcast: affinityShow
+        )
+        let freshRandom = Episode(
+            title: "Fresh But Generic",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/generic.mp3")!,
+            podcast: randomShow
+        )
+
+        completed.isPlayed = true
+        context.insert(affinityShow)
+        context.insert(randomShow)
+        context.insert(completed)
+        context.insert(olderFromAffinity)
+        context.insert(freshRandom)
+        context.insert(PlaybackEvent(kind: .completed, position: 1_800, episode: completed))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        let firstEpisode = sections.first?.episodes.first
+
+        #expect(firstEpisode?.id == olderFromAffinity.id)
+        #expect(sections.first?.explanation(for: olderFromAffinity) == "You keep finishing Finished Show")
+        #expect(sections.flatMap(\.episodes).contains(where: { $0.id == freshRandom.id }) == false)
+    }
+
+    @Test
+    @MainActor
+    func homeRecommendationsDoNotReturnRecencyOnlyCandidates() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        AppSettings.preferredGenres = []
+        defer { AppSettings.preferredGenres = originalGenres }
+
+        let podcast = Podcast(title: "Cold Start Show", feedURL: URL(string: "https://example.com/cold.xml")!)
+        let episode = Episode(
+            title: "Fresh Without Evidence",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/cold.mp3")!,
+            podcast: podcast
+        )
+        context.insert(podcast)
+        context.insert(episode)
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+
+        #expect(sections.isEmpty)
+    }
+
+    @Test
+    @MainActor
+    func homeRecommendationsFilterNegativePreferenceSignals() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let podcast = Podcast(title: "Blocked Show", feedURL: URL(string: "https://example.com/blocked.xml")!)
+        let episode = Episode(
+            title: "Do Not Surface",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/blocked.mp3")!,
+            podcast: podcast
+        )
+        episode.playedPosition = 600
+        context.insert(podcast)
+        context.insert(episode)
+        context.insert(PreferenceSignal(action: .notInterested, episode: episode))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+
+        #expect(sections.flatMap(\.episodes).contains(where: { $0.id == episode.id }) == false)
+    }
+
+    @Test
+    @MainActor
     func appSettingsRoundTripsPreferences() {
         let originalAutoPlay = AppSettings.autoPlayNext
         let originalPreferShort = AppSettings.preferShortEpisodes
@@ -265,6 +406,72 @@ struct OffScriptTests {
         #expect(tasteProfile?.averageCompletedDurationMinutes == 30)
 
         AppSettings.preferredGenres = originalGenres
+    }
+
+    @Test
+    @MainActor
+    func tasteProfileRefreshBuildsTagsFromCompletedEpisodes() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let podcast = Podcast(title: "Completed Tags", feedURL: URL(string: "https://example.com/completed-tags.xml")!)
+        let episode = Episode(
+            title: "Completion Is A Signal",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/completed-tags.mp3")!,
+            podcast: podcast
+        )
+        let profile = EpisodeProfile(episodeID: episode.id)
+        profile.tags = ["workflow", "craft"]
+
+        context.insert(podcast)
+        context.insert(episode)
+        context.insert(profile)
+        context.insert(PlaybackEvent(kind: .completed, position: 1_800, episode: episode))
+        try context.save()
+
+        try TasteProfileService.refresh(in: context)
+        let tasteProfile = try context.fetch(FetchDescriptor<UserTasteProfile>()).first
+
+        #expect(tasteProfile?.topTags.contains("workflow") == true)
+        #expect(tasteProfile?.topTags.contains("craft") == true)
+    }
+
+    @Test
+    @MainActor
+    func tasteProfileRefreshSkipsWhenFreshUnlessForced() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let tasteProfile = UserTasteProfile()
+        tasteProfile.topTags = ["existing"]
+        tasteProfile.showAffinity = ["Known Show"]
+        tasteProfile.lastUpdatedAt = .now
+
+        let podcast = Podcast(title: "New Signal", feedURL: URL(string: "https://example.com/new-signal.xml")!)
+        let episode = Episode(
+            title: "New Completed Signal",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/new-signal.mp3")!,
+            podcast: podcast
+        )
+        let profile = EpisodeProfile(episodeID: episode.id)
+        profile.tags = ["newtag"]
+
+        context.insert(tasteProfile)
+        context.insert(podcast)
+        context.insert(episode)
+        context.insert(profile)
+        context.insert(PlaybackEvent(kind: .completed, position: 1_800, episode: episode))
+        try context.save()
+
+        try TasteProfileService.refresh(in: context)
+        #expect(tasteProfile.topTags == ["existing"])
+
+        try TasteProfileService.refresh(in: context, force: true)
+        #expect(tasteProfile.topTags.contains("newtag"))
     }
 
     @Test

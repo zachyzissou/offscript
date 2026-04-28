@@ -7,6 +7,7 @@ struct OnboardingFlowView: View {
     @State private var step = 0
     @State private var selectedGenres: Set<Genre> = []
     @State private var selectedPodcasts: [PodcastSearchResult] = []
+    @State private var signInErrorMessage: String?
 
     init(onComplete: (() -> Void)? = nil) {
         self.onComplete = onComplete
@@ -132,11 +133,32 @@ struct OnboardingFlowView: View {
                 // Sign in + Skip — sign-in button keeps Apple's appearance, skip
                 // becomes the "POWER ON →" CTA in signal yellow.
                 VStack(spacing: 14) {
-                    SignInWithAppleButtonView(onComplete: {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { step = 1 }
-                    })
+                    SignInWithAppleButtonView(
+                        onComplete: {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                signInErrorMessage = nil
+                                step = 1
+                            }
+                        },
+                        onFailure: { message in
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                signInErrorMessage = message
+                            }
+                        }
+                    )
                     .frame(height: 48)
                     .staggeredEntrance(index: 8, delay: 0.10)
+
+                    if let signInErrorMessage {
+                        Text(signInErrorMessage)
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .tracking(0.5)
+                            .foregroundStyle(Color.offscriptFnRecord)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .overlay(Rectangle().stroke(Color.offscriptFnRecord.opacity(0.8), lineWidth: 1))
+                            .transition(.opacity)
+                    }
 
                     TunerLabel(text: "OR")
 
@@ -179,9 +201,10 @@ struct OnboardingFlowView: View {
 
 private struct SignInWithAppleButtonView: UIViewRepresentable {
     let onComplete: () -> Void
+    let onFailure: (String) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onComplete: onComplete)
+        Coordinator(onComplete: onComplete, onFailure: onFailure)
     }
 
     func makeUIView(context: Context) -> ASAuthorizationAppleIDButton {
@@ -200,6 +223,7 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
 
     final class Coordinator: NSObject, ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
         let onComplete: () -> Void
+        let onFailure: (String) -> Void
         // Strong reference to the in-flight controller. Without this, the
         // controller is released as `handleSignIn()` returns and the delegate
         // callbacks (success / error) never fire — the symptom is "Sign in
@@ -207,8 +231,9 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
         // controller for the lifetime of the request.
         private var inFlightController: ASAuthorizationController?
 
-        init(onComplete: @escaping () -> Void) {
+        init(onComplete: @escaping () -> Void, onFailure: @escaping (String) -> Void) {
             self.onComplete = onComplete
+            self.onFailure = onFailure
         }
 
         @objc func handleSignIn() {
@@ -241,18 +266,29 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
         }
 
         func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
-            if let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
-                let displayName = [credential.fullName?.givenName, credential.fullName?.familyName]
-                    .compactMap { $0 }
-                    .joined(separator: " ")
-                let defaults = UserDefaults.standard
-                defaults.set(credential.user, forKey: "offscript.appleUserID")
-                if !displayName.isEmpty {
-                    defaults.set(displayName, forKey: "offscript.appleUserName")
-                }
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+                inFlightController = nil
+                onFailure("SIGN-IN RETURNED NO APPLE ID CREDENTIAL")
+                return
             }
-            inFlightController = nil
-            onComplete()
+
+            let displayName = [credential.fullName?.givenName, credential.fullName?.familyName]
+                .compactMap { $0 }
+                .joined(separator: " ")
+
+            do {
+                try AppSettings.saveCredential(
+                    userID: credential.user,
+                    displayName: displayName.isEmpty ? nil : displayName
+                )
+                inFlightController = nil
+                onComplete()
+            } catch {
+                let logger = Logger(subsystem: "com.offscript", category: "AppleSignin")
+                logger.error("Failed to persist Apple credential: \(error.localizedDescription, privacy: .public)")
+                inFlightController = nil
+                onFailure("SIGN-IN COULD NOT BE SAVED. TRY AGAIN.")
+            }
         }
 
         func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
@@ -261,7 +297,7 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
             let logger = Logger(subsystem: "com.offscript", category: "AppleSignin")
             logger.error("Sign in with Apple failed: \(error.localizedDescription, privacy: .public)")
             inFlightController = nil
-            onComplete()
+            onFailure("SIGN-IN FAILED. RETRY OR POWER ON WITHOUT SYNC.")
         }
     }
 }

@@ -5,27 +5,43 @@ import UIKit
 
 // MARK: - HTML Stripping
 
+private enum HTMLPlainTextCache {
+    static let cache = NSCache<NSString, NSString>()
+
+    static func plainText(for html: String, builder: () -> String) -> String {
+        let key = html as NSString
+        if let cached = cache.object(forKey: key) {
+            return cached as String
+        }
+        let value = builder()
+        cache.setObject(value as NSString, forKey: key)
+        return value
+    }
+}
+
 extension String {
     /// Strips HTML tags and decodes common entities for display as plain text.
     var strippingHTML: String {
         guard contains("<") || contains("&") else { return self }
-        guard let data = data(using: .utf8),
-              let attributed = try? NSAttributedString(
-                  data: data,
-                  options: [.documentType: NSAttributedString.DocumentType.html,
-                            .characterEncoding: String.Encoding.utf8.rawValue],
-                  documentAttributes: nil
-              ) else {
-            // Fallback: regex strip tags
-            return replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-                .replacingOccurrences(of: "&amp;", with: "&")
-                .replacingOccurrences(of: "&lt;", with: "<")
-                .replacingOccurrences(of: "&gt;", with: ">")
-                .replacingOccurrences(of: "&#39;", with: "'")
-                .replacingOccurrences(of: "&quot;", with: "\"")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+        return HTMLPlainTextCache.plainText(for: self) {
+            guard let data = data(using: .utf8),
+                  let attributed = try? NSAttributedString(
+                      data: data,
+                      options: [.documentType: NSAttributedString.DocumentType.html,
+                                .characterEncoding: String.Encoding.utf8.rawValue],
+                      documentAttributes: nil
+                  ) else {
+                // Fallback: regex strip tags
+                return replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+                    .replacingOccurrences(of: "&amp;", with: "&")
+                    .replacingOccurrences(of: "&lt;", with: "<")
+                    .replacingOccurrences(of: "&gt;", with: ">")
+                    .replacingOccurrences(of: "&#39;", with: "'")
+                    .replacingOccurrences(of: "&quot;", with: "\"")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            return attributed.string.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        return attributed.string.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
