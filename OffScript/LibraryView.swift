@@ -18,28 +18,22 @@ struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var podcasts: [Podcast]
 
-    // Predicate-filtered queries push the "isSubscribed && !isPlayed" check
-    // down to SQLite instead of fetching every Episode in the database
-    // and filtering in Swift. On a heavy listener with 30+ subscriptions
-    // and a 2k-episode back catalog, the prior fetch-all approach loaded
-    // every Episode object into memory on every Library render. The
-    // predicate path is O(rows-that-match) at the storage layer.
+    // Predicate-filtered query for the small in-progress set. Fresh/unplayed
+    // summary data is loaded below with fetch limits and fetchCount so Library
+    // does not materialize a full back catalog just to draw the first rail.
     @Query(
         filter: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed && $0.playedPosition > 0 },
         sort: [SortDescriptor(\Episode.lastPlayedAt, order: .reverse)]
     )
     private var inProgressEpisodes: [Episode]
 
-    @Query(
-        filter: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed },
-        sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]
-    )
-    private var freshEpisodes: [Episode]
-
     let onOpenSettings: () -> Void
 
     private let syncService = FeedSyncService()
     @State private var isImportPresented = false
+    @State private var freshEpisodes: [Episode] = []
+    @State private var unplayedEpisodeCount = 0
+    @State private var freshCountsByPodcastID: [UUID: Int] = [:]
 
     private var subscribedPodcasts: [Podcast] {
         podcasts
@@ -47,17 +41,12 @@ struct LibraryView: View {
             .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
-    /// Per-podcast unplayed counts pre-bucketed once instead of recomputed
-    /// inside the ForEach. The prior call site filtered `freshEpisodes`
-    /// once per visible podcast row — O(N×M) work on every render. With
-    /// 30 podcasts and 2k episodes, that's 60k iterations per scroll
-    /// frame. Now O(N+M) total.
-    private var freshCountsByPodcastID: [UUID: Int] {
-        Dictionary(freshEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +)
-    }
-
     private var inProgressCountsByPodcastID: [UUID: Int] {
         Dictionary(inProgressEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +)
+    }
+
+    private var subscribedPodcastIDs: [UUID] {
+        subscribedPodcasts.map(\.id)
     }
 
     var body: some View {
@@ -65,7 +54,7 @@ struct LibraryView: View {
             VStack(alignment: .leading, spacing: 16) {
                 LibraryTunerHeader(
                     showCount: subscribedPodcasts.count,
-                    unplayedCount: freshEpisodes.count,
+                    unplayedCount: unplayedEpisodeCount,
                     inProgressCount: inProgressEpisodes.count,
                     onOpenImport: { isImportPresented = true },
                     onOpenSettings: onOpenSettings
@@ -119,6 +108,8 @@ struct LibraryView: View {
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .task(id: subscribedPodcastIDs) { loadLibraryEpisodeSummary() }
+        .onAppear { loadLibraryEpisodeSummary() }
         .refreshable { await syncSubscriptions() }
         // Settings + Import buttons render inline in LibraryTunerHeader, not
         // as toolbar items — iOS 26 wraps toolbar buttons in glass chrome.
@@ -184,6 +175,38 @@ struct LibraryView: View {
     }
 
     @MainActor
+    private func loadLibraryEpisodeSummary() {
+        guard !subscribedPodcasts.isEmpty else {
+            freshEpisodes = []
+            unplayedEpisodeCount = 0
+            freshCountsByPodcastID = [:]
+            return
+        }
+
+        let allUnplayedDescriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed }
+        )
+        unplayedEpisodeCount = (try? modelContext.fetchCount(allUnplayedDescriptor)) ?? 0
+
+        var latestDescriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed },
+            sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
+        )
+        latestDescriptor.fetchLimit = 10
+        freshEpisodes = (try? modelContext.fetch(latestDescriptor)) ?? []
+
+        var counts: [UUID: Int] = [:]
+        for podcast in subscribedPodcasts {
+            let podcastID = podcast.id
+            let countDescriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.podcast.id == podcastID && !$0.isPlayed }
+            )
+            counts[podcastID] = (try? modelContext.fetchCount(countDescriptor)) ?? 0
+        }
+        freshCountsByPodcastID = counts
+    }
+
+    @MainActor
     private func syncSubscriptions() async {
         for podcast in subscribedPodcasts {
             do {
@@ -192,6 +215,7 @@ struct LibraryView: View {
                 libraryLogger.error("Pull-to-refresh sync failed for '\(podcast.title, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             }
         }
+        loadLibraryEpisodeSummary()
     }
 }
 
