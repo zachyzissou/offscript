@@ -60,6 +60,28 @@ struct OffScriptTests {
     }
 
     @Test
+    func opmlImportDedupesFeedsPreservingFirstSeenOrder() throws {
+        let opml = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <opml version="2.0">
+          <body>
+            <outline text="First" xmlUrl="https://Example.com/feed.xml" />
+            <outline text="Second" xmlUrl="https://example.com/second.xml" />
+            <outline text="Duplicate" xmlUrl="https://example.com/feed.xml/" />
+          </body>
+        </opml>
+        """
+
+        let entries = try PodcastImportService.extractFeedURLs(fromOPML: Data(opml.utf8))
+
+        #expect(entries.map(\.feedURL.absoluteString) == [
+            "https://Example.com/feed.xml",
+            "https://example.com/second.xml"
+        ])
+        #expect(entries.map(\.title) == ["First", "Second"])
+    }
+
+    @Test
     @MainActor
     func queueServiceMovesItemsAndPersistsOrder() throws {
         let container = try makeContainer()
@@ -614,6 +636,99 @@ struct OffScriptTests {
         #expect(item.transcriptReferences.first?.url.absoluteString == "https://example.com/episode-42.vtt")
         #expect(item.transcriptReferences.first?.mimeType == "text/vtt")
         #expect(item.transcriptReferences.first?.language == "en")
+    }
+
+    @Test
+    @MainActor
+    func feedSyncImportsAlreadyParsedOPMLFeedWithoutRefetching() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let result = PodcastSearchResult(
+            title: "OPML Fallback",
+            author: "Fallback Author",
+            feedURL: URL(string: "https://example.com/opml.xml")!,
+            artworkURL: nil,
+            websiteURL: nil,
+            summary: nil
+        )
+        let parsed = ParsedFeed(
+            title: "Parsed Show",
+            author: "Parsed Author",
+            summary: "Parsed summary",
+            websiteURL: URL(string: "https://example.com/show")!,
+            artworkURL: URL(string: "https://example.com/art.jpg")!,
+            categories: ["Technology"],
+            items: [
+                ParsedFeedItem(
+                    guid: "episode-1",
+                    title: "One Fetch Episode",
+                    summary: "Imported from an already parsed OPML feed.",
+                    pubDate: .now,
+                    duration: 1_500,
+                    audioURL: URL(string: "https://example.com/episode-1.mp3")!
+                )
+            ]
+        )
+
+        let podcast = try await FeedSyncService().importPodcast(
+            from: result,
+            parsedFeed: parsed,
+            into: context,
+            episodeLimit: 25
+        )
+
+        let episodes = try context.fetch(FetchDescriptor<Episode>())
+        #expect(podcast.title == "Parsed Show")
+        #expect(podcast.author == "Parsed Author")
+        #expect(podcast.categories == ["Technology"])
+        #expect(episodes.map(\.title) == ["One Fetch Episode"])
+    }
+
+    @Test
+    @MainActor
+    func feedSyncFastBatchImportUsesCheapProfilesAndSkipsExternalChapters() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let result = PodcastSearchResult(
+            title: "Batch Show",
+            author: "Batch Author",
+            feedURL: URL(string: "https://example.com/batch.xml")!,
+            artworkURL: nil,
+            websiteURL: nil,
+            summary: nil
+        )
+        let parsed = ParsedFeed(
+            title: "Batch Show",
+            author: "Batch Author",
+            summary: nil,
+            websiteURL: nil,
+            artworkURL: nil,
+            categories: ["Technology"],
+            items: [
+                ParsedFeedItem(
+                    guid: "batch-1",
+                    title: "Local AI policy and newsroom automation",
+                    summary: "A practical conversation about policy, newsroom operations, and automation.",
+                    pubDate: .now,
+                    duration: 1_800,
+                    audioURL: URL(string: "https://example.com/batch-1.mp3")!,
+                    externalChapterURL: URL(string: "https://example.com/batch-1-chapters.json")!
+                )
+            ]
+        )
+
+        _ = try await FeedSyncService().importPodcast(
+            from: result,
+            parsedFeed: parsed,
+            into: context,
+            options: .fastBatchImport(episodeLimit: 25)
+        )
+
+        let episode = try #require(try context.fetch(FetchDescriptor<Episode>()).first)
+        let profile = try #require(try context.fetch(FetchDescriptor<EpisodeProfile>()).first)
+        #expect(episode.chapters.isEmpty)
+        #expect(profile.episodeID == episode.id)
+        #expect(!profile.tags.isEmpty)
     }
 
     @Test
