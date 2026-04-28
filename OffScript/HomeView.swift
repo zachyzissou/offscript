@@ -43,10 +43,11 @@ struct HomeView: View {
                     // to work with, `sections` populates and this hides.
                     HomeStarterRail()
                 } else {
-                    if let leadSection = sections.first, let leadEpisode = leadSection.episodes.first {
+                    if let leadSection = sections.first, let leadScoredEpisode = leadSection.scoredEpisodes.first {
                         HeroTunerCard(
-                            episode: leadEpisode,
-                            reason: leadSection.explanation(for: leadEpisode)
+                            episode: leadScoredEpisode.episode,
+                            reason: leadScoredEpisode.explanation,
+                            signals: leadScoredEpisode.signalTrace
                         )
                         .padding(.horizontal, OffScriptTheme.pagePadding)
                         .padding(.bottom, 6)
@@ -56,7 +57,8 @@ struct HomeView: View {
                             TunerRail(
                                 title: "NEXT BEST PICKS",
                                 episodes: remainingLeadEpisodes,
-                                reasonProvider: { leadSection.explanation(for: $0) }
+                                reasonProvider: { leadSection.explanation(for: $0) },
+                                signalProvider: { leadSection.signalTrace(for: $0) }
                             )
                         }
                     }
@@ -65,7 +67,8 @@ struct HomeView: View {
                         TunerRail(
                             title: section.title.uppercased(),
                             episodes: section.episodes,
-                            reasonProvider: { section.explanation(for: $0) }
+                            reasonProvider: { section.explanation(for: $0) },
+                            signalProvider: { section.signalTrace(for: $0) }
                         )
                     }
                 }
@@ -421,6 +424,7 @@ private struct HeroTunerCard: View {
 
     let episode: Episode
     let reason: String
+    let signals: [RecommendationSignal]
 
     private var progressValue: Double {
         guard let duration = episode.duration, duration > 0 else { return 0 }
@@ -453,7 +457,11 @@ private struct HeroTunerCard: View {
             // Title + reason
             VStack(alignment: .leading, spacing: 10) {
                 NavigationLink {
-                    EpisodeDetailView(episode: episode)
+                    EpisodeDetailView(
+                        episode: episode,
+                        recommendationReason: reason,
+                        recommendationSignals: signals
+                    )
                 } label: {
                     Text(episode.title)
                         .font(.system(size: 20, weight: .semibold))
@@ -467,6 +475,7 @@ private struct HeroTunerCard: View {
 
                 // Reason as a TunerTag with signal yellow accent
                 TunerTag(text: reason, color: .offscriptSignalYellow, dim: true)
+                RecommendationSignalTraceView(signals: signals)
 
                 // Mono metadata — date · duration. The "X LEFT" remaining
                 // time used to render here AND in the explanation tag above
@@ -582,6 +591,7 @@ private struct TunerRail: View {
     let title: String
     let episodes: [Episode]
     let reasonProvider: (Episode) -> String
+    let signalProvider: (Episode) -> [RecommendationSignal]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -595,7 +605,11 @@ private struct TunerRail: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(episodes) { episode in
-                        TunerRailCard(episode: episode, reason: reasonProvider(episode))
+                        TunerRailCard(
+                            episode: episode,
+                            reason: reasonProvider(episode),
+                            signals: signalProvider(episode)
+                        )
                     }
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -608,11 +622,16 @@ private struct TunerRailCard: View {
     @Environment(\.modelContext) private var modelContext
     let episode: Episode
     let reason: String
+    let signals: [RecommendationSignal]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationLink {
-                EpisodeDetailView(episode: episode)
+                EpisodeDetailView(
+                    episode: episode,
+                    recommendationReason: reason,
+                    recommendationSignals: signals
+                )
             } label: {
                 VStack(alignment: .leading, spacing: 8) {
                     OffScriptArtworkView(url: episode.artworkURL ?? episode.podcast.artworkURL, cornerRadius: 3)
@@ -630,6 +649,7 @@ private struct TunerRailCard: View {
                         .frame(width: 168, alignment: .leading)
 
                     TunerTag(text: reason, color: .offscriptSignalYellow, dim: true)
+                    RecommendationSignalTraceView(signals: signals, limit: 2, color: .offscriptSoftPaper)
 
                     TunerLabel(text: metadata, color: .offscriptSoftPaper, size: 8)
                 }

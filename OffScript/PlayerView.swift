@@ -637,6 +637,7 @@ private struct PlayerSuggestionRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 TunerTag(text: scored.explanation, color: .offscriptSignalYellow, dim: true)
+                RecommendationSignalTraceView(signals: scored.signalTrace, limit: 2, color: .offscriptSoftPaper)
                 Text(scored.episode.title)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.offscriptPaperWhite)
