@@ -4,6 +4,17 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added — recommendation tuner and signal discovery
+- **Settings now has a three-position recommendation tuner** (`SIGNAL`, `BALANCED`, `DISCOVERY`) so listeners can choose whether OffScript stays strictly inside known local evidence or opens a new-show discovery lane.
+- **Home can render a Tuner-styled discovery rail** sourced from the existing taste profile, with trace rows explaining whether each new podcast came from genre, tag, show-affinity, or discovery signal. Discovery rows can be tuned into the library without leaving Home.
+
+### Changed — taste profile quality
+- **Taste refresh now uses weighted, decayed evidence instead of equal counts.** Recent explicit `More like this` signals beat old passive completions, while `Less like this`, `Not interested`, quick skips, and abandons demote matching tags and shows.
+
+### Fixed — Apple identity / iCloud sync state
+- **Settings now validates stored Sign in with Apple credentials** before treating the user as signed in. Revoked or missing credentials clear local identity and disable sync.
+- **iCloud account availability is checked separately from Apple identity.** Sign in with Apple no longer blindly enables sync when CloudKit is unavailable on the device.
+
 ### Fixed — large OPML import performance
 - **OPML batch import no longer fetches every feed twice.** The importer now applies the parsed feed metadata directly after the first network fetch instead of resolving the OPML row and then re-syncing the same URL immediately afterward.
 - **Large libraries now dedupe feed URLs before work starts.** OPML exports with repeated URLs (including case/trailing-slash variants) preserve the first row and skip duplicates before progress tracking and import tasks are created.

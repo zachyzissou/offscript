@@ -30,25 +30,31 @@ enum TasteProfileService {
         let playbackEvents = try context.fetch(FetchDescriptor<PlaybackEvent>())
         let preferenceSignals = try context.fetch(FetchDescriptor<PreferenceSignal>())
 
-        let likedEpisodeIDs = Set(
-            preferenceSignals
-                .filter { $0.action == .like || $0.action == .moreLikeThis }
-                .map(\.episode.id)
-        )
-        let completedEpisodeIDs = Set(
-            playbackEvents
-                .filter { $0.kind == .completed }
-                .compactMap { $0.episode?.id }
-        )
+        let profileByEpisodeID = Dictionary(uniqueKeysWithValues: episodeProfiles.map { ($0.episodeID, $0) })
+        var tagScores: [String: Double] = [:]
 
-        let likedTags = episodeProfiles
-            .filter { likedEpisodeIDs.contains($0.episodeID) || completedEpisodeIDs.contains($0.episodeID) }
-            .flatMap(\.tags)
+        for signal in preferenceSignals {
+            guard let episodeProfile = profileByEpisodeID[signal.episode.id] else { continue }
+            let weight = preferenceWeight(signal.action) * recencyWeight(for: signal.date)
+            for tag in episodeProfile.tags {
+                tagScores[tag.normalizedTasteKey, default: 0] += weight
+            }
+        }
 
-        let tagCounts = Dictionary(likedTags.map { ($0, 1) }, uniquingKeysWith: +)
-        profile.topTags = tagCounts
+        for event in playbackEvents {
+            guard let episode = event.episode,
+                  let episodeProfile = profileByEpisodeID[episode.id] else { continue }
+            let weight = playbackTagWeight(event.kind) * recencyWeight(for: event.date)
+            guard weight != 0 else { continue }
+            for tag in episodeProfile.tags {
+                tagScores[tag.normalizedTasteKey, default: 0] += weight
+            }
+        }
+
+        profile.topTags = tagScores
+            .filter { !$0.key.isEmpty && $0.value > 0 }
             .sorted { lhs, rhs in
-                if lhs.value == rhs.value { return lhs.key < rhs.key }
+                if abs(lhs.value - rhs.value) < 0.001 { return lhs.key < rhs.key }
                 return lhs.value > rhs.value
             }
             .prefix(8)
@@ -63,13 +69,23 @@ enum TasteProfileService {
             profile.averageCompletedDurationMinutes = completedDurations.reduce(0, +) / Double(completedDurations.count)
         }
 
-        let completedShows = playbackEvents
-            .filter { $0.kind == .completed || $0.kind == .resumed || $0.kind == .advancedFromQueue }
-            .compactMap { $0.episode?.podcast.title }
-        let showAffinityCounts = Dictionary(completedShows.map { ($0, 1) }, uniquingKeysWith: +)
-        profile.showAffinity = showAffinityCounts
+        var showScores: [String: Double] = [:]
+        for signal in preferenceSignals {
+            let show = signal.episode.podcast.title
+            let weight = preferenceWeight(signal.action) * recencyWeight(for: signal.date)
+            showScores[show, default: 0] += weight
+        }
+
+        for event in playbackEvents {
+            guard let show = event.episode?.podcast.title else { continue }
+            let weight = playbackShowWeight(event.kind) * recencyWeight(for: event.date)
+            guard weight != 0 else { continue }
+            showScores[show, default: 0] += weight
+        }
+        profile.showAffinity = showScores
+            .filter { $0.value > 0 }
             .sorted { lhs, rhs in
-                if lhs.value == rhs.value { return lhs.key < rhs.key }
+                if abs(lhs.value - rhs.value) < 0.001 { return lhs.key < rhs.key }
                 return lhs.value > rhs.value
             }
             .prefix(5)
@@ -83,5 +99,47 @@ enum TasteProfileService {
         profile.lastUpdatedAt = .now
 
         try context.save()
+    }
+
+    private static func preferenceWeight(_ action: PreferenceSignal.Action) -> Double {
+        switch action {
+        case .moreLikeThis: 4.0
+        case .like: 2.5
+        case .lessLikeThis: -3.5
+        case .notInterested: -5.0
+        }
+    }
+
+    private static func playbackTagWeight(_ kind: PlaybackEvent.Kind) -> Double {
+        switch kind {
+        case .completed: 1.5
+        case .advancedFromQueue: 0.9
+        case .resumed: 0.35
+        case .skippedQuickly: -1.4
+        case .abandoned: -0.8
+        case .started, .seekedForward, .seekedBackward: 0
+        }
+    }
+
+    private static func playbackShowWeight(_ kind: PlaybackEvent.Kind) -> Double {
+        switch kind {
+        case .completed: 2.0
+        case .advancedFromQueue: 1.2
+        case .resumed: 0.45
+        case .skippedQuickly: -1.6
+        case .abandoned: -1.0
+        case .started, .seekedForward, .seekedBackward: 0
+        }
+    }
+
+    private static func recencyWeight(for date: Date) -> Double {
+        let days = max(0, Date().timeIntervalSince(date) / 86_400)
+        return max(0.15, exp(-days / 60))
+    }
+}
+
+private extension String {
+    var normalizedTasteKey: String {
+        trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }

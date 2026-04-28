@@ -14,8 +14,11 @@ struct SettingsView: View {
     @AppStorage("offscript.autoPlayNext") private var autoPlayNext = true
     @AppStorage("offscript.preferShortEpisodes") private var preferShortEpisodes = false
     @AppStorage("offscript.cloudSyncEnabled") private var cloudSyncEnabled = false
+    @State private var recommendationMode = AppSettings.recommendationMode
     @State private var signedInUserID: String?
     @State private var signedInDisplayName: String?
+    @State private var appleCredentialState: AppleCredentialValidationState = .signedOut
+    @State private var cloudKitAvailability: CloudKitAccountAvailability = .couldNotDetermine
     @State private var showSignOutConfirmation = false
     @State private var signInMessage: String?
 
@@ -38,6 +41,7 @@ struct SettingsView: View {
                     settingsHeader
                     statsBlock
                     playbackSection
+                    recommendationSection
                     signalProfileSection
                     iCloudSection
                     aboutSection
@@ -58,6 +62,7 @@ struct SettingsView: View {
                 refreshCounts()
                 refreshSignInState()
                 refreshSignalProfile()
+                await refreshIdentityStatus()
             }
             // No `.toolbar` ToolbarItem — iOS 26 wraps toolbar buttons in
             // glass-capsule chrome that ignores .plain styling. DONE key
@@ -360,6 +365,49 @@ struct SettingsView: View {
         .padding(.vertical, 8)
     }
 
+    // MARK: recommendations
+
+    private var recommendationSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TunerLabel(text: "RECOMMENDATIONS · TUNER", color: .offscriptSignalYellow)
+
+            HStack(spacing: 8) {
+                ForEach(AppSettings.RecommendationMode.allCases, id: \.rawValue) { mode in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            recommendationMode = mode
+                            AppSettings.recommendationMode = mode
+                        }
+                    } label: {
+                        TunerLabel(
+                            text: mode.label,
+                            color: recommendationMode == mode ? .offscriptStudioBlack : .offscriptSignalYellow,
+                            size: 9
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(recommendationMode == mode ? Color.offscriptSignalYellow : Color.clear)
+                        .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(mode.label) recommendation mode")
+                }
+            }
+
+            Text(recommendationMode.detail)
+                .font(.system(size: 12.5))
+                .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .top
+        )
+    }
+
     // MARK: iCloud
 
     private var iCloudSection: some View {
@@ -374,9 +422,13 @@ struct SettingsView: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color.offscriptPaperWhite)
                     }
-                    Text("iCloud syncs automatically when connected.")
+                    Text(cloudKitAvailability.allowsSync
+                         ? "iCloud syncs automatically when connected."
+                         : "Apple identity is saved; iCloud sync waits for an available iCloud account.")
                         .font(.system(size: 12))
                         .foregroundStyle(Color.offscriptPaperWhite.opacity(0.7))
+
+                    identityStatusRows
 
                     Button {
                         showSignOutConfirmation = true
@@ -391,7 +443,7 @@ struct SettingsView: View {
                 }
             } else {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Sign in to enable iCloud sync across your devices.")
+                    Text("Sign in with Apple identifies this install. iCloud availability is checked separately before sync is enabled.")
                         .font(.system(size: 13))
                         .foregroundStyle(Color.offscriptPaperWhite)
 
@@ -409,6 +461,8 @@ struct SettingsView: View {
                             .foregroundStyle(Color.offscriptSoftPaper)
                             .transition(.opacity)
                     }
+
+                    identityStatusRows
                 }
             }
         }
@@ -418,6 +472,22 @@ struct SettingsView: View {
             Rectangle().fill(Color.offscriptHairline).frame(height: 1),
             alignment: .top
         )
+    }
+
+    private var identityStatusRows: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TunerLabel(
+                text: appleCredentialState.displayText,
+                color: appleCredentialState.isAuthorized ? .offscriptFnMode : .offscriptSoftPaper,
+                size: 8
+            )
+            TunerLabel(
+                text: cloudKitAvailability.displayText,
+                color: cloudKitAvailability.allowsSync ? .offscriptFnMode : .offscriptSoftPaper,
+                size: 8
+            )
+        }
+        .padding(.top, 2)
     }
 
     // MARK: about
@@ -477,9 +547,9 @@ struct SettingsView: View {
                     userID: credential.user,
                     displayName: displayName.isEmpty ? nil : displayName
                 )
-                cloudSyncEnabled = true
                 refreshSignInState()
-                withAnimation { signInMessage = "Signed in. Sync activates on next launch." }
+                Task { await refreshIdentityStatus(enableSyncWhenAvailable: true) }
+                withAnimation { signInMessage = "Signed in. Checking iCloud availability." }
                 settingsLogger.info("Sign in with Apple succeeded for user \(credential.user, privacy: .private)")
             } catch {
                 settingsLogger.error("Failed to persist Apple credential: \(error.localizedDescription, privacy: .public)")
@@ -495,7 +565,22 @@ struct SettingsView: View {
         AppSettings.clearCredential()
         refreshSignInState()
         cloudSyncEnabled = false
+        appleCredentialState = .signedOut
         settingsLogger.info("User signed out; sync disabled")
+    }
+
+    @MainActor
+    private func refreshIdentityStatus(enableSyncWhenAvailable: Bool = false) async {
+        appleCredentialState = await AppleIdentityService.validateStoredCredential()
+        cloudKitAvailability = await CloudKitAccountService.currentStatus()
+        refreshSignInState()
+
+        if enableSyncWhenAvailable {
+            cloudSyncEnabled = appleCredentialState.isAuthorized && cloudKitAvailability.allowsSync
+            signInMessage = cloudSyncEnabled
+                ? "Signed in. Sync activates on next launch."
+                : "Signed in. iCloud is not available on this device right now."
+        }
     }
 
     private func refreshSignInState() {

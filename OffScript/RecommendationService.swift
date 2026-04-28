@@ -82,7 +82,11 @@ final class RecommendationService {
     }
 
     @MainActor
-    func discoverySection(context: ModelContext) async -> HomeFeedSection? {
+    func discoverySection(
+        context: ModelContext,
+        mode: AppSettings.RecommendationMode
+    ) async -> HomeFeedSection? {
+        guard mode.allowsDiscovery else { return nil }
         guard let tasteProfile = try? TasteProfileService.loadOrCreate(in: context) else { return nil }
 
         // Only show discovery if the user has some taste data
@@ -96,14 +100,17 @@ final class RecommendationService {
 
         let results = await discoveryService.discoverPodcasts(
             tasteProfile: tasteProfile,
-            subscribedFeedURLs: subscribedFeedURLs
+            subscribedFeedURLs: subscribedFeedURLs,
+            limit: mode.discoveryLimit
         )
 
         guard !results.isEmpty else { return nil }
 
         return HomeFeedSection(
-            title: "Discover New Shows",
-            subtitle: "Podcasts you haven't tried that match your taste.",
+            title: mode == .discovery ? "New Frequencies" : "Discovery Check",
+            subtitle: mode == .discovery
+                ? "New channels scored only from your saved local signal."
+                : "A small new-show lane, kept behind your existing evidence.",
             discoveryResults: results
         )
     }
