@@ -45,7 +45,7 @@ enum AppSettings {
         case recentlyPlayed
     }
 
-    enum RecommendationMode: String, CaseIterable {
+    nonisolated enum RecommendationMode: String, CaseIterable {
         case signalLocked
         case balanced
         case discovery
