@@ -14,16 +14,22 @@ struct SettingsView: View {
     @AppStorage("offscript.autoPlayNext") private var autoPlayNext = true
     @AppStorage("offscript.preferShortEpisodes") private var preferShortEpisodes = false
     @AppStorage("offscript.cloudSyncEnabled") private var cloudSyncEnabled = false
-    @AppStorage("offscript.appleUserID") private var appleUserID: String = ""
-    @AppStorage("offscript.appleUserName") private var appleUserName: String = ""
+    @State private var signedInUserID: String?
+    @State private var signedInDisplayName: String?
     @State private var showSignOutConfirmation = false
     @State private var signInMessage: String?
 
     @State private var episodeCount: Int = 0
     @State private var unplayedCount: Int = 0
     @State private var queuedCount: Int = 0
+    @State private var signalTags: [String] = []
+    @State private var signalShows: [String] = []
+    @State private var explicitSignalCount = 0
+    @State private var completedSignalCount = 0
+    @State private var signalUpdatedAt: Date?
+    @State private var signalMessage: String?
 
-    private var isSignedIn: Bool { !appleUserID.isEmpty }
+    private var isSignedIn: Bool { signedInUserID != nil }
 
     var body: some View {
         NavigationStack {
@@ -32,6 +38,7 @@ struct SettingsView: View {
                     settingsHeader
                     statsBlock
                     playbackSection
+                    signalProfileSection
                     iCloudSection
                     aboutSection
                 }
@@ -47,7 +54,11 @@ struct SettingsView: View {
             .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .task { refreshCounts() }
+            .task {
+                refreshCounts()
+                refreshSignInState()
+                refreshSignalProfile()
+            }
             // No `.toolbar` ToolbarItem — iOS 26 wraps toolbar buttons in
             // glass-capsule chrome that ignores .plain styling. DONE key
             // moved inline into `settingsHeader` below.
@@ -272,6 +283,83 @@ struct SettingsView: View {
         .padding(.vertical, 10)
     }
 
+    // MARK: signal profile
+
+    private var signalProfileSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TunerLabel(text: "SIGNAL PROFILE · LOCAL TASTE", color: .offscriptSignalYellow)
+
+            HStack(spacing: 0) {
+                stat(label: "EXPLICIT", value: "\(explicitSignalCount)")
+                divider
+                stat(label: "COMPLETED", value: "\(completedSignalCount)")
+                divider
+                stat(label: "TAGS", value: "\(signalTags.count)")
+            }
+            .padding(.vertical, 8)
+
+            signalListRow(title: "Saved tags", values: signalTags, empty: "No tag signal yet")
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+            signalListRow(title: "Shows you finish", values: signalShows, empty: "No completion signal yet")
+
+            HStack(spacing: 8) {
+                Button {
+                    rebuildSignalProfile()
+                } label: {
+                    TunerLabel(text: "↻ REBUILD SIGNAL", color: .offscriptSignalYellow, size: 10)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+
+                if let signalUpdatedAt {
+                    TunerLabel(
+                        text: "UPDATED \(signalUpdatedAt.formatted(date: .abbreviated, time: .shortened).uppercased())",
+                        color: .offscriptSoftPaper,
+                        size: 8
+                    )
+                }
+                Spacer()
+            }
+            .padding(.top, 4)
+
+            if let signalMessage {
+                Text(signalMessage)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.offscriptSoftPaper)
+                    .transition(.opacity)
+            }
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .top
+        )
+    }
+
+    private func signalListRow(title: String, values: [String], empty: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.offscriptPaperWhite)
+            if values.isEmpty {
+                Text(empty)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.65))
+            } else {
+                Text(values.prefix(6).joined(separator: " · "))
+                    .font(.system(size: 12.5, weight: .semibold, design: .monospaced))
+                    .tracking(0.4)
+                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.82))
+                    .textCase(.uppercase)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
     // MARK: iCloud
 
     private var iCloudSection: some View {
@@ -282,7 +370,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 10) {
                         TunerLabel(text: "● SIGNED IN", color: .offscriptFnMode)
-                        Text(appleUserName.isEmpty ? "Apple ID User" : appleUserName)
+                        Text(displayNameLabel)
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color.offscriptPaperWhite)
                     }
@@ -363,24 +451,39 @@ struct SettingsView: View {
         return "\(version) (\(build))"
     }
 
+    private var displayNameLabel: String {
+        guard let signedInDisplayName, !signedInDisplayName.isEmpty else {
+            return "Apple ID User"
+        }
+        return signedInDisplayName
+    }
+
     // MARK: helpers
 
     private func handleSignInResult(_ result: Result<ASAuthorization, Error>) {
         switch result {
         case .success(let authorization):
-            if let credential = authorization.credential as? ASAuthorizationAppleIDCredential {
-                appleUserID = credential.user
-                if let fullName = credential.fullName {
-                    let name = [fullName.givenName, fullName.familyName]
-                        .compactMap { $0 }
-                        .joined(separator: " ")
-                    if !name.isEmpty {
-                        appleUserName = name
-                    }
-                }
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+                withAnimation { signInMessage = "Sign-in returned no Apple ID credential." }
+                return
+            }
+
+            let displayName = [credential.fullName?.givenName, credential.fullName?.familyName]
+                .compactMap { $0 }
+                .joined(separator: " ")
+
+            do {
+                try AppSettings.saveCredential(
+                    userID: credential.user,
+                    displayName: displayName.isEmpty ? nil : displayName
+                )
                 cloudSyncEnabled = true
+                refreshSignInState()
                 withAnimation { signInMessage = "Signed in. Sync activates on next launch." }
                 settingsLogger.info("Sign in with Apple succeeded for user \(credential.user, privacy: .private)")
+            } catch {
+                settingsLogger.error("Failed to persist Apple credential: \(error.localizedDescription, privacy: .public)")
+                withAnimation { signInMessage = "Sign-in could not be saved. Please try again." }
             }
         case .failure(let error):
             settingsLogger.error("Sign in with Apple failed: \(error.localizedDescription, privacy: .public)")
@@ -389,10 +492,39 @@ struct SettingsView: View {
     }
 
     private func signOut() {
-        appleUserID = ""
-        appleUserName = ""
+        AppSettings.clearCredential()
+        refreshSignInState()
         cloudSyncEnabled = false
         settingsLogger.info("User signed out; sync disabled")
+    }
+
+    private func refreshSignInState() {
+        signedInUserID = AppSettings.currentUserID
+        signedInDisplayName = AppSettings.displayName
+    }
+
+    private func refreshSignalProfile() {
+        let profiles = (try? modelContext.fetch(FetchDescriptor<UserTasteProfile>())) ?? []
+        let profile = profiles.first
+        signalTags = profile?.topTags ?? []
+        signalShows = profile?.showAffinity ?? []
+        signalUpdatedAt = profile?.lastUpdatedAt
+        explicitSignalCount = (try? modelContext.fetchCount(FetchDescriptor<PreferenceSignal>())) ?? 0
+        let completedRawValue = PlaybackEvent.Kind.completed.rawValue
+        completedSignalCount = (try? modelContext.fetchCount(FetchDescriptor<PlaybackEvent>(
+            predicate: #Predicate<PlaybackEvent> { $0.kindRawValue == completedRawValue }
+        ))) ?? 0
+    }
+
+    private func rebuildSignalProfile() {
+        do {
+            try TasteProfileService.refresh(in: modelContext, force: true)
+            refreshSignalProfile()
+            withAnimation { signalMessage = "Signal rebuilt from local listening history." }
+        } catch {
+            settingsLogger.error("Signal rebuild failed: \(error.localizedDescription, privacy: .public)")
+            withAnimation { signalMessage = "Signal rebuild failed. Please try again." }
+        }
     }
 
     /// fetchCount-backed counts so Settings doesn't materialize the entire Episode table.

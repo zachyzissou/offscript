@@ -73,6 +73,7 @@ struct SearchView: View {
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
+        .accessibilityIdentifier("SearchScreen")
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
@@ -423,6 +424,7 @@ private struct SearchResultRow: View {
     let isAdded: Bool
     let isImporting: Bool
     let onAdd: () -> Void
+    @State private var safariURL: IdentifiableURL?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -485,7 +487,9 @@ private struct SearchResultRow: View {
                 .disabled(isImporting || isAdded)
 
                 if let host = result.websiteURL {
-                    Link(destination: host) {
+                    Button {
+                        safariURL = IdentifiableURL(url: host)
+                    } label: {
                         TunerLabel(text: "→ WEBSITE", color: .offscriptPaperWhite, size: 10)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 9)
@@ -497,5 +501,9 @@ private struct SearchResultRow: View {
             }
         }
         .padding(.vertical, 10)
+        .sheet(item: $safariURL) { item in
+            SafariView(url: item.url)
+                .ignoresSafeArea()
+        }
     }
 }

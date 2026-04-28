@@ -3,6 +3,8 @@ import SwiftData
 
 @MainActor
 enum TasteProfileService {
+    private static let refreshInterval: TimeInterval = 10 * 60
+
     static func loadOrCreate(in context: ModelContext) throws -> UserTasteProfile {
         let descriptor = FetchDescriptor<UserTasteProfile>()
         if let existing = try context.fetch(descriptor).first {
@@ -15,8 +17,15 @@ enum TasteProfileService {
         return profile
     }
 
-    static func refresh(in context: ModelContext) throws {
+    static func refresh(in context: ModelContext, force: Bool = false) throws {
         let profile = try loadOrCreate(in: context)
+        let hasUsableProfile = !profile.topTags.isEmpty
+            || !profile.showAffinity.isEmpty
+            || !profile.preferredGenres.isEmpty
+        if !force, hasUsableProfile, Date().timeIntervalSince(profile.lastUpdatedAt) < refreshInterval {
+            return
+        }
+
         let episodeProfiles = try context.fetch(FetchDescriptor<EpisodeProfile>())
         let playbackEvents = try context.fetch(FetchDescriptor<PlaybackEvent>())
         let preferenceSignals = try context.fetch(FetchDescriptor<PreferenceSignal>())
@@ -26,9 +35,14 @@ enum TasteProfileService {
                 .filter { $0.action == .like || $0.action == .moreLikeThis }
                 .map(\.episode.id)
         )
+        let completedEpisodeIDs = Set(
+            playbackEvents
+                .filter { $0.kind == .completed }
+                .compactMap { $0.episode?.id }
+        )
 
         let likedTags = episodeProfiles
-            .filter { likedEpisodeIDs.contains($0.episodeID) }
+            .filter { likedEpisodeIDs.contains($0.episodeID) || completedEpisodeIDs.contains($0.episodeID) }
             .flatMap(\.tags)
 
         let tagCounts = Dictionary(likedTags.map { ($0, 1) }, uniquingKeysWith: +)

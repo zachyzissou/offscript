@@ -157,7 +157,7 @@ actor DiscoveryService {
         } else if let genre = result.summary {
             explanation = "Explore \(genre) podcasts"
         } else {
-            explanation = "Picked for you based on your taste"
+            explanation = "Discovery match from your saved signals"
         }
 
         return ScoredDiscoveryResult(result: result, score: score, explanation: explanation)

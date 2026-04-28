@@ -14,8 +14,8 @@ final class OffScriptUITestsLaunchTests: XCTestCase {
         ]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["HomeScreen"].waitForExistence(timeout: 10))
 
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "Shell Launch Smoke"

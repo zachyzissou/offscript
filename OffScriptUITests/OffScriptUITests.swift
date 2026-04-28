@@ -10,9 +10,9 @@ final class OffScriptUITests: XCTestCase {
         let app = makeApp(hasSeenOnboarding: false)
         app.launch()
 
-        XCTAssertTrue(app.staticTexts["OffScript"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.staticTexts.containing(labelContaining: "Podcasts that feel curated").waitForExistence(timeout: 8))
-        XCTAssertTrue(app.buttons["Skip for now"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["SIGNAL ACQUIRED"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts.containing(labelContaining: "No algorithm pushing").waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["POWER ON →"].waitForExistence(timeout: 8))
     }
 
     @MainActor
@@ -20,25 +20,24 @@ final class OffScriptUITests: XCTestCase {
         let app = makeApp(hasSeenOnboarding: true)
         app.launch()
 
-        XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.tabBars.buttons["Library"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.tabBars.buttons["Queue"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.tabBars.buttons["Search"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Home"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Library"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Queue"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Search"].waitForExistence(timeout: 5))
 
-        XCTAssertTrue(app.staticTexts["Ready when you are"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.screen("HomeScreen").waitForExistence(timeout: 10))
 
-        app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(app.staticTexts["Your listening shelf"].waitForExistence(timeout: 10))
+        app.buttons["Library"].tap()
+        XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 10))
 
-        app.tabBars.buttons["Queue"].tap()
-        XCTAssertTrue(app.staticTexts["Queue with intent"].waitForExistence(timeout: 10))
+        app.buttons["Queue"].tap()
+        XCTAssertTrue(app.screen("QueueScreen").waitForExistence(timeout: 10))
 
-        app.tabBars.buttons["Search"].tap()
-        XCTAssertTrue(app.staticTexts["Find a signal worth following"].waitForExistence(timeout: 10))
+        app.buttons["Search"].tap()
+        XCTAssertTrue(app.screen("SearchScreen").waitForExistence(timeout: 10))
 
-        app.tabBars.buttons["Home"].tap()
-        XCTAssertTrue(app.staticTexts["Ready when you are"].waitForExistence(timeout: 10))
+        app.buttons["Home"].tap()
+        XCTAssertTrue(app.screen("HomeScreen").waitForExistence(timeout: 10))
     }
 
     private func makeApp(hasSeenOnboarding: Bool) -> XCUIApplication {
@@ -54,5 +53,11 @@ final class OffScriptUITests: XCTestCase {
 private extension XCUIElementQuery {
     func containing(labelContaining value: String) -> XCUIElement {
         matching(NSPredicate(format: "label CONTAINS[c] %@", value)).firstMatch
+    }
+}
+
+private extension XCUIApplication {
+    func screen(_ identifier: String) -> XCUIElement {
+        descendants(matching: .any)[identifier]
     }
 }

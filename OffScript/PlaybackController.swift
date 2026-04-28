@@ -32,6 +32,10 @@ final class PlaybackController: ObservableObject {
     private var timeObserver: Any?
     private var completionObserver: Any?
     private var modelContext: ModelContext?
+    private var lastProgressSaveTime: TimeInterval = 0
+    private var lastProgressSaveDate: Date = .distantPast
+    private var nowPlayingArtworkURL: URL?
+    private var nowPlayingArtworkTask: Task<Void, Never>?
 
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
@@ -59,6 +63,7 @@ final class PlaybackController: ObservableObject {
         if let obs = itemStallObserver { NotificationCenter.default.removeObserver(obs) }
         itemStatusObservation?.invalidate()
         sleepTimerTask?.cancel()
+        nowPlayingArtworkTask?.cancel()
     }
 
     /// Wire KVO + notifications on a fresh AVPlayerItem so we can tell
@@ -223,6 +228,10 @@ final class PlaybackController: ObservableObject {
         }
 
         currentEpisode = episode
+        lastProgressSaveTime = episode.playedPosition
+        lastProgressSaveDate = .distantPast
+        nowPlayingArtworkURL = nil
+        nowPlayingArtworkTask?.cancel()
         // Resolve the rate this podcast should play at — per-podcast
         // preference wins, then the global default, then 1.0×. Each podcast
         // remembers its own pace.
@@ -278,14 +287,14 @@ final class PlaybackController: ObservableObject {
         let cmTime = CMTime(seconds: time, preferredTimescale: 600)
         player.seek(to: cmTime)
         currentTime = time
-        persistPlaybackProgress()
+        persistPlaybackProgress(force: true)
     }
 
     func seek(to seconds: Double) {
         let time = max(0, seconds)
         player.seek(to: CMTime(seconds: time, preferredTimescale: 600))
         currentTime = time
-        persistPlaybackProgress()
+        persistPlaybackProgress(force: true)
     }
 
     /// Set the rate for the currently playing podcast and persist it as
@@ -344,12 +353,13 @@ final class PlaybackController: ObservableObject {
                 if let itemDuration = player.currentItem?.duration.seconds, itemDuration.isFinite {
                     duration = itemDuration
                 }
-                persistPlaybackProgress()
+                persistPlaybackProgressIfNeeded()
+                updateNowPlayingElapsed()
             }
         }
     }
 
-    private func persistPlaybackProgress() {
+    private func persistPlaybackProgress(force: Bool = false) {
         guard let episode = currentEpisode else { return }
         episode.playedPosition = currentTime
         episode.lastPlayedAt = .now
@@ -361,7 +371,22 @@ final class PlaybackController: ObservableObject {
         if let context = modelContext {
             do { try context.save() } catch { logger.error("Failed to save playback progress: \(error.localizedDescription, privacy: .public)") }
         }
-        updateNowPlaying(episode: episode)
+        lastProgressSaveTime = currentTime
+        lastProgressSaveDate = .now
+        if force {
+            updateNowPlaying(episode: episode)
+        }
+    }
+
+    private func persistPlaybackProgressIfNeeded() {
+        let crossedPlayedThreshold = duration > 0
+            && currentTime >= duration * 0.9
+            && currentEpisode?.isPlayed == false
+        let movedEnough = abs(currentTime - lastProgressSaveTime) >= 15
+        let waitedEnough = Date().timeIntervalSince(lastProgressSaveDate) >= 30
+
+        guard crossedPlayedThreshold || movedEnough || waitedEnough else { return }
+        persistPlaybackProgress()
     }
 
     private func observePlaybackCompletion() {
@@ -571,7 +596,10 @@ final class PlaybackController: ObservableObject {
     /// hit the network on a utility-priority detached task.
     private func updateNowPlayingArtwork(for episode: Episode) {
         guard let url = episode.artworkURL ?? episode.podcast.artworkURL else { return }
-        Task.detached(priority: .utility) {
+        guard nowPlayingArtworkURL != url else { return }
+        nowPlayingArtworkURL = url
+        nowPlayingArtworkTask?.cancel()
+        nowPlayingArtworkTask = Task.detached(priority: .utility) {
             let data: Data?
             if url.isFileURL {
                 data = try? Data(contentsOf: url)
@@ -584,6 +612,11 @@ final class PlaybackController: ObservableObject {
                 MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] = artwork
             }
         }
+    }
+
+    private func updateNowPlayingElapsed() {
+        MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
+        MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyPlaybackDuration] = duration
     }
 
     private func updateNowPlayingPlaybackRate() {

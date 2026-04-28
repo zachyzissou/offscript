@@ -287,6 +287,8 @@ final class FeedSyncService {
             let existingEpisodes = try context.fetch(FetchDescriptor<Episode>(
                 predicate: #Predicate<Episode> { $0.podcast.id == podcastID }
             ))
+            let existingByGUID = Dictionary(existingEpisodes.map { ($0.guid, $0) }, uniquingKeysWith: { first, _ in first })
+            let existingByAudioURL = Dictionary(existingEpisodes.map { ($0.audioURL, $0) }, uniquingKeysWith: { first, _ in first })
 
             // Sort by pub date (newest first) and limit if requested
             let sortedItems = parsed.items.sorted { ($0.pubDate ?? .distantPast) > ($1.pubDate ?? .distantPast) }
@@ -295,7 +297,7 @@ final class FeedSyncService {
             for item in itemsToProcess {
                 let guid = item.guid ?? item.audioURL.absoluteString
                 let resolvedChapters = await resolvedChapters(for: item)
-                if let existing = existingEpisodes.first(where: { $0.guid == guid || $0.audioURL == item.audioURL }) {
+                if let existing = existingByGUID[guid] ?? existingByAudioURL[item.audioURL] {
                     existing.title = item.title
                     existing.summary = item.summary
                     existing.pubDate = item.pubDate ?? existing.pubDate

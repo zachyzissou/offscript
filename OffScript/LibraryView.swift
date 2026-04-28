@@ -113,6 +113,7 @@ struct LibraryView: View {
             .padding(.bottom, 90)
         }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
+        .accessibilityIdentifier("LibraryScreen")
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
@@ -415,25 +416,14 @@ private struct PodcastShelfRow: View {
 struct PodcastDetailView: View {
     @Environment(\.modelContext) private var modelContext
     let podcast: Podcast
-    @Query(sort: [SortDescriptor(\Episode.pubDate, order: .reverse)]) private var allEpisodes: [Episode]
     @State private var filter: EpisodeFilter = .all
     @State private var episodeSearchQuery = ""
-
-    private var episodes: [Episode] {
-        let filtered = allEpisodes
-            .filter { $0.podcast.id == podcast.id }
-            .filter { filter.matches($0) }
-
-        if episodeSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return filtered
-        }
-
-        let query = episodeSearchQuery.lowercased()
-        return filtered.filter { episode in
-            episode.title.lowercased().contains(query) ||
-            (episode.summary?.lowercased().contains(query) ?? false)
-        }
-    }
+    @State private var episodes: [Episode] = []
+    @State private var matchingEpisodeCount = 0
+    @State private var visibleLimit = 100
+    @State private var hasMoreEpisodes = false
+    @State private var loadError: String?
+    @State private var searchLoadTask: Task<Void, Never>?
 
     init(podcast: Podcast) {
         self.podcast = podcast
@@ -442,7 +432,7 @@ struct PodcastDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                PodcastDetailTunerHeader(podcast: podcast, episodeCount: episodes.count)
+                PodcastDetailTunerHeader(podcast: podcast, episodeCount: matchingEpisodeCount)
 
                 // Custom Tuner search input — `.searchable()` renders a system
                 // rounded translucent search bar on iOS 26 that clashes with
@@ -451,6 +441,11 @@ struct PodcastDetailView: View {
                 tunerEpisodeSearchField
 
                 FilterRow(selection: $filter)
+
+                if let loadError {
+                    TunerLabel(text: "LOAD ERROR · \(loadError.uppercased())", color: .offscriptFnRecord)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 if episodes.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
@@ -474,6 +469,25 @@ struct PodcastDetailView: View {
                                 Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                             }
                         }
+
+                        if hasMoreEpisodes {
+                            Button {
+                                visibleLimit += 100
+                                loadEpisodes()
+                            } label: {
+                                HStack {
+                                    Spacer()
+                                    TunerLabel(text: "+ LOAD 100 MORE", color: .offscriptSignalYellow, size: 10)
+                                        .padding(.vertical, 12)
+                                    Spacer()
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .overlay(
+                                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                                alignment: .top
+                            )
+                        }
                     }
                     .overlay(
                         Rectangle().fill(Color.offscriptHairline).frame(height: 1),
@@ -493,6 +507,126 @@ struct PodcastDetailView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         // No `.searchable` — see tunerEpisodeSearchField for the inline
         // hairline TextField that replaces it.
+        .task { loadEpisodes(resetLimit: true) }
+        .onChange(of: filter) { _, _ in loadEpisodes(resetLimit: true) }
+        .onChange(of: episodeSearchQuery) { _, _ in scheduleEpisodeSearchLoad() }
+        .onDisappear { searchLoadTask?.cancel() }
+    }
+
+    private func loadEpisodes(resetLimit: Bool = false) {
+        if resetLimit {
+            visibleLimit = 100
+        }
+
+        do {
+            let podcastID = podcast.id
+            let downloadedRawValue = Episode.DownloadState.downloaded.rawValue
+            let baseSort = [SortDescriptor(\Episode.pubDate, order: .reverse)]
+            let descriptor: FetchDescriptor<Episode>
+
+            switch filter {
+            case .all:
+                descriptor = FetchDescriptor<Episode>(
+                    predicate: #Predicate<Episode> { $0.podcast.id == podcastID },
+                    sortBy: baseSort
+                )
+            case .unplayed:
+                descriptor = FetchDescriptor<Episode>(
+                    predicate: #Predicate<Episode> { $0.podcast.id == podcastID && $0.isPlayed == false },
+                    sortBy: baseSort
+                )
+            case .inProgress:
+                descriptor = FetchDescriptor<Episode>(
+                    predicate: #Predicate<Episode> { $0.podcast.id == podcastID && $0.playedPosition > 0 && $0.isPlayed == false },
+                    sortBy: baseSort
+                )
+            case .downloaded:
+                descriptor = FetchDescriptor<Episode>(
+                    predicate: #Predicate<Episode> { $0.podcast.id == podcastID && $0.downloadStateRawValue == downloadedRawValue },
+                    sortBy: baseSort
+                )
+            }
+
+            let query = episodeSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+            if query.isEmpty {
+                matchingEpisodeCount = (try? modelContext.fetchCount(descriptor)) ?? 0
+                var pageDescriptor = descriptor
+                pageDescriptor.fetchLimit = visibleLimit + 1
+                let fetched = try modelContext.fetch(pageDescriptor)
+                episodes = Array(fetched.prefix(visibleLimit))
+                hasMoreEpisodes = fetched.count > visibleLimit
+            } else {
+                let searchResult = try searchEpisodes(
+                    descriptor: descriptor,
+                    query: query,
+                    targetMatchCount: visibleLimit + 1
+                )
+                episodes = Array(searchResult.matches.prefix(visibleLimit))
+                hasMoreEpisodes = searchResult.matches.count > visibleLimit || !searchResult.exhaustedResults
+                matchingEpisodeCount = searchResult.exhaustedResults
+                    ? searchResult.matches.count
+                    : max(searchResult.matches.count, visibleLimit + 1)
+            }
+            loadError = nil
+        } catch {
+            episodes = []
+            matchingEpisodeCount = 0
+            hasMoreEpisodes = false
+            loadError = error.localizedDescription
+            libraryLogger.error("Podcast detail load failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func scheduleEpisodeSearchLoad() {
+        searchLoadTask?.cancel()
+        searchLoadTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+            loadEpisodes(resetLimit: true)
+        }
+    }
+
+    private func searchEpisodes(
+        descriptor: FetchDescriptor<Episode>,
+        query: String,
+        targetMatchCount: Int
+    ) throws -> (matches: [Episode], exhaustedResults: Bool) {
+        let batchSize = max(targetMatchCount * 4, 200)
+        var offset = 0
+        var matches: [Episode] = []
+        var exhaustedResults = false
+
+        while matches.count < targetMatchCount {
+            var batchDescriptor = descriptor
+            batchDescriptor.fetchOffset = offset
+            batchDescriptor.fetchLimit = batchSize
+
+            let batch = try modelContext.fetch(batchDescriptor)
+            if batch.isEmpty {
+                exhaustedResults = true
+                break
+            }
+
+            for episode in batch {
+                if episode.title.lowercased().contains(query)
+                    || (episode.summary?.strippingHTML.lowercased().contains(query) ?? false) {
+                    matches.append(episode)
+                    if matches.count >= targetMatchCount {
+                        break
+                    }
+                }
+            }
+
+            if batch.count < batchSize {
+                exhaustedResults = true
+                break
+            }
+
+            offset += batch.count
+        }
+
+        return (matches, exhaustedResults)
     }
 
     private var tunerEpisodeSearchField: some View {
@@ -534,10 +668,10 @@ struct PodcastDetailView: View {
 
 private struct PodcastDetailTunerHeader: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.openURL) private var openURL
     let podcast: Podcast
     let episodeCount: Int
     @State private var showUnsubscribeConfirmation = false
+    @State private var safariURL: IdentifiableURL?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -612,7 +746,7 @@ private struct PodcastDetailTunerHeader: View {
 
                 if let url = podcast.websiteURL {
                     Button {
-                        openURL(url)
+                        safariURL = IdentifiableURL(url: url)
                     } label: {
                         TunerLabel(text: "→ WEBSITE", color: .offscriptSignalYellow, size: 10)
                             .padding(.horizontal, 12)
@@ -624,6 +758,10 @@ private struct PodcastDetailTunerHeader: View {
                 Spacer()
             }
             .padding(.top, 4)
+            .sheet(item: $safariURL) { item in
+                SafariView(url: item.url)
+                    .ignoresSafeArea()
+            }
 
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                 .padding(.top, 6)
@@ -854,6 +992,7 @@ private enum EpisodeFilter: String, CaseIterable, Identifiable {
     case all
     case unplayed
     case inProgress
+    case downloaded
 
     var id: String { rawValue }
 
@@ -862,6 +1001,7 @@ private enum EpisodeFilter: String, CaseIterable, Identifiable {
         case .all: return "All"
         case .unplayed: return "Unplayed"
         case .inProgress: return "In Progress"
+        case .downloaded: return "Downloaded"
         }
     }
 
@@ -873,6 +1013,8 @@ private enum EpisodeFilter: String, CaseIterable, Identifiable {
             return !episode.isPlayed
         case .inProgress:
             return episode.playedPosition > 0 && !episode.isPlayed
+        case .downloaded:
+            return episode.downloadState == .downloaded
         }
     }
 }

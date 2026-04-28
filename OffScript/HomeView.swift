@@ -74,6 +74,7 @@ struct HomeView: View {
             .padding(.bottom, 28)
         }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
+        .accessibilityIdentifier("HomeScreen")
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)

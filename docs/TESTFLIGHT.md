@@ -18,35 +18,26 @@ The upload script refuses options files that include `testFlightInternalTestingO
 
 ## Automated Main Branch Uploads
 
-Pushes to `main` run `.github/workflows/testflight.yml`.
+Pushes to `main` are handled by Xcode Cloud. The old GitHub Actions TestFlight workflow is disabled at `.github/workflows/testflight.yml.disabled` and kept only as a fallback reference.
 
-The workflow:
+The Xcode Cloud workflow:
 
-1. Computes a unique build number from the UTC date, GitHub run number, and run attempt.
-2. Generates `CHANGELOG.md`, `WHAT_TO_TEST.md`, and `testflight-notes.txt` under `build/TestFlight/notes`.
-3. Runs the iOS unit test target on an available iPhone simulator. UI smoke tests
-   should stay in a separate lane so simulator flakiness does not block signed
-   beta uploads.
-4. Archives and uploads the Release build with `scripts/upload_testflight.sh`.
-5. Waits for App Store Connect processing, writes the generated notes into TestFlight's build localization, and syncs the latest eligible build to all beta groups.
-6. Uploads the changelog, What to Test notes, TestFlight notes, App Store Connect status snapshot, and test result bundle as GitHub Actions artifacts.
+1. Starts from the `main` branch or matching `v*` tags/releases.
+2. Runs Apple's archive/sign/upload action with Apple-managed signing.
+3. Uses `ci_scripts/ci_post_clone.sh` to materialize `Config/Secrets.xcconfig` from Xcode Cloud environment variables.
+4. Uploads the build to TestFlight through App Store Connect.
 
-Manual runs are available from GitHub Actions via **TestFlight Beta**. Use the manual inputs when a build needs custom release wording:
+Manual probes and starts are available from GitHub Actions via **Xcode Cloud Probe**, or locally through `scripts/app_store_connect.py xcode-cloud {probe,inspect,reconfigure,start-build,build-run}`. The GitHub workflow does not archive or upload app binaries.
 
-- `marketing_version`: override `MARKETING_VERSION`.
-- `build_number`: override `CURRENT_PROJECT_VERSION`.
-- `summary`: short changelog summary.
-- `what_to_test`: extra tester instructions appended to generated What to Test notes.
+## Probe And Local Credentials
 
-## GitHub Secrets
-
-Required repository secrets:
+Required GitHub repository secrets for `.github/workflows/xcode-cloud-probe.yml`:
 
 - `ASC_KEY_ID`: App Store Connect API key ID.
 - `ASC_ISSUER_ID`: App Store Connect issuer ID.
 - `ASC_KEY_P8_BASE64`: base64-encoded contents of the `.p8` private key.
 
-The GitHub workflow expects a **team** App Store Connect API key because `xcodebuild -allowProvisioningUpdates` requires `-authenticationKeyPath`, `-authenticationKeyID`, and `-authenticationKeyIssuerID` for CI signing/upload authentication. Individual API keys can still be used by `scripts/app_store_connect.py` for local status checks, but they do not satisfy the CI `xcodebuild` issuer-ID requirement.
+Xcode Cloud signing/upload credentials are managed by Xcode Cloud and App Store Connect, not by this GitHub workflow. The probe workflow and local `scripts/app_store_connect.py` commands use the API key only to inspect or start Xcode Cloud runs.
 
 Create the base64 secret locally with:
 
