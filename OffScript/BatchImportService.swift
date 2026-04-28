@@ -54,12 +54,13 @@ final class BatchImportService: ObservableObject {
     func start(entries: [OPMLFeedEntry], modelContext: ModelContext) {
         guard !isRunning else { return }
 
-        self.entries = entries
-        progress = Dictionary(uniqueKeysWithValues: entries.map { ($0.feedURL, ImportRowStatus.pending) })
+        let uniqueEntries = Self.deduplicated(entries)
+        self.entries = uniqueEntries
+        progress = Dictionary(uniqueKeysWithValues: uniqueEntries.map { ($0.feedURL, ImportRowStatus.pending) })
         phase = .running
 
         task = Task { [weak self] in
-            await self?.runBatch(entries: entries, modelContext: modelContext)
+            await self?.runBatch(entries: uniqueEntries, modelContext: modelContext)
         }
     }
 
@@ -87,7 +88,7 @@ final class BatchImportService: ObservableObject {
 
     private func runBatch(entries: [OPMLFeedEntry], modelContext: ModelContext) async {
         // Bounded parallelism — 6 in flight is enough to overlap the
-        // slow rows without trips rate limits or hammering the device.
+        // slow rows without tripping rate limits or hammering the device.
         let concurrency = 6
         await withTaskGroup(of: (URL, ImportRowStatus).self) { group in
             var iterator = entries.makeIterator()
@@ -123,14 +124,25 @@ final class BatchImportService: ObservableObject {
                                syncService: FeedSyncService,
                                modelContext: ModelContext) async -> (URL, ImportRowStatus) {
         do {
-            let result = try await PodcastImportService.resolve(opmlEntry: entry)
-            _ = try await syncService.importPodcast(from: result,
+            _ = try await syncService.importPodcast(from: entry,
                                                     into: modelContext,
-                                                    episodeLimit: 25)
+                                                    options: .fastBatchImport(episodeLimit: 25))
             return (entry.feedURL, .added)
         } catch {
             batchImportLogger.error("OPML row failed for \(entry.feedURL.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return (entry.feedURL, .failed)
         }
+    }
+
+    static func deduplicated(_ entries: [OPMLFeedEntry]) -> [OPMLFeedEntry] {
+        var seen = Set<String>()
+        var result: [OPMLFeedEntry] = []
+        for entry in entries {
+            let key = entry.feedURL.normalizedFeedKey
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            result.append(entry)
+        }
+        return result
     }
 }

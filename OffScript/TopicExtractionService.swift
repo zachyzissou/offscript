@@ -106,6 +106,30 @@ final class TopicExtractionService {
         if existing == nil { context.insert(profile) }
     }
 
+    func enrichHeuristically(episode: Episode, in context: ModelContext) throws {
+        let targetID = episode.id
+        var profileDescriptor = FetchDescriptor<EpisodeProfile>(
+            predicate: #Predicate<EpisodeProfile> { $0.episodeID == targetID }
+        )
+        profileDescriptor.fetchLimit = 1
+        let existing = try context.fetch(profileDescriptor).first
+        let profile = existing ?? {
+            let p = EpisodeProfile(episodeID: episode.id)
+            p.episode = episode
+            return p
+        }()
+
+        let baseText = """
+        Title: \(episode.title)
+        Description: \(episode.summary ?? "")
+        """
+        let (tags, entities) = Self.heuristicTagsAndEntities(from: baseText)
+        profile.tags = tags
+        profile.entities = entities
+
+        if existing == nil { context.insert(profile) }
+    }
+
     /// Generate a pre-listen briefing using on-device Apple Intelligence.
     /// Returns nil when FoundationModels is unavailable (older devices, region
     /// not enabled, model still downloading) — callers should hide the section.

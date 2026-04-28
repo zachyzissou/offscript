@@ -130,9 +130,21 @@ enum PodcastImportService {
     /// surrounding structure differs.
     static func extractFeedURLs(fromOPML data: Data) throws -> [OPMLFeedEntry] {
         let parser = OPMLParser()
-        let entries = try parser.parse(data: data)
+        let entries = deduplicated(try parser.parse(data: data))
         guard !entries.isEmpty else { throw PodcastImportError.noFeedsInOPML }
         return entries
+    }
+
+    static func deduplicated(_ entries: [OPMLFeedEntry]) -> [OPMLFeedEntry] {
+        var seen = Set<String>()
+        var result: [OPMLFeedEntry] = []
+        for entry in entries {
+            let key = entry.feedURL.normalizedFeedKey
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            result.append(entry)
+        }
+        return result
     }
 
     /// Resolve an OPML entry into a `PodcastSearchResult`, using the title
@@ -159,6 +171,47 @@ enum PodcastImportService {
             }
             throw error
         }
+    }
+
+    static func searchResult(opmlEntry: OPMLFeedEntry, parsedFeed: ParsedFeed) throws -> PodcastSearchResult {
+        let fallbackTitle = opmlEntry.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let title = parsedFeed.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                ?? fallbackTitle?.nilIfEmpty else {
+            throw PodcastImportError.feedParseFailed
+        }
+
+        return PodcastSearchResult(
+            title: title,
+            author: parsedFeed.author?.nilIfEmpty ?? opmlEntry.author?.nilIfEmpty ?? "Unknown",
+            feedURL: opmlEntry.feedURL,
+            artworkURL: parsedFeed.artworkURL,
+            websiteURL: parsedFeed.websiteURL,
+            summary: parsedFeed.summary
+        )
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
+extension URL {
+    var normalizedFeedKey: String {
+        guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
+            return absoluteString.lowercased()
+        }
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        if components.path == "/" {
+            components.path = ""
+        } else {
+            while components.path.hasSuffix("/") {
+                components.path.removeLast()
+            }
+        }
+        return components.url?.absoluteString.lowercased() ?? absoluteString.lowercased()
     }
 }
 

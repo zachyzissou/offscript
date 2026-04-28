@@ -179,11 +179,67 @@ private struct ItunesLookupResult: Decodable {
     let artworkUrl600: String?
 }
 
+enum EpisodeEnrichmentMode {
+    case full
+    case heuristic
+    case skip
+}
+
+struct FeedSyncOptions {
+    let episodeLimit: Int?
+    let enrichmentMode: EpisodeEnrichmentMode
+    let resolveExternalChapters: Bool
+
+    static func standard(episodeLimit: Int? = nil) -> FeedSyncOptions {
+        FeedSyncOptions(
+            episodeLimit: episodeLimit,
+            enrichmentMode: .full,
+            resolveExternalChapters: true
+        )
+    }
+
+    static func fastBatchImport(episodeLimit: Int? = nil) -> FeedSyncOptions {
+        FeedSyncOptions(
+            episodeLimit: episodeLimit,
+            enrichmentMode: .heuristic,
+            resolveExternalChapters: false
+        )
+    }
+}
+
 final class FeedSyncService {
     private let topicExtractionService = TopicExtractionService()
 
     @MainActor
     func importPodcast(from result: PodcastSearchResult, into context: ModelContext, episodeLimit: Int? = nil) async throws -> Podcast {
+        let podcast = try upsertPodcast(from: result, into: context)
+        try context.save()
+        try await sync(podcast: podcast, in: context, options: .standard(episodeLimit: episodeLimit))
+        return podcast
+    }
+
+    @MainActor
+    func importPodcast(from opmlEntry: OPMLFeedEntry, into context: ModelContext, episodeLimit: Int? = nil) async throws -> Podcast {
+        try await importPodcast(from: opmlEntry, into: context, options: .standard(episodeLimit: episodeLimit))
+    }
+
+    @MainActor
+    func importPodcast(from opmlEntry: OPMLFeedEntry, into context: ModelContext, options: FeedSyncOptions) async throws -> Podcast {
+        let fetched = try await Self.fetchParsedFeed(feedURL: opmlEntry.feedURL)
+        guard case let .feed(parsed, httpResponse) = fetched else {
+            throw PodcastImportError.feedParseFailed
+        }
+        let result = try PodcastImportService.searchResult(opmlEntry: opmlEntry, parsedFeed: parsed)
+        let podcast = try upsertPodcast(from: result, into: context)
+        podcast.syncStatus = "syncing"
+        podcast.lastSyncAttemptAt = .now
+        podcast.syncErrorMessage = nil
+        try await apply(parsed: parsed, httpResponse: httpResponse, to: podcast, in: context, options: options)
+        return podcast
+    }
+
+    @MainActor
+    private func upsertPodcast(from result: PodcastSearchResult, into context: ModelContext) throws -> Podcast {
         let feedURL = result.feedURL
         var podcastDescriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate<Podcast> { $0.feedURL == feedURL }
@@ -217,117 +273,36 @@ final class FeedSyncService {
             context.insert(podcast)
         }
 
-        try context.save()
-        try await sync(podcast: podcast, in: context, episodeLimit: episodeLimit)
         return podcast
     }
 
     @MainActor
     func sync(podcast: Podcast, in context: ModelContext, episodeLimit: Int? = nil) async throws {
+        try await sync(podcast: podcast, in: context, options: .standard(episodeLimit: episodeLimit))
+    }
+
+    @MainActor
+    func sync(podcast: Podcast, in context: ModelContext, options: FeedSyncOptions) async throws {
         podcast.syncStatus = "syncing"
         podcast.lastSyncAttemptAt = .now
         podcast.syncErrorMessage = nil
-        var request = URLRequest(url: podcast.feedURL)
-        request.timeoutInterval = 20
-        if let eTag = podcast.feedETag {
-            request.setValue(eTag, forHTTPHeaderField: "If-None-Match")
-        }
-        if let lastModified = podcast.feedLastModified {
-            request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since")
-        }
-
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse else {
-                podcast.syncStatus = "failed"
-                podcast.syncErrorMessage = "Unexpected feed response."
-                try context.save()
-                return
-            }
-
-            if httpResponse.statusCode == 304 {
+            let fetched = try await Self.fetchParsedFeed(
+                feedURL: podcast.feedURL,
+                eTag: podcast.feedETag,
+                lastModified: podcast.feedLastModified
+            )
+            switch fetched {
+            case .notModified:
                 podcast.lastSyncAt = Date()
                 podcast.syncStatus = "idle"
                 podcast.syncFailureCount = 0
                 podcast.nextRetryAt = nil
                 try context.save()
                 return
+            case let .feed(parsed, httpResponse):
+                try await apply(parsed: parsed, httpResponse: httpResponse, to: podcast, in: context, options: options)
             }
-
-            guard (200..<300).contains(httpResponse.statusCode) else {
-                podcast.syncStatus = "failed"
-                podcast.syncErrorMessage = "Feed returned HTTP \(httpResponse.statusCode)."
-                try context.save()
-                return
-            }
-
-            podcast.feedETag = httpResponse.value(forHTTPHeaderField: "Etag")
-            podcast.feedLastModified = httpResponse.value(forHTTPHeaderField: "Last-Modified")
-
-            let parsed = try RSSFeedParser().parse(data: data)
-            podcast.title = parsed.title ?? podcast.title
-            podcast.author = parsed.author ?? podcast.author
-            podcast.summary = parsed.summary ?? podcast.summary
-            podcast.websiteURL = parsed.websiteURL ?? podcast.websiteURL
-            podcast.artworkURL = parsed.artworkURL ?? podcast.artworkURL
-            podcast.categories = parsed.categories
-            podcast.latestPubDate = parsed.items.compactMap(\.pubDate).max()
-            podcast.lastSyncAt = Date()
-            podcast.syncStatus = "idle"
-            podcast.syncFailureCount = 0
-            podcast.nextRetryAt = nil
-
-            // Use the podcast's stable UUID (a stored property) for the
-            // predicate instead of persistentModelID, which SwiftData cannot
-            // always translate into a reliable SQLite query.  A failed
-            // predicate caused the fetch to return zero results, so every
-            // feed item was treated as new — duplicating all episodes on
-            // every sync.
-            let podcastID = podcast.id
-            let existingEpisodes = try context.fetch(FetchDescriptor<Episode>(
-                predicate: #Predicate<Episode> { $0.podcast.id == podcastID }
-            ))
-            let existingByGUID = Dictionary(existingEpisodes.map { ($0.guid, $0) }, uniquingKeysWith: { first, _ in first })
-            let existingByAudioURL = Dictionary(existingEpisodes.map { ($0.audioURL, $0) }, uniquingKeysWith: { first, _ in first })
-
-            // Sort by pub date (newest first) and limit if requested
-            let sortedItems = parsed.items.sorted { ($0.pubDate ?? .distantPast) > ($1.pubDate ?? .distantPast) }
-            let itemsToProcess = episodeLimit.map { Array(sortedItems.prefix($0)) } ?? sortedItems
-
-            for item in itemsToProcess {
-                let guid = item.guid ?? item.audioURL.absoluteString
-                let resolvedChapters = await resolvedChapters(for: item)
-                if let existing = existingByGUID[guid] ?? existingByAudioURL[item.audioURL] {
-                    existing.title = item.title
-                    existing.summary = item.summary
-                    existing.pubDate = item.pubDate ?? existing.pubDate
-                    existing.duration = item.duration ?? existing.duration
-                    existing.artworkURL = item.artworkURL ?? existing.artworkURL
-                    existing.seasonNumber = item.seasonNumber ?? existing.seasonNumber
-                    existing.episodeNumber = item.episodeNumber ?? existing.episodeNumber
-                    existing.chapters = resolvedChapters
-                    existing.transcriptReferences = item.transcriptReferences
-                } else {
-                    let episode = Episode(
-                        guid: guid,
-                        title: item.title,
-                        summary: item.summary,
-                        pubDate: item.pubDate ?? Date(),
-                        duration: item.duration,
-                        audioURL: item.audioURL,
-                        artworkURL: item.artworkURL ?? podcast.artworkURL,
-                        seasonNumber: item.seasonNumber,
-                        episodeNumber: item.episodeNumber,
-                        podcast: podcast
-                    )
-                    episode.chapters = resolvedChapters
-                    episode.transcriptReferences = item.transcriptReferences
-                    context.insert(episode)
-                    try await topicExtractionService.enrich(episode: episode, in: context)
-                }
-            }
-
-            try context.save()
         } catch {
             podcast.syncStatus = "failed"
             podcast.syncErrorMessage = error.localizedDescription
@@ -336,11 +311,162 @@ final class FeedSyncService {
         }
     }
 
-    private func resolvedChapters(for item: ParsedFeedItem) async -> [EpisodeChapter] {
+    @MainActor
+    func importPodcast(
+        from result: PodcastSearchResult,
+        parsedFeed parsed: ParsedFeed,
+        httpResponse: HTTPURLResponse? = nil,
+        into context: ModelContext,
+        episodeLimit: Int? = nil
+    ) async throws -> Podcast {
+        try await importPodcast(
+            from: result,
+            parsedFeed: parsed,
+            httpResponse: httpResponse,
+            into: context,
+            options: .standard(episodeLimit: episodeLimit)
+        )
+    }
+
+    @MainActor
+    func importPodcast(
+        from result: PodcastSearchResult,
+        parsedFeed parsed: ParsedFeed,
+        httpResponse: HTTPURLResponse? = nil,
+        into context: ModelContext,
+        options: FeedSyncOptions
+    ) async throws -> Podcast {
+        let podcast = try upsertPodcast(from: result, into: context)
+        podcast.syncStatus = "syncing"
+        podcast.lastSyncAttemptAt = .now
+        podcast.syncErrorMessage = nil
+        try await apply(parsed: parsed, httpResponse: httpResponse, to: podcast, in: context, options: options)
+        return podcast
+    }
+
+    @MainActor
+    private func apply(
+        parsed: ParsedFeed,
+        httpResponse: HTTPURLResponse?,
+        to podcast: Podcast,
+        in context: ModelContext,
+        options: FeedSyncOptions
+    ) async throws {
+        podcast.feedETag = httpResponse?.value(forHTTPHeaderField: "Etag") ?? podcast.feedETag
+        podcast.feedLastModified = httpResponse?.value(forHTTPHeaderField: "Last-Modified") ?? podcast.feedLastModified
+        podcast.title = parsed.title ?? podcast.title
+        podcast.author = parsed.author ?? podcast.author
+        podcast.summary = parsed.summary ?? podcast.summary
+        podcast.websiteURL = parsed.websiteURL ?? podcast.websiteURL
+        podcast.artworkURL = parsed.artworkURL ?? podcast.artworkURL
+        podcast.categories = parsed.categories
+        podcast.latestPubDate = parsed.items.compactMap(\.pubDate).max()
+        podcast.lastSyncAt = Date()
+        podcast.syncStatus = "idle"
+        podcast.syncFailureCount = 0
+        podcast.nextRetryAt = nil
+
+        // Use the podcast's stable UUID (a stored property) for the predicate
+        // instead of persistentModelID, which SwiftData cannot always translate
+        // into a reliable SQLite query.
+        let podcastID = podcast.id
+        let existingEpisodes = try context.fetch(FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast.id == podcastID }
+        ))
+        let existingByGUID = Dictionary(existingEpisodes.map { ($0.guid, $0) }, uniquingKeysWith: { first, _ in first })
+        let existingByAudioURL = Dictionary(existingEpisodes.map { ($0.audioURL, $0) }, uniquingKeysWith: { first, _ in first })
+
+        let sortedItems = parsed.items.sorted { ($0.pubDate ?? .distantPast) > ($1.pubDate ?? .distantPast) }
+        let itemsToProcess = options.episodeLimit.map { Array(sortedItems.prefix($0)) } ?? sortedItems
+
+        for item in itemsToProcess {
+            let guid = item.guid ?? item.audioURL.absoluteString
+            let resolvedChapters = await resolvedChapters(for: item, resolveExternalChapters: options.resolveExternalChapters)
+            if let existing = existingByGUID[guid] ?? existingByAudioURL[item.audioURL] {
+                existing.title = item.title
+                existing.summary = item.summary
+                existing.pubDate = item.pubDate ?? existing.pubDate
+                existing.duration = item.duration ?? existing.duration
+                existing.artworkURL = item.artworkURL ?? existing.artworkURL
+                existing.seasonNumber = item.seasonNumber ?? existing.seasonNumber
+                existing.episodeNumber = item.episodeNumber ?? existing.episodeNumber
+                existing.chapters = resolvedChapters
+                existing.transcriptReferences = item.transcriptReferences
+            } else {
+                let episode = Episode(
+                    guid: guid,
+                    title: item.title,
+                    summary: item.summary,
+                    pubDate: item.pubDate ?? Date(),
+                    duration: item.duration,
+                    audioURL: item.audioURL,
+                    artworkURL: item.artworkURL ?? podcast.artworkURL,
+                    seasonNumber: item.seasonNumber,
+                    episodeNumber: item.episodeNumber,
+                    podcast: podcast
+                )
+                episode.chapters = resolvedChapters
+                episode.transcriptReferences = item.transcriptReferences
+                context.insert(episode)
+                switch options.enrichmentMode {
+                case .full:
+                    try await topicExtractionService.enrich(episode: episode, in: context)
+                case .heuristic:
+                    try topicExtractionService.enrichHeuristically(episode: episode, in: context)
+                case .skip:
+                    break
+                }
+            }
+        }
+
+        try context.save()
+    }
+
+    private enum FeedFetchResult {
+        case notModified(HTTPURLResponse)
+        case feed(ParsedFeed, HTTPURLResponse)
+    }
+
+    private static func fetchParsedFeed(feedURL: URL, eTag: String? = nil, lastModified: String? = nil) async throws -> FeedFetchResult {
+        var request = URLRequest(url: feedURL)
+        request.timeoutInterval = 20
+        request.setValue("application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
+                         forHTTPHeaderField: "Accept")
+        if let eTag {
+            request.setValue(eTag, forHTTPHeaderField: "If-None-Match")
+        }
+        if let lastModified {
+            request.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw PodcastImportError.feedFetchFailed("Unexpected feed response.")
+        }
+
+        if httpResponse.statusCode == 304 {
+            return .notModified(httpResponse)
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw PodcastImportError.feedFetchFailed("HTTP \(httpResponse.statusCode)")
+        }
+
+        if let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")?.lowercased(),
+           contentType.contains("text/html") {
+            throw PodcastImportError.feedParseFailed
+        }
+
+        let parsed = try RSSFeedParser().parse(data: data)
+        return .feed(parsed, httpResponse)
+    }
+
+    private func resolvedChapters(for item: ParsedFeedItem, resolveExternalChapters: Bool) async -> [EpisodeChapter] {
         let embedded = EpisodeChapterParser.normalize(item.chapters, duration: item.duration)
         if !embedded.isEmpty {
             return embedded
         }
+        guard resolveExternalChapters else { return [] }
         guard let externalChapterURL = item.externalChapterURL else { return [] }
         return (try? await ExternalChapterLoader.load(from: externalChapterURL, duration: item.duration)) ?? []
     }

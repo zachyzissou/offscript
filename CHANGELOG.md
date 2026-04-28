@@ -4,6 +4,11 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Fixed — large OPML import performance
+- **OPML batch import no longer fetches every feed twice.** The importer now applies the parsed feed metadata directly after the first network fetch instead of resolving the OPML row and then re-syncing the same URL immediately afterward.
+- **Large libraries now dedupe feed URLs before work starts.** OPML exports with repeated URLs (including case/trailing-slash variants) preserve the first row and skip duplicates before progress tracking and import tasks are created.
+- **Bulk imports avoid per-episode AI/chapter network fan-out.** OPML batch rows import the newest bounded episode set with cheap local topic profiles and defer full FoundationModels enrichment plus external chapter fetches to later sync paths, removing the worst multiplier for 50+ show libraries.
+
 ## [2.3.11] — 2026-04-27
 
 Polish round 4 — performance, race fixes, accessibility hints from a final pre-release audit.
