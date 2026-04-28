@@ -403,6 +403,10 @@ struct HomeFeedSection: Identifiable {
         scoredEpisodes.first(where: { $0.episode.id == episode.id })?.explanation
             ?? "Subscribed channel: \(episode.podcast.title)"
     }
+
+    func signalTrace(for episode: Episode) -> [RecommendationSignal] {
+        scoredEpisodes.first(where: { $0.episode.id == episode.id })?.signalTrace ?? []
+    }
 }
 
 @Model

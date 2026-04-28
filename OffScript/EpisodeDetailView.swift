@@ -23,6 +23,18 @@ struct EpisodeDetailView: View {
     @ObservedObject private var downloadService = DownloadService.shared
     @State private var feedbackGiven: PreferenceSignal.Action? = nil
     let episode: Episode
+    let recommendationReason: String?
+    let recommendationSignals: [RecommendationSignal]
+
+    init(
+        episode: Episode,
+        recommendationReason: String? = nil,
+        recommendationSignals: [RecommendationSignal] = []
+    ) {
+        self.episode = episode
+        self.recommendationReason = recommendationReason
+        self.recommendationSignals = recommendationSignals
+    }
 
     private var progressValue: Double {
         guard let duration = episode.duration, duration > 0 else { return 0 }
@@ -42,6 +54,7 @@ struct EpisodeDetailView: View {
                     progressTickStrip
                 }
                 actionRow
+                recommendationSignalSection
                 offlineSection
                 summarySection
                 // Apple-native AI surfaces — all on-device, all hidden when
@@ -212,6 +225,29 @@ struct EpisodeDetailView: View {
             DownloadButton(episode: episode)
 
             Spacer()
+        }
+    }
+
+    // ── Recommendation signal ───────────────────────────────────────
+    @ViewBuilder
+    private var recommendationSignalSection: some View {
+        if let recommendationReason, !recommendationReason.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                TunerLabel(text: "WHY THIS · LOCAL SIGNAL", color: .offscriptSignalYellow)
+                TunerTag(text: recommendationReason, color: .offscriptSignalYellow, dim: true)
+                RecommendationSignalTraceView(signals: recommendationSignals)
+                Text("This comes from local listening, queue, and preference signals on this device.")
+                    .font(.system(size: 12.5, weight: .regular))
+                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.74))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(
+                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                alignment: .top
+            )
+            .accessibilityIdentifier("RecommendationSignalSection")
         }
     }
 

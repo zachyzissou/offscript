@@ -431,6 +431,36 @@ struct TunerTag: View {
     }
 }
 
+struct RecommendationSignalTraceView: View {
+    let signals: [RecommendationSignal]
+    var limit: Int = 3
+    var color: Color = .offscriptFnInfo
+
+    var body: some View {
+        if !signals.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(signals.prefix(limit)), id: \.self) { signal in
+                    Text(signal.displayText.uppercased())
+                        .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                        .tracking(1.2)
+                        .foregroundStyle(color.opacity(0.62))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .padding(.leading, 7)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .overlay(
+                            Rectangle()
+                                .fill(color.opacity(0.4))
+                                .frame(width: 1),
+                            alignment: .leading
+                        )
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 /// Ring meter — colored arc on a hairline base. value 0…1; glyph is the
 /// optical-center text (e.g. "34%", "1.2×", "OFF", "−6"); units optionally sit
 /// inside the ring. Built so a row of meters shares one optical baseline.

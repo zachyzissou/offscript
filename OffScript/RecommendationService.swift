@@ -166,7 +166,8 @@ final class RecommendationService {
                 return ScoredEpisode(
                     episode: episode,
                     score: result.score,
-                    explanation: result.explanation
+                    explanation: result.explanation,
+                    signalTrace: result.signalTrace
                 )
             }
             .sorted { $0.score > $1.score }
@@ -216,7 +217,7 @@ final class RecommendationService {
     private func homeSignal(
         episode: Episode,
         context: ScoringContext
-    ) -> (score: Double, explanation: String)? {
+    ) -> (score: Double, explanation: String, signalTrace: [RecommendationSignal])? {
         let profile = context.profileByEpisodeID[episode.id]
         let profileTags = Self.normalizedTags(profile?.tags ?? [])
         let matchingLikedTags = profileTags.intersection(context.likedTags)
@@ -238,7 +239,11 @@ final class RecommendationService {
             let positionLabel = queuePosition == 0 ? "first" : "#\(queuePosition + 1)"
             return (
                 500 - Double(queuePosition * 10) + freshnessTieBreak,
-                "You put this \(positionLabel) in queue"
+                "You put this \(positionLabel) in queue",
+                [
+                    RecommendationSignal(label: "source", value: "queue"),
+                    RecommendationSignal(label: "position", value: positionLabel)
+                ]
             )
         }
 
@@ -246,7 +251,11 @@ final class RecommendationService {
             let remaining = max(0, (episode.duration ?? 0) - episode.playedPosition)
             return (
                 420 + freshnessTieBreak + durationTieBreak,
-                "\(EpisodeDurationFormatter.short(remaining)) left from your last session"
+                "\(EpisodeDurationFormatter.short(remaining)) left from your last session",
+                [
+                    RecommendationSignal(label: "source", value: "resume"),
+                    RecommendationSignal(label: "left", value: EpisodeDurationFormatter.short(remaining))
+                ]
             )
         }
 
@@ -255,7 +264,12 @@ final class RecommendationService {
             let showSignal = max(completedShowCount, 1)
             return (
                 320 + Double(min(showSignal, 5)) * 18 + freshnessTieBreak + qualityTieBreak,
-                "You keep finishing \(episode.podcast.title)"
+                "You keep finishing \(episode.podcast.title)",
+                [
+                    RecommendationSignal(label: "source", value: "completion"),
+                    RecommendationSignal(label: "show", value: episode.podcast.title),
+                    RecommendationSignal(label: "finishes", value: "\(showSignal)")
+                ]
             )
         }
 
@@ -263,7 +277,11 @@ final class RecommendationService {
             let sample = matchingTags.sorted().prefix(2).joined(separator: ", ")
             return (
                 260 + Double(min(matchingTags.count, 4)) * 16 + freshnessTieBreak + qualityTieBreak,
-                "Matches your saved signal: \(sample)"
+                "Matches your saved signal: \(sample)",
+                [
+                    RecommendationSignal(label: "source", value: "tag match"),
+                    RecommendationSignal(label: "tags", value: sample)
+                ]
             )
         }
 
@@ -272,14 +290,22 @@ final class RecommendationService {
             let genre = genreMatches.sorted().first ?? "saved genre"
             return (
                 210 + freshnessTieBreak + durationTieBreak,
-                "Matches your selected \(genre) lane"
+                "Matches your selected \(genre) lane",
+                [
+                    RecommendationSignal(label: "source", value: "genre"),
+                    RecommendationSignal(label: "lane", value: genre)
+                ]
             )
         }
 
         if AppSettings.preferShortEpisodes, minutes <= 35 {
             return (
                 190 + durationTieBreak + qualityTieBreak,
-                "Fits your short-listen setting"
+                "Fits your short-listen setting",
+                [
+                    RecommendationSignal(label: "source", value: "duration"),
+                    RecommendationSignal(label: "window", value: EpisodeDurationFormatter.short(episode.duration ?? 0))
+                ]
             )
         }
 
@@ -290,7 +316,7 @@ final class RecommendationService {
         episode: Episode,
         context: ScoringContext,
         diversityPenalty: Double = 0
-    ) -> (score: Double, explanation: String) {
+    ) -> (score: Double, explanation: String, signalTrace: [RecommendationSignal]) {
         let profile = context.profileByEpisodeID[episode.id]
         let profileTags = Self.normalizedTags(profile?.tags ?? [])
         let matchingTags = profileTags.intersection(context.likedTags)
@@ -337,32 +363,73 @@ final class RecommendationService {
         }
 
         let explanation: String
+        let signalTrace: [RecommendationSignal]
         if isUnfinished {
             let remaining = max(0, (episode.duration ?? 0) - episode.playedPosition)
             explanation = "\(EpisodeDurationFormatter.short(remaining)) left — pick up where you stopped"
+            signalTrace = [
+                RecommendationSignal(label: "source", value: "resume"),
+                RecommendationSignal(label: "left", value: EpisodeDurationFormatter.short(remaining))
+            ]
         } else if context.showAffinity.contains(episode.podcast.title) {
             explanation = "You keep finishing \(episode.podcast.title)"
+            signalTrace = [
+                RecommendationSignal(label: "source", value: "show affinity"),
+                RecommendationSignal(label: "show", value: episode.podcast.title)
+            ]
         } else if overlap >= 3 {
             let sample = Array(matchingTags.prefix(2)).joined(separator: ", ")
             explanation = "\(Int(overlap)) topic matches: \(sample)"
+            signalTrace = [
+                RecommendationSignal(label: "source", value: "topic overlap"),
+                RecommendationSignal(label: "tags", value: sample)
+            ]
         } else if let topTag = profileTags.intersection(context.topTags).first {
             explanation = "Fits your recent interest in \"\(topTag)\""
+            signalTrace = [
+                RecommendationSignal(label: "source", value: "recent interest"),
+                RecommendationSignal(label: "tag", value: topTag)
+            ]
         } else if overlap >= 1 {
             let sample = matchingTags.first ?? ""
             explanation = "Connects to \"\(sample)\" from episodes you liked"
+            signalTrace = [
+                RecommendationSignal(label: "source", value: "liked episode"),
+                RecommendationSignal(label: "tag", value: sample)
+            ]
         } else if days <= 1 {
             explanation = "Dropped today from \(episode.podcast.title)"
+            signalTrace = [
+                RecommendationSignal(label: "source", value: "fresh"),
+                RecommendationSignal(label: "show", value: episode.podcast.title)
+            ]
         } else if days <= 3 {
             explanation = "Fresh from \(episode.podcast.title) — \(Int(days))d ago"
+            signalTrace = [
+                RecommendationSignal(label: "source", value: "fresh"),
+                RecommendationSignal(label: "age", value: "\(Int(days))d")
+            ]
         } else if minutes <= 20 {
             explanation = "Quick \(EpisodeDurationFormatter.short(episode.duration ?? 0)) listen"
+            signalTrace = [
+                RecommendationSignal(label: "source", value: "duration"),
+                RecommendationSignal(label: "window", value: EpisodeDurationFormatter.short(episode.duration ?? 0))
+            ]
         } else if episode.podcast.isSubscribed {
             explanation = "Subscribed channel: \(episode.podcast.title)"
+            signalTrace = [
+                RecommendationSignal(label: "source", value: "subscription"),
+                RecommendationSignal(label: "show", value: episode.podcast.title)
+            ]
         } else {
             explanation = "Available from \(episode.podcast.title)"
+            signalTrace = [
+                RecommendationSignal(label: "source", value: "available"),
+                RecommendationSignal(label: "show", value: episode.podcast.title)
+            ]
         }
 
-        return (value, explanation)
+        return (value, explanation, signalTrace)
     }
 
     /// Returns contextual recommendations for the player based on the currently playing episode
@@ -411,7 +478,14 @@ final class RecommendationService {
                 // Boost same podcast
                 if episode.podcast.id == currentPodcastID {
                     score += 0.15
-                    result = (score, "More from \(episode.podcast.title)")
+                    result = (
+                        score,
+                        "More from \(episode.podcast.title)",
+                        [
+                            RecommendationSignal(label: "source", value: "same show"),
+                            RecommendationSignal(label: "show", value: episode.podcast.title)
+                        ]
+                    )
                 }
 
                 // Boost episodes with overlapping tags to current episode
@@ -422,11 +496,18 @@ final class RecommendationService {
                     score += Double(currentOverlap.count) * 0.05
                     if episode.podcast.id != currentPodcastID {
                         let tag = currentOverlap.first ?? ""
-                        result = (score, "Also covers \"\(tag)\"")
+                        result = (
+                            score,
+                            "Also covers \"\(tag)\"",
+                            [
+                                RecommendationSignal(label: "source", value: "now playing"),
+                                RecommendationSignal(label: "tag", value: tag)
+                            ]
+                        )
                     }
                 }
 
-                return ScoredEpisode(episode: episode, score: score, explanation: result.explanation)
+                return ScoredEpisode(episode: episode, score: score, explanation: result.explanation, signalTrace: result.signalTrace)
             }
             .sorted { $0.score > $1.score }
             .prefix(limit)
@@ -521,8 +602,25 @@ final class RecommendationService {
     }
 }
 
+struct RecommendationSignal: Hashable {
+    let label: String
+    let value: String
+
+    var displayText: String {
+        "\(label): \(value)"
+    }
+}
+
 struct ScoredEpisode {
     let episode: Episode
     let score: Double
     let explanation: String
+    let signalTrace: [RecommendationSignal]
+
+    init(episode: Episode, score: Double, explanation: String, signalTrace: [RecommendationSignal] = []) {
+        self.episode = episode
+        self.score = score
+        self.explanation = explanation
+        self.signalTrace = signalTrace
+    }
 }

@@ -233,6 +233,7 @@ struct OffScriptTests {
         #expect(sections.first?.title == "Signal Lock")
         #expect(sections.first?.episodes.first?.id == queued.id)
         #expect(sections.first?.explanation(for: queued).contains("queue") == true)
+        #expect(sections.first?.signalTrace(for: queued).contains(RecommendationSignal(label: "source", value: "queue")) == true)
         #expect(sections.flatMap(\.episodes).contains(where: { $0.id == fresh.id }) == false)
     }
 
@@ -283,6 +284,8 @@ struct OffScriptTests {
 
         #expect(firstEpisode?.id == olderFromAffinity.id)
         #expect(sections.first?.explanation(for: olderFromAffinity) == "You keep finishing Finished Show")
+        #expect(sections.first?.signalTrace(for: olderFromAffinity).contains(RecommendationSignal(label: "source", value: "completion")) == true)
+        #expect(sections.first?.signalTrace(for: olderFromAffinity).contains(RecommendationSignal(label: "show", value: "Finished Show")) == true)
         #expect(sections.flatMap(\.episodes).contains(where: { $0.id == freshRandom.id }) == false)
     }
 
@@ -335,6 +338,54 @@ struct OffScriptTests {
         let sections = try RecommendationService().homeSections(context: context, limit: 3)
 
         #expect(sections.flatMap(\.episodes).contains(where: { $0.id == episode.id }) == false)
+    }
+
+    @Test
+    @MainActor
+    func playerSuggestionsExposeNowPlayingSignalTrace() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let currentPodcast = Podcast(title: "Now Playing", feedURL: URL(string: "https://example.com/current.xml")!)
+        let relatedPodcast = Podcast(title: "Related", feedURL: URL(string: "https://example.com/related.xml")!)
+        let current = Episode(
+            title: "Current Episode",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/current.mp3")!,
+            podcast: currentPodcast
+        )
+        let related = Episode(
+            title: "Shared Signal",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/related.mp3")!,
+            podcast: relatedPodcast
+        )
+        let currentProfile = EpisodeProfile(episodeID: current.id)
+        currentProfile.tags = ["audio craft", "interviews"]
+        let relatedProfile = EpisodeProfile(episodeID: related.id)
+        relatedProfile.tags = ["audio craft"]
+
+        context.insert(currentPodcast)
+        context.insert(relatedPodcast)
+        context.insert(current)
+        context.insert(related)
+        context.insert(currentProfile)
+        context.insert(relatedProfile)
+        try context.save()
+
+        let suggestions = try RecommendationService().playerSuggestions(
+            currentEpisode: current,
+            context: context,
+            limit: 3
+        )
+        let scored = try #require(suggestions.first)
+
+        #expect(scored.episode.id == related.id)
+        #expect(scored.explanation == "Also covers \"audio craft\"")
+        #expect(scored.signalTrace.contains(RecommendationSignal(label: "source", value: "now playing")))
+        #expect(scored.signalTrace.contains(RecommendationSignal(label: "tag", value: "audio craft")))
     }
 
     @Test
