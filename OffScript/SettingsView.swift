@@ -510,8 +510,10 @@ struct SettingsView: View {
         signalShows = profile?.showAffinity ?? []
         signalUpdatedAt = profile?.lastUpdatedAt
         explicitSignalCount = (try? modelContext.fetchCount(FetchDescriptor<PreferenceSignal>())) ?? 0
-        let events = (try? modelContext.fetch(FetchDescriptor<PlaybackEvent>())) ?? []
-        completedSignalCount = events.filter { $0.kind == .completed }.count
+        let completedRawValue = PlaybackEvent.Kind.completed.rawValue
+        completedSignalCount = (try? modelContext.fetchCount(FetchDescriptor<PlaybackEvent>(
+            predicate: #Predicate<PlaybackEvent> { $0.kindRawValue == completedRawValue }
+        ))) ?? 0
     }
 
     private func rebuildSignalProfile() {

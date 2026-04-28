@@ -82,7 +82,7 @@ final class Episode {
     var audioURL: URL = URL(string: "https://placeholder.invalid")!
     var artworkURL: URL?
     var localFileURL: URL?
-    var downloadStateRawValue: String = DownloadState.notDownloaded.rawValue
+    private(set) var downloadStateRawValue: String = DownloadState.notDownloaded.rawValue
     private var chaptersStorage: String = ""
     private var transcriptReferencesStorage: String = ""
     var downloadProgress: Double = 0
@@ -223,7 +223,7 @@ final class PlaybackEvent {
     }
 
     var date: Date = Date()
-    private var kindRawValue: String = Kind.started.rawValue
+    private(set) var kindRawValue: String = Kind.started.rawValue
     var position: TimeInterval = 0
     @Relationship(deleteRule: .noAction)
     var episode: Episode?

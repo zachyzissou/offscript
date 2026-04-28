@@ -6,7 +6,12 @@ import UIKit
 // MARK: - HTML Stripping
 
 private enum HTMLPlainTextCache {
-    static let cache = NSCache<NSString, NSString>()
+    static let cache: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.countLimit = 500
+        cache.totalCostLimit = 2_000_000
+        return cache
+    }()
 
     static func plainText(for html: String, builder: () -> String) -> String {
         let key = html as NSString
@@ -14,7 +19,7 @@ private enum HTMLPlainTextCache {
             return cached as String
         }
         let value = builder()
-        cache.setObject(value as NSString, forKey: key)
+        cache.setObject(value as NSString, forKey: key, cost: html.utf8.count + value.utf8.count)
         return value
     }
 }

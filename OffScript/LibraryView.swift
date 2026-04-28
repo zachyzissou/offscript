@@ -423,6 +423,7 @@ struct PodcastDetailView: View {
     @State private var visibleLimit = 100
     @State private var hasMoreEpisodes = false
     @State private var loadError: String?
+    @State private var searchLoadTask: Task<Void, Never>?
 
     init(podcast: Podcast) {
         self.podcast = podcast
@@ -508,7 +509,8 @@ struct PodcastDetailView: View {
         // hairline TextField that replaces it.
         .task { loadEpisodes(resetLimit: true) }
         .onChange(of: filter) { _, _ in loadEpisodes(resetLimit: true) }
-        .onChange(of: episodeSearchQuery) { _, _ in loadEpisodes(resetLimit: true) }
+        .onChange(of: episodeSearchQuery) { _, _ in scheduleEpisodeSearchLoad() }
+        .onDisappear { searchLoadTask?.cancel() }
     }
 
     private func loadEpisodes(resetLimit: Bool = false) {
@@ -555,14 +557,16 @@ struct PodcastDetailView: View {
                 episodes = Array(fetched.prefix(visibleLimit))
                 hasMoreEpisodes = fetched.count > visibleLimit
             } else {
-                let baseEpisodes = try modelContext.fetch(descriptor)
-                let matches = baseEpisodes.filter { episode in
-                    episode.title.lowercased().contains(query)
-                        || (episode.summary?.strippingHTML.lowercased().contains(query) ?? false)
-                }
-                matchingEpisodeCount = matches.count
-                episodes = Array(matches.prefix(visibleLimit))
-                hasMoreEpisodes = matches.count > visibleLimit
+                let searchResult = try searchEpisodes(
+                    descriptor: descriptor,
+                    query: query,
+                    targetMatchCount: visibleLimit + 1
+                )
+                episodes = Array(searchResult.matches.prefix(visibleLimit))
+                hasMoreEpisodes = searchResult.matches.count > visibleLimit || !searchResult.exhaustedResults
+                matchingEpisodeCount = searchResult.exhaustedResults
+                    ? searchResult.matches.count
+                    : max(searchResult.matches.count, visibleLimit + 1)
             }
             loadError = nil
         } catch {
@@ -572,6 +576,57 @@ struct PodcastDetailView: View {
             loadError = error.localizedDescription
             libraryLogger.error("Podcast detail load failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    private func scheduleEpisodeSearchLoad() {
+        searchLoadTask?.cancel()
+        searchLoadTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+            loadEpisodes(resetLimit: true)
+        }
+    }
+
+    private func searchEpisodes(
+        descriptor: FetchDescriptor<Episode>,
+        query: String,
+        targetMatchCount: Int
+    ) throws -> (matches: [Episode], exhaustedResults: Bool) {
+        let batchSize = max(targetMatchCount * 4, 200)
+        var offset = 0
+        var matches: [Episode] = []
+        var exhaustedResults = false
+
+        while matches.count < targetMatchCount {
+            var batchDescriptor = descriptor
+            batchDescriptor.fetchOffset = offset
+            batchDescriptor.fetchLimit = batchSize
+
+            let batch = try modelContext.fetch(batchDescriptor)
+            if batch.isEmpty {
+                exhaustedResults = true
+                break
+            }
+
+            for episode in batch {
+                if episode.title.lowercased().contains(query)
+                    || (episode.summary?.strippingHTML.lowercased().contains(query) ?? false) {
+                    matches.append(episode)
+                    if matches.count >= targetMatchCount {
+                        break
+                    }
+                }
+            }
+
+            if batch.count < batchSize {
+                exhaustedResults = true
+                break
+            }
+
+            offset += batch.count
+        }
+
+        return (matches, exhaustedResults)
     }
 
     private var tunerEpisodeSearchField: some View {
