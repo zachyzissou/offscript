@@ -52,8 +52,8 @@ enum PodcastPreviewService {
     }
 }
 
-struct PodcastSearchService {
-    func search(query: String) async throws -> [PodcastSearchResult] {
+nonisolated struct PodcastSearchService {
+    nonisolated func search(query: String) async throws -> [PodcastSearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
 
@@ -576,11 +576,11 @@ enum QueueService {
 }
 
 
-private struct ItunesSearchResponse: Decodable {
+nonisolated private struct ItunesSearchResponse: Decodable {
     let results: [ItunesPodcast]
 }
 
-private struct ItunesPodcast: Decodable {
+nonisolated private struct ItunesPodcast: Decodable {
     let collectionName: String
     let artistName: String
     let feedURL: URL?
