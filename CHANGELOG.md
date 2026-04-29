@@ -34,6 +34,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Library now behaves like a real channel directory for 250+ show libraries.** The shows list has Tuner-styled search, scope filters, sort modes, compact/artwork row density, visible-count readouts, and an A-Z jump rail so large OPML imports are navigable without endless scrolling.
 - **Large libraries default to compact rows.** Artwork-heavy rows remain available for smaller libraries, but 120+ show libraries automatically use dense Tuner rows to reduce scroll distance and image/layout churn.
 - **The alphabet jump rail is now a full A-Z/# key bank with selected and disabled states** so large libraries expose every directory letter as a direct Tuner control instead of hiding letters in a horizontal strip.
+- **The Library alphabet selector is back to the compact `#-Z` carousel form** while keeping the working direct-letter jump behavior and selected/disabled Tuner states.
 
 ### Changed — Library performance
 - **The root Library podcast query now filters subscribed shows in SwiftData instead of fetching every historical podcast and filtering in Swift.**

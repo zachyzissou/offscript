@@ -56,11 +56,19 @@ final class OffScriptUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 12))
-        let zJump = app.descendants(matching: .any)["LibraryJumpLetterZ"]
-        for _ in 0..<4 where !zJump.exists {
+        XCTAssertTrue(app.staticTexts["SHOWS · DIRECTORY"].waitForExistence(timeout: 8))
+        let carousel = app.scrollViews["LibraryAlphabetCarousel"]
+        XCTAssertTrue(carousel.waitForExistence(timeout: 8))
+        for _ in 0..<4 where !carousel.isHittable {
             app.swipeUp()
         }
+        XCTAssertTrue(carousel.isHittable)
+        let zJump = carousel.descendants(matching: .any)["LibraryJumpLetterZ"]
         XCTAssertTrue(zJump.waitForExistence(timeout: 8))
+        for _ in 0..<12 where !zJump.isHittable {
+            carousel.swipeLeft()
+        }
+        XCTAssertTrue(zJump.isHittable, "Expected to reach LibraryJumpLetterZ within the alphabet carousel")
 
         zJump.tap()
 
