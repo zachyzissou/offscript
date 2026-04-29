@@ -83,6 +83,35 @@ final class RecommendationService {
         let penalizedShows: Set<String>
     }
 
+    static func headlineCandidate(from sections: [HomeFeedSection]) -> ScoredEpisode? {
+        sections
+            .flatMap(\.scoredEpisodes)
+            .max { headlineScore($0) < headlineScore($1) }
+    }
+
+    private static func headlineScore(_ scored: ScoredEpisode) -> Double {
+        let sourceValues = Set(scored.signalTrace
+            .filter { $0.label == "source" }
+            .map { $0.value.lowercased() })
+        var score = scored.score
+        score += Double(min(scored.signalTrace.count, 4)) * 4
+
+        if sourceValues.contains("queue") {
+            score += 40
+        }
+        if sourceValues.contains("resume") {
+            score += 28
+        }
+        if sourceValues.contains("completion") || sourceValues.contains("show affinity") {
+            score += 22
+        }
+        if sourceValues.contains("tag match") || sourceValues.contains("topic overlap") || sourceValues.contains("recent interest") {
+            score += 16
+        }
+
+        return score
+    }
+
     @MainActor
     func discoverySection(
         context: ModelContext,

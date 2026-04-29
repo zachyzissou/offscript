@@ -49,8 +49,9 @@ struct HomeView: View {
                 } else {
                     let episodeSections = sections.filter { !$0.isDiscoverySection }
                     let discoverySections = sections.filter(\.isDiscoverySection)
+                    let leadScoredEpisode = RecommendationService.headlineCandidate(from: episodeSections)
 
-                    if let leadSection = episodeSections.first, let leadScoredEpisode = leadSection.scoredEpisodes.first {
+                    if let leadScoredEpisode {
                         HeroTunerCard(
                             episode: leadScoredEpisode.episode,
                             reason: leadScoredEpisode.explanation,
@@ -58,19 +59,10 @@ struct HomeView: View {
                         )
                         .padding(.horizontal, OffScriptTheme.pagePadding)
                         .padding(.bottom, 6)
-
-                        let remainingLeadEpisodes = Array(leadSection.episodes.dropFirst())
-                        if !remainingLeadEpisodes.isEmpty {
-                            TunerRail(
-                                title: "NEXT BEST PICKS",
-                                episodes: remainingLeadEpisodes,
-                                reasonProvider: { leadSection.explanation(for: $0) },
-                                signalProvider: { leadSection.signalTrace(for: $0) }
-                            )
-                        }
                     }
 
-                    ForEach(Array(episodeSections.dropFirst().enumerated()), id: \.element.id) { _, section in
+                    let railSections = Self.sections(episodeSections, excluding: leadScoredEpisode?.episode.id)
+                    ForEach(Array(railSections.enumerated()), id: \.element.id) { _, section in
                         TunerRail(
                             title: section.title.uppercased(),
                             episodes: section.episodes,
@@ -143,6 +135,15 @@ struct HomeView: View {
             errorMessage = error.localizedDescription
             isLoading = false
             isLoadingDiscovery = false
+        }
+    }
+
+    private static func sections(_ sections: [HomeFeedSection], excluding leadEpisodeID: UUID?) -> [HomeFeedSection] {
+        guard let leadEpisodeID else { return sections }
+        return sections.compactMap { section in
+            let remaining = section.scoredEpisodes.filter { $0.episode.id != leadEpisodeID }
+            guard !remaining.isEmpty else { return nil }
+            return HomeFeedSection(title: section.title, subtitle: section.subtitle, scoredEpisodes: remaining)
         }
     }
 
