@@ -788,35 +788,48 @@ private struct LibraryAlphabetRail: View {
     }
 
     var body: some View {
-        LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 44, maximum: 48), spacing: 4)],
-            alignment: .leading,
-            spacing: 4
-        ) {
-            ForEach(keys, id: \.self) { key in
-                let section = sectionsByTitle[key]
-                let isSelected = selectedSectionID == section?.id
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(keys, id: \.self) { key in
+                        let section = sectionsByTitle[key]
+                        let isSelected = selectedSectionID == section?.id
 
-                if let section {
-                    Button {
-                        onSelect(section.id)
-                    } label: {
-                        letterKey(key, isSelected: isSelected, isDisabled: false)
+                        if let section {
+                            Button {
+                                onSelect(section.id)
+                                withAnimation(.easeInOut(duration: 0.18)) {
+                                    proxy.scrollTo(key, anchor: .center)
+                                }
+                            } label: {
+                                letterKey(key, isSelected: isSelected, isDisabled: false)
+                            }
+                            .id(key)
+                            .buttonStyle(.plain)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("Jump to \(key)")
+                            .accessibilityIdentifier("LibraryJumpLetter\(key)")
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
+                        } else {
+                            letterKey(key, isSelected: false, isDisabled: true)
+                                .id(key)
+                                .accessibilityLabel("No \(key) channels")
+                                .accessibilityIdentifier("LibraryJumpLetter\(key)")
+                                .accessibilityAddTraits(.isStaticText)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Jump to \(key)")
-                    .accessibilityIdentifier("LibraryJumpLetter\(key)")
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
-                } else {
-                    letterKey(key, isSelected: false, isDisabled: true)
-                        .accessibilityLabel("No \(key) channels")
-                        .accessibilityIdentifier("LibraryJumpLetter\(key)")
-                        .accessibilityAddTraits(.isStaticText)
+                }
+                .padding(.vertical, 4)
+                .onChange(of: selectedSectionID) { _, newValue in
+                    guard let newValue,
+                          let key = sectionsByTitle.first(where: { $0.value.id == newValue })?.key else { return }
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        proxy.scrollTo(key, anchor: .center)
+                    }
                 }
             }
+            .accessibilityIdentifier("LibraryAlphabetCarousel")
         }
-        .padding(.vertical, 4)
     }
 
     private func letterKey(_ key: String, isSelected: Bool, isDisabled: Bool) -> some View {
