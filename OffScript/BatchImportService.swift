@@ -41,6 +41,8 @@ final class BatchImportService: ObservableObject {
         progress.values.filter { if case .failed = $0 { true } else { false } }.count
     }
 
+    var completedCount: Int { addedCount + failedCount }
+
     var totalCount: Int { entries.count }
 
     private let syncService = FeedSyncService()
@@ -64,9 +66,9 @@ final class BatchImportService: ObservableObject {
         }
     }
 
-    /// Cancel the running batch. Already-imported feeds stay imported;
-    /// in-flight tasks finish normally (cooperative cancellation in
-    /// network code is finicky and not worth the complexity here).
+    /// Cancel the running batch. Already-imported feeds stay imported; no new
+    /// rows are enqueued after cancellation, and cooperative network tasks get
+    /// a cancellation signal through the parent task.
     func cancel() {
         task?.cancel()
         task = nil
@@ -94,7 +96,7 @@ final class BatchImportService: ObservableObject {
             var iterator = entries.makeIterator()
             var inFlight = 0
 
-            while inFlight < concurrency, let entry = iterator.next() {
+            while !Task.isCancelled, inFlight < concurrency, let entry = iterator.next() {
                 progress[entry.feedURL] = .importing
                 inFlight += 1
                 group.addTask { [syncService] in
@@ -105,8 +107,12 @@ final class BatchImportService: ObservableObject {
             }
 
             while let (feedURL, status) = await group.next() {
+                if Task.isCancelled {
+                    group.cancelAll()
+                    break
+                }
                 progress[feedURL] = status
-                if let nextEntry = iterator.next() {
+                if !Task.isCancelled, let nextEntry = iterator.next() {
                     progress[nextEntry.feedURL] = .importing
                     group.addTask { [syncService] in
                         await Self.runOne(entry: nextEntry,
@@ -117,6 +123,7 @@ final class BatchImportService: ObservableObject {
             }
         }
 
+        guard !Task.isCancelled else { return }
         phase = .finished(added: addedCount, failed: failedCount)
     }
 
@@ -124,10 +131,14 @@ final class BatchImportService: ObservableObject {
                                syncService: FeedSyncService,
                                modelContext: ModelContext) async -> (URL, ImportRowStatus) {
         do {
+            try Task.checkCancellation()
             _ = try await syncService.importPodcast(from: entry,
                                                     into: modelContext,
                                                     options: .fastBatchImport(episodeLimit: 25))
+            try Task.checkCancellation()
             return (entry.feedURL, .added)
+        } catch is CancellationError {
+            return (entry.feedURL, .failed)
         } catch {
             batchImportLogger.error("OPML row failed for \(entry.feedURL.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return (entry.feedURL, .failed)

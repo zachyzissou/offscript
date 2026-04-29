@@ -33,6 +33,9 @@ struct SettingsView: View {
     @State private var signalMessage: String?
 
     private var isSignedIn: Bool { signedInUserID != nil }
+    private var isSyncActive: Bool {
+        cloudSyncEnabled && appleCredentialState.isAuthorized && cloudKitAvailability.allowsSync
+    }
 
     var body: some View {
         NavigationStack {
@@ -84,8 +87,8 @@ struct SettingsView: View {
                 TunerLabel(text: "SETTINGS · CONFIG PANEL", color: .offscriptSignalYellow)
                     .lineLimit(1)
                 Spacer()
-                TunerLabel(text: isSignedIn ? "● ICLOUD" : "○ LOCAL",
-                           color: isSignedIn ? .offscriptFnMode : .offscriptSoftPaper)
+                TunerLabel(text: isSyncActive ? "● SYNC" : (isSignedIn ? "● APPLE ID" : "○ LOCAL"),
+                           color: isSyncActive ? .offscriptFnMode : (isSignedIn ? .offscriptFnInfo : .offscriptSoftPaper))
                     .lineLimit(1)
             }
             HStack(alignment: .firstTextBaseline) {

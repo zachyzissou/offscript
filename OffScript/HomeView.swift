@@ -110,7 +110,7 @@ struct HomeView: View {
     private func loadSections() async {
         do {
             let mode = AppSettings.recommendationMode
-            let loaded = try recommendationService.homeSections(context: modelContext)
+            let loaded = try recommendationService.homeSections(context: modelContext, mode: mode)
             withAnimation(.easeInOut(duration: 0.25)) {
                 sections = loaded
                 errorMessage = nil
@@ -824,6 +824,8 @@ private struct TunerRailCard: View {
                         .foregroundStyle(.black)
                         .frame(width: 30, height: 30)
                         .background(Color.offscriptSignalYellow)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Play \(episode.title)")
@@ -837,6 +839,8 @@ private struct TunerRailCard: View {
                         .foregroundStyle(Color.offscriptPaperWhite)
                         .frame(width: 30, height: 30)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(episode.isQueued)

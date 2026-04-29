@@ -89,6 +89,7 @@ struct OffScriptTests {
             <outline text="First" xmlUrl="https://Example.com/feed.xml" />
             <outline text="Second" xmlUrl="https://example.com/second.xml" />
             <outline text="Duplicate" xmlUrl="https://example.com/feed.xml/" />
+            <outline text="Feed Scheme Duplicate" xmlUrl="feed://example.com/feed.xml#rss" />
           </body>
         </opml>
         """
@@ -151,6 +152,32 @@ struct OffScriptTests {
 
         let ordered = try QueueService.orderedItems(in: context)
         #expect(ordered.map(\.episode.title) == ["Third", "First", "Second"])
+    }
+
+    @Test
+    @MainActor
+    func queueServiceSkipsCurrentEpisodeWhenPoppingNext() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let podcast = Podcast(title: "Queue Advance", feedURL: URL(string: "https://example.com/queue-advance.xml")!)
+        let current = Episode(title: "Current", pubDate: .now, audioURL: URL(string: "https://example.com/current.mp3")!, podcast: podcast)
+        let next = Episode(title: "Next", pubDate: .now, audioURL: URL(string: "https://example.com/next.mp3")!, podcast: podcast)
+
+        context.insert(podcast)
+        context.insert(current)
+        context.insert(next)
+
+        try QueueService.addToEnd(current, in: context)
+        try QueueService.addToEnd(next, in: context)
+
+        let popped = try QueueService.popNextEpisode(skipping: current.id, in: context)
+        let remaining = try QueueService.orderedItems(in: context)
+
+        #expect(popped?.id == next.id)
+        #expect(current.isQueued == false)
+        #expect(next.isQueued == false)
+        #expect(remaining.isEmpty)
     }
 
     @Test
@@ -381,6 +408,84 @@ struct OffScriptTests {
         let sections = try RecommendationService().homeSections(context: context, limit: 3)
 
         #expect(sections.flatMap(\.episodes).contains(where: { $0.id == episode.id }) == false)
+    }
+
+    @Test
+    @MainActor
+    func signalLockedModeExcludesGenreOnlyCandidates() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        AppSettings.preferredGenres = [.technology]
+        defer { AppSettings.preferredGenres = originalGenres }
+
+        let podcast = Podcast(
+            title: "Genre Only",
+            feedURL: URL(string: "https://example.com/genre-only.xml")!,
+            categories: ["Technology"]
+        )
+        let episode = Episode(
+            title: "No Behavioral Signal",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/genre-only.mp3")!,
+            podcast: podcast
+        )
+        context.insert(podcast)
+        context.insert(episode)
+        try context.save()
+
+        let signalSections = try RecommendationService().homeSections(context: context, mode: .signalLocked, limit: 3)
+        let balancedSections = try RecommendationService().homeSections(context: context, mode: .balanced, limit: 3)
+
+        #expect(signalSections.flatMap(\.episodes).contains(where: { $0.id == episode.id }) == false)
+        #expect(balancedSections.contains(where: { $0.title == "Tuned Genres" && $0.episodes.contains(where: { $0.id == episode.id }) }))
+    }
+
+    @Test
+    @MainActor
+    func lessLikeThisSuppressesSharedTagsAcrossHomeAndPlayer() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let currentShow = Podcast(title: "Now Playing", feedURL: URL(string: "https://example.com/now.xml")!)
+        let blockedShow = Podcast(title: "Blocked Signal", feedURL: URL(string: "https://example.com/blocked-shared.xml")!)
+        let trustedShow = Podcast(title: "Trusted Signal", feedURL: URL(string: "https://example.com/trusted-shared.xml")!)
+        let current = Episode(title: "Current", pubDate: .now, duration: 1_800, audioURL: URL(string: "https://example.com/current-shared.mp3")!, podcast: currentShow)
+        let disliked = Episode(title: "Disliked", pubDate: .now, duration: 1_800, audioURL: URL(string: "https://example.com/disliked.mp3")!, podcast: blockedShow)
+        let similar = Episode(title: "Similar Blocked", pubDate: .now, duration: 1_800, audioURL: URL(string: "https://example.com/similar.mp3")!, podcast: blockedShow)
+        let trusted = Episode(title: "Trusted", pubDate: .now, duration: 1_800, audioURL: URL(string: "https://example.com/trusted.mp3")!, podcast: trustedShow)
+
+        let currentProfile = EpisodeProfile(episodeID: current.id)
+        currentProfile.tags = ["craft"]
+        let dislikedProfile = EpisodeProfile(episodeID: disliked.id)
+        dislikedProfile.tags = ["blocked-topic"]
+        let similarProfile = EpisodeProfile(episodeID: similar.id)
+        similarProfile.tags = ["blocked-topic"]
+        let trustedProfile = EpisodeProfile(episodeID: trusted.id)
+        trustedProfile.tags = ["craft"]
+
+        context.insert(currentShow)
+        context.insert(blockedShow)
+        context.insert(trustedShow)
+        context.insert(current)
+        context.insert(disliked)
+        context.insert(similar)
+        context.insert(trusted)
+        context.insert(currentProfile)
+        context.insert(dislikedProfile)
+        context.insert(similarProfile)
+        context.insert(trustedProfile)
+        context.insert(PreferenceSignal(action: .lessLikeThis, episode: disliked))
+        context.insert(PreferenceSignal(action: .like, episode: trusted))
+        try context.save()
+
+        let homeEpisodes = try RecommendationService().homeSections(context: context, mode: .balanced, limit: 5).flatMap(\.episodes)
+        let playerSuggestions = try RecommendationService().playerSuggestions(currentEpisode: current, context: context, limit: 5)
+
+        #expect(homeEpisodes.contains(where: { $0.id == similar.id }) == false)
+        #expect(playerSuggestions.contains(where: { $0.episode.id == similar.id }) == false)
+        #expect(playerSuggestions.contains(where: { $0.episode.id == trusted.id }))
     }
 
     @Test

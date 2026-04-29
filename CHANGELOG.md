@@ -11,6 +11,8 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ### Changed — Library performance
 - **The root Library podcast query now filters subscribed shows in SwiftData instead of fetching every historical podcast and filtering in Swift.**
 - **Library summary reloads are coalesced during background OPML imports** so each imported show does not immediately retrigger the expensive per-show count path while the list is being scrolled.
+- **Library summary counts no longer issue one SwiftData `fetchCount` per subscribed show.** The page now loads the unplayed episode set once, derives the latest rail and per-show counts from that result, and avoids 250+ synchronous count queries on Library open.
+- **Library directory rendering now builds one snapshot per render pass** for filtered shows, alphabet sections, and row numbers, with debounced search input so typing does not repeatedly sort/group the whole library.
 
 ### Added — recommendation tuner and signal discovery
 - **Settings now has a three-position recommendation tuner** (`SIGNAL`, `BALANCED`, `DISCOVERY`) so listeners can choose whether OffScript stays strictly inside known local evidence or opens a new-show discovery lane.
@@ -18,18 +20,34 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ### Changed — taste profile quality
 - **Taste refresh now uses weighted, decayed evidence instead of equal counts.** Recent explicit `More like this` signals beat old passive completions, while `Less like this`, `Not interested`, quick skips, and abandons demote matching tags and shows.
+- **Recommendation modes now materially change Home ranking.** `SIGNAL` excludes genre-only candidates, while `BALANCED` and `DISCOVERY` can include a separate tuned-genre lane after local evidence.
+- **Negative signals now suppress adjacent recommendations, not just the exact episode.** `Less like this`, `Not interested`, skipped, and abandoned signals carry disliked tags/show penalties into Home and Player suggestions.
+
+### Fixed — playback queue and Now Playing
+- **Playing a queue row now removes that row before playback starts**, so completion/remote-next does not replay the same episode before advancing.
+- **Remote pause updates the Now Playing playback rate** so Lock Screen and Control Center stop showing advancing playback after a headphone or Control Center pause.
+- **Episode switches reset duration immediately and guard artwork updates** so stale duration/artwork from the previous episode cannot race into Player or Now Playing.
+
+### Fixed — Apple identity / iCloud sync state
+- **CloudKit entitlements are now declared for the app target** so signed builds can actually request the iCloud-backed SwiftData container.
+- **Settings now validates stored Sign in with Apple credentials** before treating the user as signed in. Revoked or missing credentials clear local identity and disable sync.
+- **Transient Apple credential validation failures no longer clear a saved Apple ID.** Credentials are cleared only for revoked or not-found states.
+- **iCloud account availability is checked separately from Apple identity.** Sign in with Apple no longer blindly enables sync when CloudKit is unavailable on the device.
+- **Onboarding Sign in with Apple now checks iCloud availability before enabling sync**, matching Settings behavior.
 
 ### Fixed — playback audio session
 - **Playback now uses an iOS-supported `.playback` audio-session configuration** instead of pairing the `.longFormAudio` route-sharing policy with AirPlay/Bluetooth category options. iOS rejects that combination with `OSStatus -50`; when the category set fails, the app falls back toward Silent-Mode-bound foreground audio. Keeping the session on `.playback` is what lets podcast audio survive lock, backgrounding, and the ringer switch.
 
-### Fixed — Apple identity / iCloud sync state
-- **Settings now validates stored Sign in with Apple credentials** before treating the user as signed in. Revoked or missing credentials clear local identity and disable sync.
-- **iCloud account availability is checked separately from Apple identity.** Sign in with Apple no longer blindly enables sync when CloudKit is unavailable on the device.
+### Fixed — Tuner QA polish
+- **Home, Library, Queue, and Player icon keys keep their compact Tuner visuals inside 44pt hit targets**, preserving the instrument-panel look without tiny tap zones.
+- **Xcode source warnings from the QA pass were cleaned up** while leaving only the generic project recommended-settings warning.
 
 ### Fixed — large OPML import performance
 - **OPML batch import no longer fetches every feed twice.** The importer now applies the parsed feed metadata directly after the first network fetch instead of resolving the OPML row and then re-syncing the same URL immediately afterward.
 - **Large libraries now dedupe feed URLs before work starts.** OPML exports with repeated URLs (including case/trailing-slash variants) preserve the first row and skip duplicates before progress tracking and import tasks are created.
 - **Bulk imports avoid per-episode AI/chapter network fan-out.** OPML batch rows import the newest bounded episode set with cheap local topic profiles and defer full FoundationModels enrichment plus external chapter fetches to later sync paths, removing the worst multiplier for 50+ show libraries.
+- **OPML `feed://` URLs now normalize through the same feed URL path as paste import.** Feed URL dedupe also collapses `http`, `feed`, default ports, fragments, and trailing slashes.
+- **Batch import cancellation now stops enqueueing more feeds** and the Library strip reports completed rows instead of only added rows, so failed feeds do not make progress look stalled.
 
 ## [2.3.11] — 2026-04-27
 
