@@ -478,7 +478,7 @@ struct SettingsView: View {
                     } onCompletion: { result in
                         handleSignInResult(result)
                     }
-                    .signInWithAppleButtonStyle(.white)
+                    .signInWithAppleButtonStyle(.whiteOutline)
                     .frame(height: 48)
 
                     if let signInMessage {

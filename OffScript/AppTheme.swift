@@ -80,6 +80,7 @@ struct IdentifiableURL: Identifiable {
 
 enum OffScriptTheme {
     static let pagePadding: CGFloat = 16        // Tuner is tighter than the editorial direction
+    static let rootContentTopPadding: CGFloat = 2
     static let spaciousPadding: CGFloat = 20
     static let sectionSpacing: CGFloat = 24
     static let itemSpacing: CGFloat = 12
@@ -417,8 +418,22 @@ struct TunerTag: View {
     let text: String
     var color: Color = .offscriptSignalYellow
     var dim: Bool = false
+    var wraps: Bool = false
 
     var body: some View {
+        if wraps {
+            baseTag
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            baseTag
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: true)
+        }
+    }
+
+    private var baseTag: some View {
         Text(text.uppercased())
             .font(.system(size: CGFloat(8.5).offscriptScaled(), weight: .semibold, design: .monospaced))
             .tracking(1.4)
@@ -432,8 +447,6 @@ struct TunerTag: View {
                 // (hero cards, rail cards, AI reason badges).
                 Rectangle().stroke(color.opacity(dim ? 0.33 : 0.66), lineWidth: 1)
             )
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: true)
     }
 }
 

@@ -87,7 +87,7 @@ struct HomeView: View {
                     }
                 }
             }
-            .padding(.top, 8)
+            .padding(.top, OffScriptTheme.rootContentTopPadding)
             .padding(.bottom, 28)
         }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
@@ -532,7 +532,7 @@ private struct TunerDiscoveryRail: View {
                 .multilineTextAlignment(.leading)
                 .frame(width: 168, alignment: .leading)
 
-            TunerTag(text: scored.explanation, color: .offscriptFnInfo, dim: true)
+            TunerTag(text: scored.explanation, color: .offscriptFnInfo, dim: true, wraps: true)
             RecommendationSignalTraceView(signals: scored.signalTrace, limit: 2, color: .offscriptSoftPaper)
 
             Button {
@@ -632,7 +632,7 @@ private struct HeroTunerCard: View {
                 .buttonStyle(.plain)
 
                 // Reason as a TunerTag with signal yellow accent
-                TunerTag(text: reason, color: .offscriptSignalYellow, dim: true)
+                TunerTag(text: reason, color: .offscriptSignalYellow, dim: true, wraps: true)
                 RecommendationSignalTraceView(signals: signals)
 
                 // Mono metadata — date · duration. The "X LEFT" remaining
@@ -806,7 +806,7 @@ private struct TunerRailCard: View {
                         .multilineTextAlignment(.leading)
                         .frame(width: 168, alignment: .leading)
 
-                    TunerTag(text: reason, color: .offscriptSignalYellow, dim: true)
+                    TunerTag(text: reason, color: .offscriptSignalYellow, dim: true, wraps: true)
                     RecommendationSignalTraceView(signals: signals, limit: 2, color: .offscriptSoftPaper)
 
                     TunerLabel(text: metadata, color: .offscriptSoftPaper, size: 8)
