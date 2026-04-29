@@ -6,13 +6,21 @@ import Testing
 
 struct OffScriptTests {
     @Test
-    func playbackAudioSessionUsesSilentSwitchSafeCategory() {
+    func playbackAudioSessionUsesSilentSwitchSafeCategory() throws {
         #if os(iOS)
+        let session = RecordingAudioSession()
+
+        try OffScriptAudioSessionConfiguration.apply(to: session)
+
         #expect(OffScriptAudioSessionConfiguration.category == .playback)
         #expect(OffScriptAudioSessionConfiguration.mode == .spokenAudio)
         #expect(OffScriptAudioSessionConfiguration.options.contains(.allowAirPlay))
         #expect(OffScriptAudioSessionConfiguration.options.contains(.allowBluetoothA2DP))
-        #expect(OffScriptAudioSessionConfiguration.routeSharingPolicy == nil)
+        #expect(session.category == .playback)
+        #expect(session.mode == .spokenAudio)
+        #expect(session.options.contains(.allowAirPlay))
+        #expect(session.options.contains(.allowBluetoothA2DP))
+        #expect(session.routeSharingPolicy == nil)
         #endif
     }
 
@@ -999,3 +1007,31 @@ struct OffScriptTests {
         return try ModelContainer(for: schema, configurations: [configuration])
     }
 }
+
+#if os(iOS)
+private final class RecordingAudioSession: OffScriptAudioSessionApplying {
+    private(set) var category: AVAudioSession.Category?
+    private(set) var mode: AVAudioSession.Mode?
+    private(set) var options: AVAudioSession.CategoryOptions = []
+    private(set) var routeSharingPolicy: AVAudioSession.RouteSharingPolicy?
+
+    func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode, options: AVAudioSession.CategoryOptions) throws {
+        self.category = category
+        self.mode = mode
+        self.options = options
+        routeSharingPolicy = nil
+    }
+
+    func setCategory(
+        _ category: AVAudioSession.Category,
+        mode: AVAudioSession.Mode,
+        policy: AVAudioSession.RouteSharingPolicy,
+        options: AVAudioSession.CategoryOptions
+    ) throws {
+        self.category = category
+        self.mode = mode
+        self.options = options
+        routeSharingPolicy = policy
+    }
+}
+#endif

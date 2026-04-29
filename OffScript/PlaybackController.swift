@@ -7,11 +7,21 @@ import SwiftUI
 import UIKit
 
 #if os(iOS)
+protocol OffScriptAudioSessionApplying {
+    func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode, options: AVAudioSession.CategoryOptions) throws
+    func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode, policy: AVAudioSession.RouteSharingPolicy, options: AVAudioSession.CategoryOptions) throws
+}
+
+extension AVAudioSession: OffScriptAudioSessionApplying {}
+
 enum OffScriptAudioSessionConfiguration {
     static let category: AVAudioSession.Category = .playback
     static let mode: AVAudioSession.Mode = .spokenAudio
     static let options: AVAudioSession.CategoryOptions = [.allowAirPlay, .allowBluetoothA2DP]
-    static let routeSharingPolicy: AVAudioSession.RouteSharingPolicy? = nil
+
+    static func apply(to session: OffScriptAudioSessionApplying) throws {
+        try session.setCategory(category, mode: mode, options: options)
+    }
 }
 #endif
 
@@ -435,20 +445,7 @@ final class PlaybackController: ObservableObject {
             // audio. Do not pass .longFormAudio here: iOS rejects that route
             // sharing policy when paired with our AirPlay/Bluetooth options,
             // leaving the app on the default Silent-Mode-bound category.
-            if let routeSharingPolicy = OffScriptAudioSessionConfiguration.routeSharingPolicy {
-                try session.setCategory(
-                    OffScriptAudioSessionConfiguration.category,
-                    mode: OffScriptAudioSessionConfiguration.mode,
-                    policy: routeSharingPolicy,
-                    options: OffScriptAudioSessionConfiguration.options
-                )
-            } else {
-                try session.setCategory(
-                    OffScriptAudioSessionConfiguration.category,
-                    mode: OffScriptAudioSessionConfiguration.mode,
-                    options: OffScriptAudioSessionConfiguration.options
-                )
-            }
+            try OffScriptAudioSessionConfiguration.apply(to: session)
         } catch {
             logger.error("AVAudioSession setCategory failed: \(error.localizedDescription, privacy: .public)")
         }
