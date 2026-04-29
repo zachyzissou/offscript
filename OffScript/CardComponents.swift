@@ -122,6 +122,8 @@ struct EpisodeVerticalCard: View {
                             .foregroundStyle(episode.isQueued ? Color.offscriptSoftPaper : Color.offscriptPaperWhite)
                             .frame(width: 30, height: 30)
                             .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .disabled(episode.isQueued)

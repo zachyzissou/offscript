@@ -87,13 +87,19 @@ struct OnboardingFlowView: View {
                 .staggeredEntrance(index: 0, delay: 0.10)
 
                 // OFF / SCRIPT wordmark
-                (Text("OFF\n").foregroundStyle(Color.offscriptPaperWhite)
-                 + Text("SCRIPT").foregroundStyle(Color.offscriptPaperWhite)
-                 + Text(".").foregroundStyle(Color.offscriptSignalYellow))
-                    .font(.system(size: 56, weight: .bold, design: .default))
-                    .tracking(-2)
-                    .lineSpacing(-12)
-                    .staggeredEntrance(index: 1, delay: 0.10)
+                VStack(alignment: .leading, spacing: -12) {
+                    Text("OFF")
+                        .foregroundStyle(Color.offscriptPaperWhite)
+                    HStack(spacing: 0) {
+                        Text("SCRIPT")
+                            .foregroundStyle(Color.offscriptPaperWhite)
+                        Text(".")
+                            .foregroundStyle(Color.offscriptSignalYellow)
+                    }
+                }
+                .font(.system(size: 56, weight: .bold, design: .default))
+                .tracking(-2)
+                .staggeredEntrance(index: 1, delay: 0.10)
 
                 TunerLabel(text: "A RECEIVER FOR WHAT YOU ACTUALLY LIKE", size: 10)
                     .staggeredEntrance(index: 2, delay: 0.10)
@@ -260,9 +266,12 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
                     .compactMap { $0 as? UIWindowScene }
                     .first
 
-            return active?.windows.first(where: \.isKeyWindow)
-                ?? active?.windows.first
-                ?? UIWindow()
+            guard let active else {
+                fatalError("Sign in with Apple requires an active window scene")
+            }
+            return active.windows.first(where: \.isKeyWindow)
+                ?? active.windows.first
+                ?? UIWindow(windowScene: active)
         }
 
         func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
@@ -282,7 +291,10 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
                     displayName: displayName.isEmpty ? nil : displayName
                 )
                 inFlightController = nil
-                onComplete()
+                Task { @MainActor in
+                    AppSettings.cloudSyncEnabled = (await CloudKitAccountService.currentStatus()).allowsSync
+                    onComplete()
+                }
             } catch {
                 let logger = Logger(subsystem: "com.offscript", category: "AppleSignin")
                 logger.error("Failed to persist Apple credential: \(error.localizedDescription, privacy: .public)")

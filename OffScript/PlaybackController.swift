@@ -251,6 +251,7 @@ final class PlaybackController: ObservableObject {
         lastProgressSaveDate = .distantPast
         nowPlayingArtworkURL = nil
         nowPlayingArtworkTask?.cancel()
+        duration = episode.duration ?? 0
         // Resolve the rate this podcast should play at — per-podcast
         // preference wins, then the global default, then 1.0×. Each podcast
         // remembers its own pace.
@@ -338,7 +339,7 @@ final class PlaybackController: ObservableObject {
         guard let context = modelContext else { return }
         let nextEpisode: Episode?
         do {
-            nextEpisode = try QueueService.popNextEpisode(in: context)
+            nextEpisode = try QueueService.popNextEpisode(skipping: currentEpisode?.id, in: context)
         } catch {
             logger.error("Failed to pop next episode from queue: \(error.localizedDescription, privacy: .public)")
             return
@@ -573,6 +574,7 @@ final class PlaybackController: ObservableObject {
         center.pauseCommand.addTarget { [weak self] _ in
             self?.player.pause()
             self?.isPlaying = false
+            self?.updateNowPlayingPlaybackRate()
             return .success
         }
         center.togglePlayPauseCommand.addTarget { [weak self] _ in
@@ -619,16 +621,18 @@ final class PlaybackController: ObservableObject {
         guard nowPlayingArtworkURL != url else { return }
         nowPlayingArtworkURL = url
         nowPlayingArtworkTask?.cancel()
-        nowPlayingArtworkTask = Task.detached(priority: .utility) {
+        nowPlayingArtworkTask = Task(priority: .utility) { [weak self] in
             let data: Data?
             if url.isFileURL {
                 data = try? Data(contentsOf: url)
             } else {
                 data = try? await URLSession.shared.data(from: url).0
             }
+            guard !Task.isCancelled else { return }
             guard let data, let image = UIImage(data: data) else { return }
             let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
             await MainActor.run {
+                guard self?.nowPlayingArtworkURL == url else { return }
                 MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] = artwork
             }
         }

@@ -53,7 +53,9 @@ enum CrashReporter {
             // Quota controls.
             options.sampleRate = 1.0          // keep all error events
             options.tracesSampleRate = 0.05   // 5% of perf transactions
-            options.profilesSampleRate = 0    // no CPU profiling
+            options.configureProfiling = { profiling in
+                profiling.sessionSampleRate = 0 // no CPU profiling
+            }
 
             // Drop anything below .error so handled / info noise never bills.
             options.beforeSend = { event in

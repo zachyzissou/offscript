@@ -52,7 +52,7 @@ enum AppleIdentityService {
     static func validateStoredCredential() async -> AppleCredentialValidationState {
         guard let userID = AppSettings.currentUserID else { return .signedOut }
         let state = await credentialState(for: userID)
-        if !state.isAuthorized {
+        if state == .revoked || state == .notFound {
             AppSettings.clearCredential()
             AppSettings.cloudSyncEnabled = false
         }

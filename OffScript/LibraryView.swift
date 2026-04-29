@@ -58,7 +58,39 @@ nonisolated struct LibraryDirectorySection: Identifiable {
     let podcasts: [Podcast]
 }
 
+nonisolated struct LibraryDirectorySnapshot {
+    let podcasts: [Podcast]
+    let sections: [LibraryDirectorySection]
+    let numbersByPodcastID: [UUID: Int]
+
+    var visibleCount: Int { podcasts.count }
+    var isEmpty: Bool { podcasts.isEmpty }
+}
+
 nonisolated enum LibraryDirectoryOrganizer {
+    static func snapshot(
+        for podcasts: [Podcast],
+        query: String,
+        scope: LibraryDirectoryScope,
+        sort: LibraryDirectorySort,
+        unplayedCounts: [UUID: Int],
+        inProgressCounts: [UUID: Int]
+    ) -> LibraryDirectorySnapshot {
+        let filtered = filteredPodcasts(
+            podcasts,
+            query: query,
+            scope: scope,
+            sort: sort,
+            unplayedCounts: unplayedCounts,
+            inProgressCounts: inProgressCounts
+        )
+        return LibraryDirectorySnapshot(
+            podcasts: filtered,
+            sections: sections(for: filtered),
+            numbersByPodcastID: Dictionary(uniqueKeysWithValues: filtered.enumerated().map { ($0.element.id, $0.offset + 1) })
+        )
+    }
+
     static func filteredPodcasts(
         _ podcasts: [Podcast],
         query: String,
@@ -195,6 +227,7 @@ struct LibraryView: View {
     private let syncService = FeedSyncService()
     @State private var isImportPresented = false
     @State private var directoryQuery = ""
+    @State private var effectiveDirectoryQuery = ""
     @State private var directoryScope: LibraryDirectoryScope = .all
     @State private var directorySort: LibraryDirectorySort = .title
     @State private var directoryDensity: LibraryDirectoryDensity = .compact
@@ -202,28 +235,21 @@ struct LibraryView: View {
     @State private var unplayedEpisodeCount = 0
     @State private var freshCountsByPodcastID: [UUID: Int] = [:]
     @State private var summaryLoadTask: Task<Void, Never>?
+    @State private var directoryQueryTask: Task<Void, Never>?
 
     private var subscribedPodcasts: [Podcast] {
         podcasts
     }
 
-    private var directoryPodcasts: [Podcast] {
-        LibraryDirectoryOrganizer.filteredPodcasts(
-            subscribedPodcasts,
-            query: directoryQuery,
+    private var directorySnapshot: LibraryDirectorySnapshot {
+        LibraryDirectoryOrganizer.snapshot(
+            for: subscribedPodcasts,
+            query: effectiveDirectoryQuery,
             scope: directoryScope,
             sort: directorySort,
             unplayedCounts: freshCountsByPodcastID,
             inProgressCounts: inProgressCountsByPodcastID
         )
-    }
-
-    private var directorySections: [LibraryDirectorySection] {
-        LibraryDirectoryOrganizer.sections(for: directoryPodcasts)
-    }
-
-    private var directoryNumbersByPodcastID: [UUID: Int] {
-        Dictionary(uniqueKeysWithValues: directoryPodcasts.enumerated().map { ($0.element.id, $0.offset + 1) })
     }
 
     private var isCompactDirectory: Bool {
@@ -239,12 +265,13 @@ struct LibraryView: View {
     }
 
     var body: some View {
+        let snapshot = directorySnapshot
         ScrollViewReader { scrollProxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     LibraryTunerHeader(
                         showCount: subscribedPodcasts.count,
-                        visibleCount: directoryPodcasts.count,
+                        visibleCount: snapshot.visibleCount,
                         unplayedCount: unplayedEpisodeCount,
                         inProgressCount: inProgressEpisodes.count,
                         onOpenImport: { isImportPresented = true },
@@ -293,7 +320,7 @@ struct LibraryView: View {
                             isForcedCompact: subscribedPodcasts.count >= 120
                         )
 
-                        showsSection(scrollProxy: scrollProxy)
+                        showsSection(snapshot: snapshot, scrollProxy: scrollProxy)
                     }
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -309,13 +336,18 @@ struct LibraryView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task { loadLibraryEpisodeSummary() }
+        .onAppear { effectiveDirectoryQuery = directoryQuery }
         .onChange(of: subscribedPodcastIDs) { _, _ in scheduleLibraryEpisodeSummaryLoad() }
+        .onChange(of: directoryQuery) { _, newValue in scheduleDirectoryQuery(newValue) }
         .onChange(of: batchImporter.phase) { _, phase in
             if !phase.isRunning {
                 loadLibraryEpisodeSummary()
             }
         }
-        .onDisappear { summaryLoadTask?.cancel() }
+        .onDisappear {
+            summaryLoadTask?.cancel()
+            directoryQueryTask?.cancel()
+        }
         .refreshable { await syncSubscriptions() }
         // Settings + Import buttons render inline in LibraryTunerHeader, not
         // as toolbar items — iOS 26 wraps toolbar buttons in glass chrome.
@@ -353,32 +385,32 @@ struct LibraryView: View {
         .padding(.top, 16)
     }
 
-    private func showsSection(scrollProxy: ScrollViewProxy) -> some View {
+    private func showsSection(snapshot: LibraryDirectorySnapshot, scrollProxy: ScrollViewProxy) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
             HStack {
                 TunerLabel(text: "SHOWS · DIRECTORY", color: .offscriptSignalYellow)
                 Spacer()
                 TunerLabel(
-                    text: directoryPodcasts.count == subscribedPodcasts.count
+                    text: snapshot.visibleCount == subscribedPodcasts.count
                         ? "\(subscribedPodcasts.count) VISIBLE"
-                        : "\(directoryPodcasts.count)/\(subscribedPodcasts.count) VISIBLE",
+                        : "\(snapshot.visibleCount)/\(subscribedPodcasts.count) VISIBLE",
                     color: .offscriptSoftPaper,
                     size: 8
                 )
             }
 
-            if directoryPodcasts.isEmpty {
-                LibraryDirectoryEmptyState(query: directoryQuery, scope: directoryScope)
+            if snapshot.isEmpty {
+                LibraryDirectoryEmptyState(query: effectiveDirectoryQuery, scope: directoryScope)
             } else {
-                LibraryAlphabetRail(sections: directorySections) { sectionID in
+                LibraryAlphabetRail(sections: snapshot.sections) { sectionID in
                     withAnimation(.easeInOut(duration: 0.2)) {
                         scrollProxy.scrollTo(sectionID, anchor: .top)
                     }
                 }
 
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(directorySections) { section in
+                    ForEach(snapshot.sections) { section in
                         VStack(alignment: .leading, spacing: 0) {
                             HStack {
                                 TunerLabel(text: section.title, color: .offscriptSignalYellow, size: 10)
@@ -395,7 +427,7 @@ struct LibraryView: View {
                                 } label: {
                                     PodcastShelfRow(
                                         podcast: podcast,
-                                        channelNumber: directoryNumbersByPodcastID[podcast.id] ?? (idx + 1),
+                                        channelNumber: snapshot.numbersByPodcastID[podcast.id] ?? (idx + 1),
                                         unplayedCount: freshCountsByPodcastID[podcast.id] ?? 0,
                                         inProgressCount: inProgressCountsByPodcastID[podcast.id] ?? 0,
                                         isCompact: isCompactDirectory
@@ -427,27 +459,21 @@ struct LibraryView: View {
             return
         }
 
-        let allUnplayedDescriptor = FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed }
-        )
-        unplayedEpisodeCount = (try? modelContext.fetchCount(allUnplayedDescriptor)) ?? 0
-
-        var latestDescriptor = FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed },
-            sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
-        )
-        latestDescriptor.fetchLimit = 10
-        freshEpisodes = (try? modelContext.fetch(latestDescriptor)) ?? []
-
-        var counts: [UUID: Int] = [:]
-        for podcast in subscribedPodcasts {
-            let podcastID = podcast.id
-            let countDescriptor = FetchDescriptor<Episode>(
-                predicate: #Predicate<Episode> { $0.podcast.id == podcastID && !$0.isPlayed }
+        do {
+            let descriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed },
+                sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
             )
-            counts[podcastID] = (try? modelContext.fetchCount(countDescriptor)) ?? 0
+            let unplayedEpisodes = try modelContext.fetch(descriptor)
+            unplayedEpisodeCount = unplayedEpisodes.count
+            freshEpisodes = Array(unplayedEpisodes.prefix(10))
+            freshCountsByPodcastID = Dictionary(unplayedEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +)
+        } catch {
+            freshEpisodes = []
+            unplayedEpisodeCount = 0
+            freshCountsByPodcastID = [:]
+            libraryLogger.error("Library summary load failed: \(error.localizedDescription, privacy: .public)")
         }
-        freshCountsByPodcastID = counts
     }
 
     @MainActor
@@ -459,6 +485,20 @@ struct LibraryView: View {
                 guard !Task.isCancelled, !batchImporter.isRunning else { return }
             }
             loadLibraryEpisodeSummary()
+        }
+    }
+
+    @MainActor
+    private func scheduleDirectoryQuery(_ query: String) {
+        directoryQueryTask?.cancel()
+        directoryQueryTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 180_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            effectiveDirectoryQuery = query
         }
     }
 
@@ -801,6 +841,8 @@ private struct TunerLibraryCard: View {
                         .foregroundStyle(.black)
                         .frame(width: 30, height: 30)
                         .background(Color.offscriptSignalYellow)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
@@ -813,6 +855,8 @@ private struct TunerLibraryCard: View {
                         .foregroundStyle(Color.offscriptPaperWhite)
                         .frame(width: 30, height: 30)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(episode.isQueued)
@@ -1307,6 +1351,8 @@ private struct PodcastEpisodeTunerRow: View {
                         .foregroundStyle(.black)
                         .frame(width: 30, height: 30)
                         .background(Color.offscriptSignalYellow)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
@@ -1319,6 +1365,8 @@ private struct PodcastEpisodeTunerRow: View {
                         .foregroundStyle(Color.offscriptPaperWhite)
                         .frame(width: 30, height: 30)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(episode.isQueued)
@@ -1395,13 +1443,13 @@ private struct LibraryBatchImportStrip: View {
                     TunerLabel(text: "● IMPORTING IN BACKGROUND",
                                color: .offscriptSignalYellow)
                     Spacer()
-                    TunerLabel(text: "\(importer.addedCount)/\(importer.totalCount)",
+                    TunerLabel(text: "\(importer.completedCount)/\(importer.totalCount)",
                                color: .offscriptFnInfo)
                 }
 
                 GeometryReader { proxy in
                     let total = max(1, importer.totalCount)
-                    let done = importer.addedCount + importer.failedCount
+                    let done = importer.completedCount
                     let clamped = min(max(Double(done) / Double(total), 0), 1)
                     ZStack(alignment: .leading) {
                         Rectangle().fill(Color.offscriptHairline)

@@ -202,8 +202,13 @@ extension URL {
         guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
             return absoluteString.lowercased()
         }
-        components.scheme = components.scheme?.lowercased()
+        let scheme = components.scheme?.lowercased()
+        components.scheme = (scheme == "http" || scheme == "feed") ? "https" : scheme
         components.host = components.host?.lowercased()
+        if components.port == 80 || components.port == 443 {
+            components.port = nil
+        }
+        components.fragment = nil
         if components.path == "/" {
             components.path = ""
         } else {
@@ -310,8 +315,7 @@ private final class OPMLParser: NSObject, XMLParserDelegate {
             ?? attributeDict["xmlurl"]
             ?? attributeDict["xmlURL"]
         guard let urlString,
-              let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)),
-              url.host != nil else {
+              let url = PodcastImportService.normalizeFeedURL(urlString) else {
             return
         }
 

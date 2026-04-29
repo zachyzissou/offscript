@@ -235,7 +235,13 @@ private struct QueueLeadStrip: View {
 
             HStack(spacing: 8) {
                 Button {
-                    PlaybackController.shared.play(item.episode, in: modelContext)
+                    let episode = item.episode
+                    do {
+                        try QueueService.remove(item, in: modelContext)
+                        PlaybackController.shared.play(episode, in: modelContext)
+                    } catch {
+                        queueLogger.error("Failed to start queued episode: \(error.localizedDescription, privacy: .public)")
+                    }
                 } label: {
                     TunerLabel(text: "→ PLAY", color: .offscriptSignalYellow, size: 11)
                         .padding(.horizontal, 14)
@@ -312,6 +318,8 @@ private struct QueueItemRow: View {
                     .foregroundStyle(.black)
                     .frame(width: 30, height: 30)
                     .background(Color.offscriptSignalYellow)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Play \(item.episode.title)")
@@ -323,6 +331,8 @@ private struct QueueItemRow: View {
                         .foregroundStyle(Color.offscriptFnRecord)
                         .frame(width: 26, height: 30)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Remove from queue")

@@ -79,6 +79,8 @@ final class RecommendationService {
         let completedShowCounts: [String: Int]
         let queuedPositionByEpisodeID: [UUID: Int]
         let preferredGenres: Set<String>
+        let dislikedTags: Set<String>
+        let penalizedShows: Set<String>
     }
 
     @MainActor
@@ -116,7 +118,11 @@ final class RecommendationService {
     }
 
     @MainActor
-    func homeSections(context: ModelContext, limit: Int = 6) throws -> [HomeFeedSection] {
+    func homeSections(
+        context: ModelContext,
+        mode: AppSettings.RecommendationMode = .balanced,
+        limit: Int = 6
+    ) throws -> [HomeFeedSection] {
         try? TasteProfileService.refresh(in: context)
         let queueItems = try context.fetch(FetchDescriptor<QueueItem>(
             sortBy: [
@@ -137,6 +143,8 @@ final class RecommendationService {
         let playbackEvents = try context.fetch(FetchDescriptor<PlaybackEvent>())
         let tasteProfile = try? TasteProfileService.loadOrCreate(in: context)
         let dislikedEpisodeIDs: Set<UUID> = Set(preferences.filter { $0.action == .notInterested || $0.action == .lessLikeThis }.compactMap { (signal: PreferenceSignal) -> UUID? in signal.episode.id })
+        let negativePreferences = preferences.filter { $0.action == .notInterested || $0.action == .lessLikeThis }
+        let negativePlaybackEvents = playbackEvents.filter { $0.kind == .skippedQuickly || $0.kind == .abandoned }
         let profileByEpisodeID = Dictionary(uniqueKeysWithValues: episodes.compactMap { episode in
             episode.profile.map { (episode.id, $0) }
         })
@@ -150,6 +158,15 @@ final class RecommendationService {
             .filter { $0.kind == .completed || $0.kind == .advancedFromQueue || $0.kind == .resumed }
             .compactMap { $0.episode?.podcast.title }
         let completedShowCounts = Dictionary(completedShows.map { ($0, 1) }, uniquingKeysWith: +)
+        let dislikedTags = Self.normalizedTags(
+            negativePreferences.lazy.flatMap { $0.episode.profile?.tags ?? [] }
+        ).union(Self.normalizedTags(
+            negativePlaybackEvents.lazy.flatMap { $0.episode?.profile?.tags ?? [] }
+        ))
+        let penalizedShows = Set(
+            negativePreferences.map { $0.episode.podcast.title }
+                + negativePlaybackEvents.compactMap { $0.episode?.podcast.title }
+        )
         let queuedPositionByEpisodeID = Dictionary(uniqueKeysWithValues: queueItems.map { ($0.episode.id, $0.position) })
         let scoringContext = ScoringContext(
             profileByEpisodeID: profileByEpisodeID,
@@ -160,7 +177,9 @@ final class RecommendationService {
             showAffinity: Set(tasteProfile?.showAffinity ?? []),
             completedShowCounts: completedShowCounts,
             queuedPositionByEpisodeID: queuedPositionByEpisodeID,
-            preferredGenres: Set((tasteProfile?.preferredGenres ?? AppSettings.preferredGenres.map(\.title)).map { $0.lowercased() })
+            preferredGenres: Set((tasteProfile?.preferredGenres ?? AppSettings.preferredGenres.map(\.title)).map { $0.lowercased() }),
+            dislikedTags: dislikedTags,
+            penalizedShows: penalizedShows
         )
 
         let scoredEpisodes = episodes
@@ -204,19 +223,30 @@ final class RecommendationService {
             limit: limit,
             excluding: &usedEpisodeIDs
         )
+        let genreLane = Self.diversified(
+            scoredEpisodes.filter { episodeHasGenreOverlap($0.episode, context: scoringContext) },
+            limit: limit,
+            excluding: &usedEpisodeIDs
+        )
         let shortWindow = Self.diversified(
             scoredEpisodes.filter { AppSettings.preferShortEpisodes && (($0.episode.duration ?? 0) / 60) <= 35 },
             limit: limit,
             excluding: &usedEpisodeIDs
         )
 
-        let allSections = [
+        var allSections = [
             HomeFeedSection(title: "Signal Lock", subtitle: "The next listen is driven by something you actually did.", scoredEpisodes: signalLock),
             HomeFeedSection(title: "Resume Thread", subtitle: "Partially heard episodes with meaningful time left.", scoredEpisodes: resumeThread),
             HomeFeedSection(title: "Shows You Finish", subtitle: "Newer episodes from channels with completion signal.", scoredEpisodes: showAffinity),
-            HomeFeedSection(title: "Topic Continuation", subtitle: "Shared tags from completed or explicitly liked listens.", scoredEpisodes: topicContinuation),
-            HomeFeedSection(title: "Short Window", subtitle: "Compact episodes only when you asked for shorter listens.", scoredEpisodes: shortWindow)
-        ].filter { !$0.episodes.isEmpty }
+            HomeFeedSection(title: "Topic Continuation", subtitle: "Shared tags from completed or explicitly liked listens.", scoredEpisodes: topicContinuation)
+        ]
+
+        if mode != .signalLocked {
+            allSections.append(HomeFeedSection(title: "Tuned Genres", subtitle: "Genre lanes are allowed in Balanced and Discovery modes.", scoredEpisodes: genreLane))
+            allSections.append(HomeFeedSection(title: "Short Window", subtitle: "Compact episodes only when you asked for shorter listens.", scoredEpisodes: shortWindow))
+        }
+
+        allSections = allSections.filter { !$0.episodes.isEmpty }
 
         return allSections
     }
@@ -264,6 +294,10 @@ final class RecommendationService {
                     RecommendationSignal(label: "left", value: EpisodeDurationFormatter.short(remaining))
                 ]
             )
+        }
+
+        if Self.isSuppressedByNegativeSignal(episode, profileTags: profileTags, context: context) {
+            return nil
         }
 
         let completedShowCount = context.completedShowCounts[episode.podcast.title, default: 0]
@@ -453,10 +487,22 @@ final class RecommendationService {
         let preferences = try context.fetch(FetchDescriptor<PreferenceSignal>(
             predicate: #Predicate<PreferenceSignal> { $0.date >= signalCutoff }
         ))
+        let playbackEvents = try context.fetch(FetchDescriptor<PlaybackEvent>())
         let tasteProfile = try? TasteProfileService.loadOrCreate(in: context)
         let likedEpisodeIDs: Set<UUID> = Set(preferences.filter { $0.action == .like || $0.action == .moreLikeThis }.compactMap { (signal: PreferenceSignal) -> UUID? in signal.episode.id })
+        let negativePreferences = preferences.filter { $0.action == .notInterested || $0.action == .lessLikeThis }
+        let negativePlaybackEvents = playbackEvents.filter { $0.kind == .skippedQuickly || $0.kind == .abandoned }
         let profileByEpisodeID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.episodeID, $0) })
         let likedTags = Self.normalizedTags(profiles.lazy.filter { likedEpisodeIDs.contains($0.episodeID) }.flatMap(\.tags))
+        let dislikedTags = Self.normalizedTags(
+            negativePreferences.lazy.flatMap { $0.episode.profile?.tags ?? [] }
+        ).union(Self.normalizedTags(
+            negativePlaybackEvents.lazy.flatMap { $0.episode?.profile?.tags ?? [] }
+        ))
+        let penalizedShows = Set(
+            negativePreferences.map { $0.episode.podcast.title }
+                + negativePlaybackEvents.compactMap { $0.episode?.podcast.title }
+        )
         let scoringContext = ScoringContext(
             profileByEpisodeID: profileByEpisodeID,
             likedTags: likedTags,
@@ -466,7 +512,9 @@ final class RecommendationService {
             showAffinity: Set(tasteProfile?.showAffinity ?? []),
             completedShowCounts: [:],
             queuedPositionByEpisodeID: [:],
-            preferredGenres: Set((tasteProfile?.preferredGenres ?? AppSettings.preferredGenres.map(\.title)).map { $0.lowercased() })
+            preferredGenres: Set((tasteProfile?.preferredGenres ?? AppSettings.preferredGenres.map(\.title)).map { $0.lowercased() }),
+            dislikedTags: dislikedTags,
+            penalizedShows: penalizedShows
         )
 
         // Also boost episodes from the same podcast
@@ -475,6 +523,10 @@ final class RecommendationService {
         let currentTags = Set(currentProfile?.tags ?? [])
 
         return episodes
+            .filter { episode in
+                let episodeTags = Self.normalizedTags(profileByEpisodeID[episode.id]?.tags ?? [])
+                return !Self.isSuppressedByNegativeSignal(episode, profileTags: episodeTags, context: scoringContext)
+            }
             .map { episode -> ScoredEpisode in
                 var result = scoreWithExplanation(
                     episode: episode,
@@ -558,12 +610,25 @@ final class RecommendationService {
         return result
     }
 
+    private static func isSuppressedByNegativeSignal(
+        _ episode: Episode,
+        profileTags: Set<String>,
+        context: ScoringContext
+    ) -> Bool {
+        context.penalizedShows.contains(episode.podcast.title)
+            || !profileTags.intersection(context.dislikedTags).isEmpty
+    }
+
     private func episodeHasTopicOverlap(_ episode: Episode, context: ScoringContext) -> Bool {
         guard let profile = context.profileByEpisodeID[episode.id] else { return false }
         let tags = Self.normalizedTags(profile.tags)
         return !tags.intersection(context.likedTags).isEmpty
             || !tags.intersection(context.completedTags).isEmpty
             || !tags.intersection(context.topTags).isEmpty
+    }
+
+    private func episodeHasGenreOverlap(_ episode: Episode, context: ScoringContext) -> Bool {
+        !Set(episode.podcast.categories.map { $0.lowercased() }).intersection(context.preferredGenres).isEmpty
     }
 
     private static func hasMeaningfulProgress(_ episode: Episode) -> Bool {

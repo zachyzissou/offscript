@@ -92,8 +92,6 @@ struct ImportProgressView: View {
     // back catalog (common for shows like NPR, etc). Background sync can
     // backfill the rest later.
     private let onboardingEpisodeLimit = 15
-    private let maxConcurrentImports = 4
-
     @MainActor
     private func runImports() async {
         // Persist genre preferences immediately — doesn't depend on imports.
@@ -105,53 +103,24 @@ struct ImportProgressView: View {
             statuses[podcast.feedURL] = .importing
         }
 
-        // Bounded-concurrency parallel imports. TaskGroup with `maxConcurrentImports`
-        // keeps us from saturating the network or the SwiftData write queue
-        // while still cutting wall time roughly N× for N selected podcasts.
-        await withTaskGroup(of: (URL, Result<Podcast, Error>).self) { group in
-            var inFlight = 0
-            var iterator = podcasts.makeIterator()
-
-            func enqueueNext() {
-                guard let podcast = iterator.next() else { return }
-                inFlight += 1
-                group.addTask { [syncService, modelContext, onboardingEpisodeLimit] in
-                    do {
-                        let imported = try await syncService.importPodcast(
-                            from: podcast,
-                            into: modelContext,
-                            episodeLimit: onboardingEpisodeLimit
-                        )
-                        return (podcast.feedURL, .success(imported))
-                    } catch {
-                        return (podcast.feedURL, .failure(error))
-                    }
+        // Keep SwiftData writes on the main actor. This onboarding path imports
+        // a small selected starter set; the heavy OPML path uses BatchImportService.
+        for podcast in podcasts {
+            do {
+                let imported = try await syncService.importPodcast(
+                    from: podcast,
+                    into: modelContext,
+                    episodeLimit: onboardingEpisodeLimit
+                )
+                if let newestEpisode = imported.episodes
+                    .sorted(by: { $0.pubDate > $1.pubDate })
+                    .first {
+                    modelContext.insert(PreferenceSignal(action: .like, episode: newestEpisode))
                 }
-            }
-
-            // Seed the pipeline.
-            for _ in 0..<min(maxConcurrentImports, podcasts.count) {
-                enqueueNext()
-            }
-
-            // Drain results, enqueueing the next podcast each time one finishes.
-            while let (feedURL, result) = await group.next() {
-                inFlight -= 1
-                switch result {
-                case .success(let imported):
-                    // Seed taste signal off-main since SwiftData inserts can stall the
-                    // main thread when there are many models in flight.
-                    if let newestEpisode = imported.episodes
-                        .sorted(by: { $0.pubDate > $1.pubDate })
-                        .first {
-                        modelContext.insert(PreferenceSignal(action: .like, episode: newestEpisode))
-                    }
-                    statuses[feedURL] = .done
-                case .failure(let error):
-                    importLogger.error("Onboarding import failed for \(feedURL, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                    statuses[feedURL] = .failed
-                }
-                enqueueNext()
+                statuses[podcast.feedURL] = .done
+            } catch {
+                importLogger.error("Onboarding import failed for \(podcast.feedURL, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                statuses[podcast.feedURL] = .failed
             }
         }
 

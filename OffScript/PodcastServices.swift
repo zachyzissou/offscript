@@ -535,6 +535,11 @@ enum QueueService {
         )
     }
 
+    static func removeEpisode(id episodeID: UUID, in context: ModelContext) throws {
+        guard let item = try orderedItems(in: context).first(where: { $0.episode.id == episodeID }) else { return }
+        try remove(item, in: context)
+    }
+
     static func move(from offsets: IndexSet, to destination: Int, in context: ModelContext) throws {
         var items = try orderedItems(in: context)
         let movingItems = offsets.sorted().map { items[$0] }
@@ -564,6 +569,24 @@ enum QueueService {
             in: context
         )
         return episode
+    }
+
+    static func popNextEpisode(skipping episodeID: UUID?, in context: ModelContext) throws -> Episode? {
+        while let first = try orderedItems(in: context).first {
+            if first.episode.id == episodeID {
+                try remove(first, in: context)
+                continue
+            }
+            let episode = first.episode
+            try remove(first, in: context)
+            TelemetryService.track(
+                "queue_pop_next",
+                metadata: ["episode": episode.title, "podcast": episode.podcast.title],
+                in: context
+            )
+            return episode
+        }
+        return nil
     }
 
     private static func reorder(in context: ModelContext) throws {
