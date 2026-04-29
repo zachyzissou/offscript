@@ -12,7 +12,7 @@ struct OffScriptTests {
         #expect(OffScriptAudioSessionConfiguration.mode == .spokenAudio)
         #expect(OffScriptAudioSessionConfiguration.options.contains(.allowAirPlay))
         #expect(OffScriptAudioSessionConfiguration.options.contains(.allowBluetoothA2DP))
-        #expect(!OffScriptAudioSessionConfiguration.usesExplicitRouteSharingPolicy)
+        #expect(OffScriptAudioSessionConfiguration.routeSharingPolicy == nil)
         #endif
     }
 
