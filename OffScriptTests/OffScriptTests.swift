@@ -436,6 +436,51 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func headlineCandidateUsesStrongestAuthoredSignalAcrossSections() throws {
+        let lowShow = Podcast(title: "Low Evidence", feedURL: URL(string: "https://example.com/low.xml")!)
+        let strongShow = Podcast(title: "Strong Evidence", feedURL: URL(string: "https://example.com/strong.xml")!)
+        let low = Episode(title: "Generic Queue", pubDate: .now, duration: 1_800, audioURL: URL(string: "https://example.com/low.mp3")!, podcast: lowShow)
+        let strong = Episode(title: "Finished Thread", pubDate: .now, duration: 1_800, audioURL: URL(string: "https://example.com/strong.mp3")!, podcast: strongShow)
+
+        let sections = [
+            HomeFeedSection(
+                title: "Signal Lock",
+                subtitle: "User intent lane.",
+                scoredEpisodes: [
+                    ScoredEpisode(
+                        episode: low,
+                        score: 180,
+                        explanation: "Fits your short-listen setting",
+                        signalTrace: [RecommendationSignal(label: "source", value: "duration")]
+                    )
+                ]
+            ),
+            HomeFeedSection(
+                title: "Shows You Finish",
+                subtitle: "Completion lane.",
+                scoredEpisodes: [
+                    ScoredEpisode(
+                        episode: strong,
+                        score: 220,
+                        explanation: "You keep finishing Strong Evidence",
+                        signalTrace: [
+                            RecommendationSignal(label: "source", value: "completion"),
+                            RecommendationSignal(label: "show", value: "Strong Evidence"),
+                            RecommendationSignal(label: "finishes", value: "3")
+                        ]
+                    )
+                ]
+            )
+        ]
+
+        let headline = try #require(RecommendationService.headlineCandidate(from: sections))
+
+        #expect(headline.episode.id == strong.id)
+        #expect(headline.explanation == "You keep finishing Strong Evidence")
+    }
+
+    @Test
+    @MainActor
     func signalLockedModeExcludesGenreOnlyCandidates() throws {
         let container = try makeContainer()
         let context = container.mainContext

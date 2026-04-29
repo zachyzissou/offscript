@@ -3,11 +3,19 @@ import OSLog
 import SwiftData
 
 struct ScoredDiscoveryResult: Identifiable {
-    var id: String { result.id }
+    let id: String
     let result: PodcastSearchResult
     let score: Double
     let explanation: String
     let signalTrace: [RecommendationSignal]
+
+    init(result: PodcastSearchResult, score: Double, explanation: String, signalTrace: [RecommendationSignal]) {
+        self.id = result.feedURL.absoluteString
+        self.result = result
+        self.score = score
+        self.explanation = explanation
+        self.signalTrace = signalTrace
+    }
 }
 
 actor DiscoveryService {
