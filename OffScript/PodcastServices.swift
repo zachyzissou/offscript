@@ -10,6 +10,24 @@ struct PodcastPreviewEpisode: Identifiable, Hashable {
     let audioURL: URL
     let artworkURL: URL?
 
+    init(
+        id: String,
+        title: String,
+        pubDate: Date?,
+        duration: TimeInterval?,
+        summary: String?,
+        audioURL: URL,
+        artworkURL: URL?
+    ) {
+        self.id = id
+        self.title = title
+        self.pubDate = pubDate
+        self.duration = duration
+        self.summary = summary
+        self.audioURL = audioURL
+        self.artworkURL = artworkURL
+    }
+
     init(item: ParsedFeedItem) {
         self.id = item.guid ?? item.audioURL.absoluteString
         self.title = item.title
