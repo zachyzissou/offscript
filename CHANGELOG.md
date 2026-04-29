@@ -20,6 +20,10 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Settings no longer claims iCloud sync is active unless the launch actually opened a CloudKit-backed SwiftData container.**
 - **The SwiftData test container is explicitly local-only** so CloudKit entitlements do not break in-memory unit tests.
 
+### Fixed — Xcode Cloud signing
+- **Build number advanced to 41 after Xcode Cloud runs #40 and #41 failed exporting app build 40.**
+- **CloudKit entitlements are temporarily withheld from the shipped target** because Apple-managed App Store and Ad Hoc profiles for `com.offscript.app` remain invalid after iCloud capability changes. The runtime still falls back to local storage and Settings reports the fallback instead of claiming sync is active.
+
 ### Added — large-library directory controls
 - **Library now behaves like a real channel directory for 250+ show libraries.** The shows list has Tuner-styled search, scope filters, sort modes, compact/artwork row density, visible-count readouts, and an A-Z jump rail so large OPML imports are navigable without endless scrolling.
 - **Large libraries default to compact rows.** Artwork-heavy rows remain available for smaller libraries, but 120+ show libraries automatically use dense Tuner rows to reduce scroll distance and image/layout churn.
@@ -45,7 +49,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Episode switches reset duration immediately and guard artwork updates** so stale duration/artwork from the previous episode cannot race into Player or Now Playing.
 
 ### Fixed — Apple identity / iCloud sync state
-- **CloudKit entitlements are now declared for the app target** so signed builds can actually request the iCloud-backed SwiftData container.
+- **CloudKit sync is guarded by runtime container state** so failed or unavailable iCloud-backed stores fall back to local storage instead of presenting as active sync.
 - **Settings now validates stored Sign in with Apple credentials** before treating the user as signed in. Revoked or missing credentials clear local identity and disable sync.
 - **Transient Apple credential validation failures no longer clear a saved Apple ID.** Credentials are cleared only for revoked or not-found states.
 - **iCloud account availability is checked separately from Apple identity.** Sign in with Apple no longer blindly enables sync when CloudKit is unavailable on the device.
