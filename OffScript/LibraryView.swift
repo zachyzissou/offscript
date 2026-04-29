@@ -755,7 +755,6 @@ private struct LibraryAlphabetRail: View {
             ForEach(keys, id: \.self) { key in
                 let section = sectionsByTitle[key]
                 let isSelected = selectedSectionID == section?.id
-                let isDisabled = section == nil
 
                 if let section {
                     Button {
