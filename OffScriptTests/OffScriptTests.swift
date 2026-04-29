@@ -1,9 +1,30 @@
+import AVFoundation
 import Foundation
 import SwiftData
 import Testing
 @testable import OffScript
 
 struct OffScriptTests {
+    @Test
+    func playbackAudioSessionUsesSilentSwitchSafeCategory() throws {
+        #if os(iOS)
+        let session = RecordingAudioSession()
+
+        try OffScriptAudioSessionConfiguration.apply(to: session)
+
+        #expect(OffScriptAudioSessionConfiguration.category == .playback)
+        #expect(OffScriptAudioSessionConfiguration.mode == .spokenAudio)
+        #expect(OffScriptAudioSessionConfiguration.options.contains(.allowAirPlay))
+        #expect(OffScriptAudioSessionConfiguration.options.contains(.allowBluetoothA2DP))
+        #expect(session.category == .playback)
+        #expect(session.mode == .spokenAudio)
+        #expect(session.options.contains(.allowAirPlay))
+        #expect(session.options.contains(.allowBluetoothA2DP))
+        #expect(session.routeSharingPolicy == nil)
+        #expect(session.didCallSetCategoryWithPolicy == false)
+        #endif
+    }
+
     @Test
     func recommendationScoreRewardsBetterFit() {
         let strongFit = RecommendationScorer.score(
@@ -987,3 +1008,33 @@ struct OffScriptTests {
         return try ModelContainer(for: schema, configurations: [configuration])
     }
 }
+
+#if os(iOS)
+private final class RecordingAudioSession: OffScriptAudioSessionApplying {
+    private(set) var category: AVAudioSession.Category?
+    private(set) var mode: AVAudioSession.Mode?
+    private(set) var options: AVAudioSession.CategoryOptions = []
+    private(set) var routeSharingPolicy: AVAudioSession.RouteSharingPolicy?
+    private(set) var didCallSetCategoryWithPolicy = false
+
+    func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode, options: AVAudioSession.CategoryOptions) throws {
+        self.category = category
+        self.mode = mode
+        self.options = options
+        routeSharingPolicy = nil
+    }
+
+    func setCategory(
+        _ category: AVAudioSession.Category,
+        mode: AVAudioSession.Mode,
+        policy: AVAudioSession.RouteSharingPolicy,
+        options: AVAudioSession.CategoryOptions
+    ) throws {
+        self.category = category
+        self.mode = mode
+        self.options = options
+        routeSharingPolicy = policy
+        didCallSetCategoryWithPolicy = true
+    }
+}
+#endif

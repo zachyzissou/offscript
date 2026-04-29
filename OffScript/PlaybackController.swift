@@ -6,6 +6,25 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+#if os(iOS)
+protocol OffScriptAudioSessionApplying {
+    func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode, options: AVAudioSession.CategoryOptions) throws
+    func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode, policy: AVAudioSession.RouteSharingPolicy, options: AVAudioSession.CategoryOptions) throws
+}
+
+extension AVAudioSession: OffScriptAudioSessionApplying {}
+
+enum OffScriptAudioSessionConfiguration {
+    static let category: AVAudioSession.Category = .playback
+    static let mode: AVAudioSession.Mode = .spokenAudio
+    static let options: AVAudioSession.CategoryOptions = [.allowAirPlay, .allowBluetoothA2DP]
+
+    static func apply(to session: OffScriptAudioSessionApplying) throws {
+        try session.setCategory(category, mode: mode, options: options)
+    }
+}
+#endif
+
 @MainActor
 final class PlaybackController: ObservableObject {
     static let shared = PlaybackController()
@@ -421,11 +440,12 @@ final class PlaybackController: ObservableObject {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         do {
-            // .playback + .spokenAudio + .longFormAudio is the supported combo
-            // for podcast apps that need lock-screen controls and background
-            // audio. .longFormAudio prevents iOS from quietly switching us
-            // into a duck-other-audio category.
-            try session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio, options: [.allowAirPlay, .allowBluetoothA2DP])
+            // .playback is what makes podcast audio ignore Silent Mode and
+            // continue under lock/background when UIBackgroundModes includes
+            // audio. Do not pass .longFormAudio here: iOS rejects that route
+            // sharing policy when paired with our AirPlay/Bluetooth options,
+            // leaving the app on the default Silent-Mode-bound category.
+            try OffScriptAudioSessionConfiguration.apply(to: session)
         } catch {
             logger.error("AVAudioSession setCategory failed: \(error.localizedDescription, privacy: .public)")
         }
