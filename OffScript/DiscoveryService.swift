@@ -9,7 +9,7 @@ struct ScoredDiscoveryResult: Identifiable {
     let explanation: String
     let signalTrace: [RecommendationSignal]
 
-    init(result: PodcastSearchResult, score: Double, explanation: String, signalTrace: [RecommendationSignal]) {
+    nonisolated init(result: PodcastSearchResult, score: Double, explanation: String, signalTrace: [RecommendationSignal]) {
         self.id = result.feedURL.absoluteString
         self.result = result
         self.score = score
@@ -77,9 +77,9 @@ actor DiscoveryService {
         let previewLimit = min(max(limit * 2, 6), 10, baselineScored.count)
         let previewCandidates = Array(baselineScored.prefix(previewLimit).map(\.result))
         let previewScored = await scorePreviewCandidates(previewCandidates, tasteProfile: tasteProfile)
-        let previewScoredByID = Dictionary(uniqueKeysWithValues: previewScored.map { ($0.result.id, $0) })
+        let previewScoredByID = Dictionary(uniqueKeysWithValues: previewScored.map { ($0.id, $0) })
         let scored = baselineScored
-            .map { previewScoredByID[$0.result.id] ?? $0 }
+            .map { previewScoredByID[$0.id] ?? $0 }
             .sorted { $0.score > $1.score }
 
         let cacheLimit = max(limit, AppSettings.RecommendationMode.discovery.discoveryLimit)
