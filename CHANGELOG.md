@@ -7,6 +7,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ### Added — UI QA swarm coverage
 - **Large-library UI smoke coverage now seeds a deterministic 258-show library** and launches directly into Library, giving the 250+ show scrolling case a repeatable simulator test instead of a manual-only complaint.
 - **Debug large-library seeding now resets stale simulator data when an explicit library size is requested**, so visual audits and UI tests are not polluted by previous sample stores.
+- **Large-library UI coverage now verifies alphabet directory jumps** by tapping the `Z` key in a 258-show Library and asserting the list scrolls to the `Z` section.
 
 ### Changed — Tuner UI conformance
 - **Shared Tuner labels, tags, and readouts now scale through Dynamic Type metrics** while preserving the mono instrument-panel vocabulary.
@@ -27,6 +28,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ### Added — large-library directory controls
 - **Library now behaves like a real channel directory for 250+ show libraries.** The shows list has Tuner-styled search, scope filters, sort modes, compact/artwork row density, visible-count readouts, and an A-Z jump rail so large OPML imports are navigable without endless scrolling.
 - **Large libraries default to compact rows.** Artwork-heavy rows remain available for smaller libraries, but 120+ show libraries automatically use dense Tuner rows to reduce scroll distance and image/layout churn.
+- **The alphabet jump rail is now a full A-Z/# key bank with selected and disabled states** so large libraries expose every directory letter as a direct Tuner control instead of hiding letters in a horizontal strip.
 
 ### Changed — Library performance
 - **The root Library podcast query now filters subscribed shows in SwiftData instead of fetching every historical podcast and filtering in Swift.**

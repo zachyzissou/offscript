@@ -231,6 +231,7 @@ struct LibraryView: View {
     @State private var directoryScope: LibraryDirectoryScope = .all
     @State private var directorySort: LibraryDirectorySort = .title
     @State private var directoryDensity: LibraryDirectoryDensity = .compact
+    @State private var selectedDirectorySectionID: String?
     @State private var freshEpisodes: [Episode] = []
     @State private var unplayedEpisodeCount = 0
     @State private var freshCountsByPodcastID: [UUID: Int] = [:]
@@ -404,7 +405,11 @@ struct LibraryView: View {
             if snapshot.isEmpty {
                 LibraryDirectoryEmptyState(query: effectiveDirectoryQuery, scope: directoryScope)
             } else {
-                LibraryAlphabetRail(sections: snapshot.sections) { sectionID in
+                LibraryAlphabetRail(
+                    sections: snapshot.sections,
+                    selectedSectionID: selectedDirectorySectionID
+                ) { sectionID in
+                    selectedDirectorySectionID = sectionID
                     withAnimation(.easeInOut(duration: 0.2)) {
                         scrollProxy.scrollTo(sectionID, anchor: .top)
                     }
@@ -415,6 +420,7 @@ struct LibraryView: View {
                         VStack(alignment: .leading, spacing: 0) {
                             HStack {
                                 TunerLabel(text: section.title, color: .offscriptSignalYellow, size: 10)
+                                    .accessibilityIdentifier("LibrarySectionHeader\(section.title)")
                                 Spacer()
                                 TunerLabel(text: "\(section.podcasts.count) CH", color: .offscriptSoftPaper, size: 8)
                             }
@@ -729,29 +735,66 @@ private struct LibraryDirectoryControls: View {
 
 private struct LibraryAlphabetRail: View {
     let sections: [LibraryDirectorySection]
+    let selectedSectionID: String?
     let onSelect: (String) -> Void
 
+    private let keys = ["#"] + (UnicodeScalar("A").value...UnicodeScalar("Z").value).compactMap { value in
+        UnicodeScalar(value).map { String($0) }
+    }
+
+    private var sectionsByTitle: [String: LibraryDirectorySection] {
+        Dictionary(uniqueKeysWithValues: sections.map { ($0.title, $0) })
+    }
+
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(sections) { section in
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 44, maximum: 48), spacing: 4)],
+            alignment: .leading,
+            spacing: 4
+        ) {
+            ForEach(keys, id: \.self) { key in
+                let section = sectionsByTitle[key]
+                let isSelected = selectedSectionID == section?.id
+                let isDisabled = section == nil
+
+                if let section {
                     Button {
                         onSelect(section.id)
                     } label: {
-                        Text(section.title)
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(Color.offscriptSignalYellow)
-                            .frame(width: 28, height: 30)
-                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
-                            .frame(minWidth: 44, minHeight: 44)
-                            .contentShape(Rectangle())
+                        letterKey(key, isSelected: isSelected, isDisabled: false)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Jump to \(section.title)")
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Jump to \(key)")
+                    .accessibilityIdentifier("LibraryJumpLetter\(key)")
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                } else {
+                    letterKey(key, isSelected: false, isDisabled: true)
+                        .accessibilityLabel("No \(key) channels")
+                        .accessibilityIdentifier("LibraryJumpLetter\(key)")
+                        .accessibilityAddTraits(.isStaticText)
                 }
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private func letterKey(_ key: String, isSelected: Bool, isDisabled: Bool) -> some View {
+        Text(key)
+            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .foregroundStyle(isDisabled ? Color.offscriptTextMuted : Color.offscriptSignalYellow)
+            .frame(width: 30, height: 30)
+            .background(isSelected ? Color.offscriptSignalYellow.opacity(0.14) : Color.clear)
+            .overlay(
+                Rectangle()
+                    .stroke(
+                        isSelected ? Color.offscriptSignalYellow : Color.offscriptHairline,
+                        lineWidth: isSelected ? 1.5 : 1
+                    )
+            )
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+            .opacity(isDisabled ? 0.42 : 1)
     }
 }
 
