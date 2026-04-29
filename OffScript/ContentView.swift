@@ -78,9 +78,11 @@ struct ContentView: View {
                 .animation(.easeInOut(duration: 0.2), value: player.currentEpisode != nil)
                 .fullScreenCover(isPresented: $player.isPlayerPresented) {
                     PlayerView()
+                        .tunerModalSurface()
                 }
                 .sheet(isPresented: $isSettingsPresented) {
                     SettingsView()
+                        .tunerModalSurface()
                 }
             } else {
                 OnboardingFlowView {

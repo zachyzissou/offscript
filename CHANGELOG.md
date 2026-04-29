@@ -13,6 +13,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Shared Tuner labels, tags, and readouts now scale through Dynamic Type metrics** while preserving the mono instrument-panel vocabulary.
 - **Compact Tuner keys now keep their visual size but expose 44pt hit targets** across Library, Player, Queue, Search, downloads, and episode detail actions.
 - **Discovery/search copy now names Apple Podcasts Search explicitly** and avoids implying the app is running a generic opaque algorithmic feed.
+- **Remaining app-controlled Liquid Glass controls were replaced with Tuner surfaces**: Settings toggles, Player scrubber, sign-out/unsubscribe confirmations, and sheet presentation chrome now use flat OLED panels, hairlines, and signal-yellow keys.
 
 ### Fixed — onboarding, import, and sync UI honesty
 - **Onboarding Sign in with Apple now presents from the actual button window when available** and no longer uses the old crash-prone missing-scene path for the normal sign-in flow.

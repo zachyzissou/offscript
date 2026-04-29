@@ -580,6 +580,16 @@ extension View {
         modifier(OffScriptUtilitySurfaceModifier(radius: radius))
     }
 
+    /// Keep SwiftUI sheet/full-screen hosts from falling back to iOS 26's
+    /// translucent Liquid Glass presentation surface. App-controlled modals
+    /// should read as the same flat OLED instrument panel as the main shell.
+    func tunerModalSurface() -> some View {
+        preferredColorScheme(.dark)
+            .presentationBackground(Color.offscriptStudioBlack)
+            .presentationCornerRadius(0)
+            .presentationDragIndicator(.hidden)
+    }
+
     func measureHeight(_ height: Binding<CGFloat>) -> some View {
         background(
             GeometryReader { proxy in

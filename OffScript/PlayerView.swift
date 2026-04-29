@@ -168,24 +168,11 @@ struct PlayerView: View {
     }
 
     private var scrubber: some View {
-        // Real Slider with custom track — use SwiftUI's native interaction
-        // (drag, tap-to-seek, accessibility) and overlay the Tuner-visual
-        // rail directly via .background. Earlier version had an invisible
-        // Slider stacked over a separate visual rail, which was fragile —
-        // touch coordinates didn't always reach the slider, and the visual
-        // rail's width could drift from the slider's actual track.
-        Slider(
-            value: Binding(
-                get: { player.currentTime },
-                set: { player.seek(to: $0) }
-            ),
-            in: 0...max(player.duration, 1)
+        TunerScrubber(
+            value: player.currentTime,
+            duration: max(player.duration, 1),
+            onSeek: { player.seek(to: $0) }
         )
-        .tint(Color.offscriptSignalYellow)
-        .frame(height: 24)
-        .padding(.vertical, 2)
-        .accessibilityLabel("Playback position")
-        .accessibilityValue("\(Int(progressValue * 100)) percent")
     }
 
     // MARK: transport
@@ -527,11 +514,6 @@ struct PlayerView: View {
 
     // MARK: helpers
 
-    private var progressValue: Double {
-        guard player.duration > 0 else { return 0 }
-        return player.currentTime / player.duration
-    }
-
     /// True when the podcast has its own rate that differs from the
     /// default — drives the SPEED key's color so the user can tell at a
     /// glance whether they're on a custom pace for this show.
@@ -564,6 +546,84 @@ struct PlayerView: View {
 
     private func formattedDate(_ date: Date) -> String? {
         date.formatted(.dateTime.month(.abbreviated).day().year())
+    }
+}
+
+private struct TunerScrubber: View {
+    let value: Double
+    let duration: Double
+    let onSeek: (Double) -> Void
+
+    @State private var dragValue: Double?
+
+    private var displayValue: Double {
+        min(max(dragValue ?? value, 0), max(duration, 1))
+    }
+
+    private var progress: Double {
+        displayValue / max(duration, 1)
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = max(proxy.size.width, 1)
+            let thumbX = min(max(width * progress, 0), width)
+
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(Color.offscriptHairline)
+                    .frame(height: 2)
+
+                Rectangle()
+                    .fill(Color.offscriptSignalYellow)
+                    .frame(width: max(0, thumbX), height: 2)
+
+                ForEach(0..<9, id: \.self) { index in
+                    Rectangle()
+                        .fill(Color.offscriptHairline)
+                        .frame(width: 1, height: index == 0 || index == 8 ? 14 : 8)
+                        .offset(x: width * CGFloat(index) / 8)
+                }
+
+                Rectangle()
+                    .fill(Color.offscriptSignalYellow)
+                    .frame(width: 6, height: 22)
+                    .offset(x: min(max(thumbX - 3, 0), width - 6))
+            }
+            .frame(height: 44)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        dragValue = seekValue(for: gesture.location.x, width: width)
+                    }
+                    .onEnded { gesture in
+                        let newValue = seekValue(for: gesture.location.x, width: width)
+                        dragValue = nil
+                        onSeek(newValue)
+                    }
+            )
+        }
+        .frame(height: 44)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Playback position")
+        .accessibilityValue("\(Int(progress * 100)) percent")
+        .accessibilityAdjustableAction { direction in
+            let step = max(duration * 0.05, 5)
+            switch direction {
+            case .increment:
+                onSeek(min(value + step, duration))
+            case .decrement:
+                onSeek(max(value - step, 0))
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    private func seekValue(for locationX: CGFloat, width: CGFloat) -> Double {
+        let ratio = min(max(Double(locationX / max(width, 1)), 0), 1)
+        return ratio * max(duration, 1)
     }
 }
 

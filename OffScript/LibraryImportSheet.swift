@@ -88,6 +88,7 @@ struct LibraryImportSheet: View {
             .sheet(isPresented: $isExportShareSheetPresented) {
                 if let exportFileURL {
                     ShareSheet(items: [exportFileURL])
+                        .tunerModalSurface()
                 }
             }
         }
