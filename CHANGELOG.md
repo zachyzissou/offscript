@@ -21,8 +21,9 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **The SwiftData test container is explicitly local-only** so CloudKit entitlements do not break in-memory unit tests.
 
 ### Fixed — Xcode Cloud signing
-- **Build number advanced to 41 after Xcode Cloud runs #40 and #41 failed exporting app build 40.**
-- **CloudKit entitlements are temporarily withheld from the shipped target** because Apple-managed App Store and Ad Hoc profiles for `com.offscript.app` remain invalid after iCloud capability changes. The runtime still falls back to local storage and Settings reports the fallback instead of claiming sync is active.
+- **Build number advanced to 43 after Xcode Cloud runs #40 and #41 failed exporting app build 40, and build 42 validated the emergency Apple-sign-in/App-Group-only signing path.**
+- **CloudKit entitlements are restored on the shipped target** so the next signing candidate again requests the `iCloud.com.offscript.app` CloudKit container instead of silently shipping without sync capability.
+- **Release tooling now fails fast when App Store provisioning profiles are missing the CloudKit container** by decoding the active profile from App Store Connect before manual upload or an Xcode Cloud probe run.
 
 ### Added — large-library directory controls
 - **Library now behaves like a real channel directory for 250+ show libraries.** The shows list has Tuner-styled search, scope filters, sort modes, compact/artwork row density, visible-count readouts, and an A-Z jump rail so large OPML imports are navigable without endless scrolling.

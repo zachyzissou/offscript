@@ -19,7 +19,7 @@ on:
         required: false
         default: "probe"
         type: choice
-        options: [probe, inspect, reconfigure-dryrun, reconfigure-apply, start-build, build-run]
+        options: [probe, inspect, signing-preflight, reconfigure-dryrun, reconfigure-apply, start-build, build-run]
       workflow_id:
         description: "Workflow UUID (required for inspect/reconfigure/start-build)"
         required: false
@@ -77,6 +77,9 @@ jobs:
             inspect)
               test -n "${WF_ID:-}" || { echo "workflow_id input required"; exit 1; }
               scripts/app_store_connect.py xcode-cloud inspect "$WF_ID"
+              ;;
+            signing-preflight)
+              scripts/app_store_connect.py signing-preflight --cloudkit-container iCloud.com.offscript.app --profile-type IOS_APP_STORE
               ;;
             reconfigure-dryrun)
               test -n "${WF_ID:-}" || { echo "workflow_id input required"; exit 1; }

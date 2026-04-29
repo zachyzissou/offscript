@@ -82,6 +82,18 @@ check_build_number_available() {
 	fi
 }
 
+check_cloudkit_signing_ready() {
+	if ! "$PLIST_BUDDY" -c "Print :com.apple.developer.icloud-container-identifiers:0" "$ROOT_DIR/OffScript/OffScript.entitlements" >/dev/null 2>&1; then
+		return
+	fi
+
+	if [[ -n "${ASC_KEY_PATH:-}" ]]; then
+		"$ASC_SCRIPT" signing-preflight --cloudkit-container iCloud.com.offscript.app --profile-type IOS_APP_STORE
+	else
+		echo "warning: skipping CloudKit signing preflight; no local ASC env file found" >&2
+	fi
+}
+
 prepare_xcode_args() {
 	BUILD_SETTINGS=()
 	XCODE_AUTH_ARGS=()
@@ -116,6 +128,7 @@ if [[ "$VALIDATE_ONLY" == "true" ]]; then
 fi
 
 check_build_number_available
+check_cloudkit_signing_ready
 
 rm -rf "$ARCHIVE_PATH" "$EXPORT_PATH"
 
