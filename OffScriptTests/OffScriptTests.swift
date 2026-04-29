@@ -514,6 +514,57 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func discoveryPreviewEvidenceBeatsGenreOnlyCatalogMatch() throws {
+        let tasteProfile = UserTasteProfile()
+        tasteProfile.topTags = ["audio craft"]
+        tasteProfile.preferredGenres = ["Technology"]
+
+        let genreOnly = PodcastSearchResult(
+            title: "Generic Technology Weekly",
+            author: "Catalog Network",
+            feedURL: URL(string: "https://example.com/generic-tech.xml")!,
+            artworkURL: nil,
+            websiteURL: nil,
+            summary: "Technology"
+        )
+        let evidenced = PodcastSearchResult(
+            title: "Signal Workshop",
+            author: "Independent Audio Lab",
+            feedURL: URL(string: "https://example.com/signal-workshop.xml")!,
+            artworkURL: nil,
+            websiteURL: nil,
+            summary: "Technology"
+        )
+        let preview = PodcastPreviewSnapshot(
+            title: "Signal Workshop",
+            author: "Independent Audio Lab",
+            summary: "Field notes for makers and editors.",
+            categories: ["Technology"],
+            websiteURL: nil,
+            latestEpisodes: [
+                PodcastPreviewEpisode(
+                    id: "episode-1",
+                    title: "Audio craft for sharper interviews",
+                    pubDate: .now,
+                    duration: 1_800,
+                    summary: "Practical audio craft choices for hosts.",
+                    audioURL: URL(string: "https://example.com/signal-workshop-1.mp3")!,
+                    artworkURL: nil
+                )
+            ]
+        )
+
+        let genericScore = DiscoveryService.score(result: genreOnly, tasteProfile: tasteProfile)
+        let evidencedScore = DiscoveryService.score(result: evidenced, tasteProfile: tasteProfile, preview: preview)
+
+        #expect(evidencedScore.score > genericScore.score)
+        #expect(evidencedScore.explanation == "Latest episodes overlap your audio craft signal")
+        #expect(evidencedScore.signalTrace.contains(RecommendationSignal(label: "source", value: "latest episode")))
+        #expect(evidencedScore.signalTrace.contains(RecommendationSignal(label: "tags", value: "audio craft")))
+    }
+
+    @Test
+    @MainActor
     func playerSuggestionsExposeNowPlayingSignalTrace() throws {
         let container = try makeContainer()
         let context = container.mainContext
