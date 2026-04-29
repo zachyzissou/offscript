@@ -1566,9 +1566,7 @@ private struct LibraryBatchImportStrip: View {
                         text: failed == 0 ? "✓ IMPORT COMPLETE" : "● IMPORT FINISHED",
                         color: failed == 0 ? .offscriptFnMode : .offscriptSignalYellow
                     )
-                    Text(failed == 0
-                         ? "Added \(added) shows"
-                         : "Added \(added), \(failed) failed")
+                    Text(finishedSummary(added: added, failed: failed))
                         .font(.system(size: 12.5))
                         .foregroundStyle(Color.offscriptPaperWhite)
                     Spacer()
@@ -1602,6 +1600,20 @@ private struct LibraryBatchImportStrip: View {
                 onFinished()
             }
         }
+    }
+
+    private func finishedSummary(added: Int, failed: Int) -> String {
+        let skipped = importer.skippedCount
+        if failed == 0, skipped == 0 {
+            return "Added \(added) shows"
+        }
+        if failed == 0 {
+            return "Added \(added), \(skipped) already tuned"
+        }
+        if skipped == 0 {
+            return "Added \(added), \(failed) failed"
+        }
+        return "Added \(added), \(skipped) already tuned, \(failed) failed"
     }
 }
 
