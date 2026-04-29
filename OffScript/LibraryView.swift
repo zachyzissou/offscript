@@ -455,40 +455,72 @@ struct LibraryView: View {
 
     @MainActor
     private func loadLibraryEpisodeSummary() {
+        startLibraryEpisodeSummaryLoad(deferWhileImporting: false)
+    }
+
+    @MainActor
+    private func scheduleLibraryEpisodeSummaryLoad() {
+        startLibraryEpisodeSummaryLoad(deferWhileImporting: true)
+    }
+
+    @MainActor
+    private func startLibraryEpisodeSummaryLoad(deferWhileImporting: Bool) {
         summaryLoadTask?.cancel()
-        guard !subscribedPodcasts.isEmpty else {
+        let podcastIDs = subscribedPodcastIDs
+        guard !podcastIDs.isEmpty else {
             freshEpisodes = []
             unplayedEpisodeCount = 0
             freshCountsByPodcastID = [:]
             return
         }
 
+        summaryLoadTask = Task { @MainActor in
+            if deferWhileImporting, BatchImportService.shared.isRunning {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                guard !Task.isCancelled, !BatchImportService.shared.isRunning else { return }
+            }
+            await refreshLibraryEpisodeSummary(podcastIDs: podcastIDs)
+        }
+    }
+
+    @MainActor
+    private func refreshLibraryEpisodeSummary(podcastIDs: [UUID]) async {
         do {
-            let descriptor = FetchDescriptor<Episode>(
+            let countDescriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed }
+            )
+            var freshDescriptor = FetchDescriptor<Episode>(
                 predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed },
                 sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
             )
-            let unplayedEpisodes = try modelContext.fetch(descriptor)
-            unplayedEpisodeCount = unplayedEpisodes.count
-            freshEpisodes = Array(unplayedEpisodes.prefix(10))
-            freshCountsByPodcastID = Dictionary(unplayedEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +)
+            freshDescriptor.fetchLimit = 10
+
+            unplayedEpisodeCount = try modelContext.fetchCount(countDescriptor)
+            freshEpisodes = try modelContext.fetch(freshDescriptor)
+            freshCountsByPodcastID = Dictionary(freshEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +)
+
+            var counts = freshCountsByPodcastID
+            let chunkSize = 24
+            for start in stride(from: 0, to: podcastIDs.count, by: chunkSize) {
+                guard !Task.isCancelled else { return }
+                let chunk = podcastIDs[start..<min(start + chunkSize, podcastIDs.count)]
+                for podcastID in chunk {
+                    var descriptor = FetchDescriptor<Episode>(
+                        predicate: #Predicate<Episode> {
+                            $0.podcast.id == podcastID && $0.podcast.isSubscribed && !$0.isPlayed
+                        }
+                    )
+                    let count = try modelContext.fetchCount(descriptor)
+                    counts[podcastID] = count
+                }
+                freshCountsByPodcastID = counts.filter { $0.value > 0 }
+                await Task.yield()
+            }
         } catch {
             freshEpisodes = []
             unplayedEpisodeCount = 0
             freshCountsByPodcastID = [:]
             libraryLogger.error("Library summary load failed: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    @MainActor
-    private func scheduleLibraryEpisodeSummaryLoad() {
-        summaryLoadTask?.cancel()
-        summaryLoadTask = Task { @MainActor in
-            if BatchImportService.shared.isRunning {
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                guard !Task.isCancelled, !BatchImportService.shared.isRunning else { return }
-            }
-            loadLibraryEpisodeSummary()
         }
     }
 

@@ -42,6 +42,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Library directory rendering now builds one snapshot per render pass** for filtered shows, alphabet sections, and row numbers, with debounced search input so typing does not repeatedly sort/group the whole library.
 - **Library no longer observes every OPML progress tick at the root page level.** The import strip repaints during batch progress, and the expensive directory snapshot refreshes when the batch reaches a terminal state.
 - **Bulk OPML import now skips already-subscribed feed URLs before network fetch/parse work** using the same normalized feed-key logic as OPML dedupe, so re-importing a large library does not waste rows on feeds that are already tuned.
+- **Library summary loading now avoids hydrating the full unplayed back catalog on open.** The header count and fresh rail load from count/limited fetches first, while per-show unplayed counts fill in incrementally in small chunks.
 
 ### Added — recommendation tuner and signal discovery
 - **Settings now has a three-position recommendation tuner** (`SIGNAL`, `BALANCED`, `DISCOVERY`) so listeners can choose whether OffScript stays strictly inside known local evidence or opens a new-show discovery lane.
