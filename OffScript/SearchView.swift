@@ -508,6 +508,7 @@ private struct SearchResultRow: View {
         .sheet(item: $safariURL) { item in
             SafariView(url: item.url)
                 .ignoresSafeArea()
+                .tunerModalSurface()
         }
     }
 }

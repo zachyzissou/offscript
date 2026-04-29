@@ -355,6 +355,7 @@ struct LibraryView: View {
         // as toolbar items — iOS 26 wraps toolbar buttons in glass chrome.
         .sheet(isPresented: $isImportPresented) {
             LibraryImportSheet()
+                .tunerModalSurface()
         }
     }
 
@@ -1281,7 +1282,9 @@ private struct PodcastDetailTunerHeader: View {
             HStack(spacing: 8) {
                 if podcast.isSubscribed {
                     Button {
-                        showUnsubscribeConfirmation = true
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            showUnsubscribeConfirmation.toggle()
+                        }
                     } label: {
                         TunerLabel(text: "× UNSUBSCRIBE", color: .offscriptFnRecord, size: 10)
                             .padding(.horizontal, 12)
@@ -1289,25 +1292,6 @@ private struct PodcastDetailTunerHeader: View {
                             .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
-                    .confirmationDialog(
-                        "Unsubscribe from \(podcast.title)?",
-                        isPresented: $showUnsubscribeConfirmation,
-                        titleVisibility: .visible
-                    ) {
-                        Button("Unsubscribe", role: .destructive) {
-                            withAnimation {
-                                // Centralized unsubscribe: clears queue
-                                // items, deletes downloaded files, removes
-                                // Spotlight index entries, and saves once.
-                                // Previously only handled queue cleanup.
-                                _ = PodcastUnsubscribeService.unsubscribe(podcast,
-                                                                          in: modelContext)
-                            }
-                        }
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("Removes the show from your library, dequeues its episodes, deletes any offline downloads, and stops it from appearing in iOS Search. Listening history is preserved.")
-                    }
                 }
 
                 if let url = podcast.websiteURL {
@@ -1327,11 +1311,56 @@ private struct PodcastDetailTunerHeader: View {
             .sheet(item: $safariURL) { item in
                 SafariView(url: item.url)
                     .ignoresSafeArea()
+                    .tunerModalSurface()
+            }
+
+            if showUnsubscribeConfirmation {
+                unsubscribeConfirmationPanel(for: podcast)
             }
 
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                 .padding(.top, 6)
         }
+    }
+
+    private func unsubscribeConfirmationPanel(for podcast: Podcast) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TunerLabel(text: "CONFIRM · UNSUBSCRIBE", color: .offscriptFnRecord)
+            Text("Removes the show from your library, dequeues its episodes, deletes offline downloads, and stops it from appearing in iOS Search. Listening history is preserved.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
+                .lineSpacing(2)
+
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showUnsubscribeConfirmation = false
+                    }
+                } label: {
+                    TunerLabel(text: "CANCEL", color: .offscriptSoftPaper, size: 10)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showUnsubscribeConfirmation = false
+                        _ = PodcastUnsubscribeService.unsubscribe(podcast, in: modelContext)
+                    }
+                } label: {
+                    TunerLabel(text: "UNSUBSCRIBE", color: .offscriptFnRecord, size: 10)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+        .accessibilityElement(children: .contain)
     }
 }
 
