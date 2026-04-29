@@ -19,6 +19,9 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ### Changed — taste profile quality
 - **Taste refresh now uses weighted, decayed evidence instead of equal counts.** Recent explicit `More like this` signals beat old passive completions, while `Less like this`, `Not interested`, quick skips, and abandons demote matching tags and shows.
 
+### Fixed — playback audio session
+- **Playback now uses an iOS-supported `.playback` audio-session configuration** instead of pairing the `.longFormAudio` route-sharing policy with AirPlay/Bluetooth category options. iOS rejects that combination with `OSStatus -50`; when the category set fails, the app falls back toward Silent-Mode-bound foreground audio. Keeping the session on `.playback` is what lets podcast audio survive lock, backgrounding, and the ringer switch.
+
 ### Fixed — Apple identity / iCloud sync state
 - **Settings now validates stored Sign in with Apple credentials** before treating the user as signed in. Revoked or missing credentials clear local identity and disable sync.
 - **iCloud account availability is checked separately from Apple identity.** Sign in with Apple no longer blindly enables sync when CloudKit is unavailable on the device.

@@ -1,9 +1,21 @@
+import AVFoundation
 import Foundation
 import SwiftData
 import Testing
 @testable import OffScript
 
 struct OffScriptTests {
+    @Test
+    func playbackAudioSessionUsesSilentSwitchSafeCategory() {
+        #if os(iOS)
+        #expect(OffScriptAudioSessionConfiguration.category == .playback)
+        #expect(OffScriptAudioSessionConfiguration.mode == .spokenAudio)
+        #expect(OffScriptAudioSessionConfiguration.options.contains(.allowAirPlay))
+        #expect(OffScriptAudioSessionConfiguration.options.contains(.allowBluetoothA2DP))
+        #expect(!OffScriptAudioSessionConfiguration.usesExplicitRouteSharingPolicy)
+        #endif
+    }
+
     @Test
     func recommendationScoreRewardsBetterFit() {
         let strongFit = RecommendationScorer.score(

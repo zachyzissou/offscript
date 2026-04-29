@@ -6,6 +6,15 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+#if os(iOS)
+enum OffScriptAudioSessionConfiguration {
+    static let category: AVAudioSession.Category = .playback
+    static let mode: AVAudioSession.Mode = .spokenAudio
+    static let options: AVAudioSession.CategoryOptions = [.allowAirPlay, .allowBluetoothA2DP]
+    static let usesExplicitRouteSharingPolicy = false
+}
+#endif
+
 @MainActor
 final class PlaybackController: ObservableObject {
     static let shared = PlaybackController()
@@ -421,11 +430,16 @@ final class PlaybackController: ObservableObject {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         do {
-            // .playback + .spokenAudio + .longFormAudio is the supported combo
-            // for podcast apps that need lock-screen controls and background
-            // audio. .longFormAudio prevents iOS from quietly switching us
-            // into a duck-other-audio category.
-            try session.setCategory(.playback, mode: .spokenAudio, policy: .longFormAudio, options: [.allowAirPlay, .allowBluetoothA2DP])
+            // .playback is what makes podcast audio ignore Silent Mode and
+            // continue under lock/background when UIBackgroundModes includes
+            // audio. Do not pass .longFormAudio here: iOS rejects that route
+            // sharing policy when paired with our AirPlay/Bluetooth options,
+            // leaving the app on the default Silent-Mode-bound category.
+            try session.setCategory(
+                OffScriptAudioSessionConfiguration.category,
+                mode: OffScriptAudioSessionConfiguration.mode,
+                options: OffScriptAudioSessionConfiguration.options
+            )
         } catch {
             logger.error("AVAudioSession setCategory failed: \(error.localizedDescription, privacy: .public)")
         }
