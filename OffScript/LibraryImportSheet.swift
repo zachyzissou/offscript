@@ -16,13 +16,10 @@ private let importSheetLogger = Logger(subsystem: "com.offscript", category: "Li
 struct LibraryImportSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Query private var allPodcasts: [Podcast]
-
-    private var subscribedPodcasts: [Podcast] {
-        allPodcasts
-            .filter(\.isSubscribed)
-            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-    }
+    @Query(
+        filter: #Predicate<Podcast> { $0.isSubscribed == true },
+        sort: [SortDescriptor(\Podcast.title)]
+    ) private var subscribedPodcasts: [Podcast]
 
     enum Mode: Hashable, Identifiable {
         case menu
@@ -221,7 +218,7 @@ struct LibraryImportSheet: View {
                 Image(systemName: "link")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.offscriptSignalYellow)
-                TextField("",
+                TextField("Podcast feed URL",
                           text: $urlInput,
                           prompt: Text("https://example.com/feed.xml")
                             .font(.system(size: 11, weight: .semibold, design: .monospaced))
@@ -512,6 +509,7 @@ enum ImportRowStatus {
     case importing
     case added
     case failed
+    case cancelled
 
     var label: String {
         switch self {
@@ -519,6 +517,7 @@ enum ImportRowStatus {
         case .importing: "● IMPORTING"
         case .added: "✓ ADDED"
         case .failed: "✕ FAILED"
+        case .cancelled: "× CANCELLED"
         }
     }
 
@@ -528,6 +527,7 @@ enum ImportRowStatus {
         case .importing: .offscriptSignalYellow
         case .added: .offscriptFnMode
         case .failed: .offscriptFnRecord
+        case .cancelled: .offscriptSoftPaper
         }
     }
 }

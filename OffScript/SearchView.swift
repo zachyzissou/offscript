@@ -92,7 +92,7 @@ struct SearchView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.offscriptSignalYellow)
 
-            TextField("", text: $query, prompt: Text("SEARCH PODCASTS OR HOSTS")
+            TextField("Search podcasts or hosts", text: $query, prompt: Text("SEARCH PODCASTS OR HOSTS")
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundColor(.offscriptSoftPaper))
                 .textInputAutocapitalization(.never)
@@ -285,7 +285,7 @@ private struct SearchPromptStrip: View {
                 .font(.system(size: 16, weight: .semibold))
                 .tracking(-0.2)
                 .foregroundStyle(Color.offscriptPaperWhite)
-            Text("Search for a favorite show, a reliable host, and one topic you want more of. OffScript makes a smart feed from any of them.")
+            Text("Search uses Apple Podcasts results and imports RSS feeds. Exact show or host names work best; topics are broader catalog scans.")
                 .font(.system(size: 13))
                 .foregroundStyle(Color.offscriptPaperWhite)
                 .lineSpacing(2)
@@ -482,6 +482,8 @@ private struct SearchResultRow: View {
                         isAdded ? Color.offscriptFnMode : Color.offscriptSignalYellow,
                         lineWidth: 1
                     ))
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(isImporting || isAdded)
@@ -494,6 +496,8 @@ private struct SearchResultRow: View {
                             .padding(.horizontal, 12)
                             .padding(.vertical, 9)
                             .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }

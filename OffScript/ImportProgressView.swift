@@ -13,6 +13,8 @@ struct ImportProgressView: View {
 
     @State private var statuses: [URL: ImportStatus] = [:]
     @State private var isComplete = false
+    @State private var hasFinishedAttempt = false
+    @State private var isImporting = false
 
     enum ImportStatus {
         case pending
@@ -35,19 +37,17 @@ struct ImportProgressView: View {
                     TunerLabel(text: "03 · TUNING", color: .offscriptSignalYellow)
                     Spacer()
                     TunerLabel(
-                        text: isComplete ? "● COMPLETE" : "● TUNING \(doneCount)/\(podcasts.count)",
-                        color: isComplete ? .offscriptFnMode : .offscriptSignalYellow
+                        text: statusReadout,
+                        color: statusReadoutColor
                     )
                 }
 
-                Text(isComplete ? "Channels tuned." : "Tuning channels…")
+                Text(headerTitle)
                     .font(.system(size: 32, weight: .bold))
                     .tracking(-0.5)
                     .foregroundStyle(Color.offscriptPaperWhite)
 
-                Text(isComplete
-                     ? "Your feed is ready. Recommendations build as you listen."
-                     : "Fetching the most recent episodes for each channel. This won't pull the full back catalog — background sync handles that later.")
+                Text(headerCopy)
                     .font(.system(size: 13.5))
                     .foregroundStyle(Color.offscriptPaperWhite)
                     .lineSpacing(2)
@@ -71,6 +71,36 @@ struct ImportProgressView: View {
                 }
             }
 
+            if hasFailures {
+                HStack(spacing: 10) {
+                    Button {
+                        Task { await runImports(onlyFailed: true) }
+                    } label: {
+                        TunerLabel(text: "↻ RETRY FAILED", color: .offscriptSignalYellow, size: 10)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isImporting)
+
+                    if doneCount > 0 {
+                        Button {
+                            isComplete = true
+                            onComplete()
+                        } label: {
+                            TunerLabel(text: "→ CONTINUE", color: .offscriptFnInfo, size: 10)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                                .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
             Spacer()
         }
         .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -87,25 +117,69 @@ struct ImportProgressView: View {
         statuses.values.filter { $0 == .done }.count
     }
 
+    private var failedCount: Int {
+        statuses.values.filter { $0 == .failed }.count
+    }
+
+    private var hasFailures: Bool {
+        hasFinishedAttempt && failedCount > 0 && !isComplete
+    }
+
+    private var statusReadout: String {
+        if isComplete { return "● COMPLETE" }
+        if hasFailures { return "● \(failedCount) FAILED" }
+        return "● TUNING \(doneCount)/\(podcasts.count)"
+    }
+
+    private var statusReadoutColor: Color {
+        if isComplete { return .offscriptFnMode }
+        if hasFailures { return .offscriptFnRecord }
+        return .offscriptSignalYellow
+    }
+
+    private var headerTitle: String {
+        if isComplete { return "Channels tuned." }
+        if hasFailures { return "Some channels missed." }
+        return "Tuning channels..."
+    }
+
+    private var headerCopy: String {
+        if isComplete {
+            return "Your feed is ready. Recommendations build as you listen."
+        }
+        if hasFailures {
+            return "Retry failed channels or continue with the feeds that tuned successfully."
+        }
+        return "Fetching the most recent episodes for each channel. This will not pull the full back catalog; background sync handles that later."
+    }
+
     // Onboarding-time tuning. We deliberately import only the most recent
     // episodes per podcast so first-launch isn't waiting on a 500-episode
     // back catalog (common for shows like NPR, etc). Background sync can
     // backfill the rest later.
     private let onboardingEpisodeLimit = 15
     @MainActor
-    private func runImports() async {
+    private func runImports(onlyFailed: Bool = false) async {
+        guard !isImporting else { return }
+        isImporting = true
+        defer { isImporting = false }
+
         // Persist genre preferences immediately — doesn't depend on imports.
         UserDefaults.standard.set(selectedGenres.map(\.rawValue), forKey: "offscript.preferredGenres")
 
+        let selectedPodcasts = onlyFailed
+            ? podcasts.filter { statuses[$0.feedURL] == .failed }
+            : podcasts
+
         // Mark all selected podcasts as importing up front so the UI shows
         // every row pulsing — better feedback than rows lighting up serially.
-        for podcast in podcasts {
+        for podcast in selectedPodcasts {
             statuses[podcast.feedURL] = .importing
         }
 
         // Keep SwiftData writes on the main actor. This onboarding path imports
         // a small selected starter set; the heavy OPML path uses BatchImportService.
-        for podcast in podcasts {
+        for podcast in selectedPodcasts {
             do {
                 let imported = try await syncService.importPodcast(
                     from: podcast,
@@ -132,10 +206,11 @@ struct ImportProgressView: View {
             importLogger.error("Failed to save imported feed: \(error.localizedDescription, privacy: .public)")
         }
 
-        // Done. No artificial sleep — we already showed live progress; the
-        // user wants to get to their feed, not watch a checkmark for 2.7s.
-        isComplete = true
-        onComplete()
+        hasFinishedAttempt = true
+        if failedCount == 0 {
+            isComplete = true
+            onComplete()
+        }
     }
 }
 

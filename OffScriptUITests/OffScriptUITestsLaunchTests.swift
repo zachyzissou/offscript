@@ -10,7 +10,15 @@ final class OffScriptUITestsLaunchTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += [
             "-offscript.hasSeenOnboarding",
-            "YES"
+            "YES",
+            "-offscript.debugSeedSampleData",
+            "NO",
+            "-offscript.debugSeedLibrarySize",
+            "0",
+            "-offscript.debugSeedEpisodesPerShow",
+            "0",
+            "-offscript.debugLaunchTab",
+            "0"
         ]
         app.launch()
 

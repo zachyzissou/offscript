@@ -219,6 +219,9 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
         // Sharp corners (radius 0) line up with the Tuner rectangle vocab.
         let button = ASAuthorizationAppleIDButton(type: .signIn, style: .white)
         button.cornerRadius = 0
+        context.coordinator.presentationAnchorProvider = { [weak button] in
+            button?.window
+        }
         button.addTarget(context.coordinator,
                          action: #selector(Coordinator.handleSignIn),
                          for: .touchUpInside)
@@ -236,6 +239,7 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
         // with Apple does nothing." Apple's docs describe holding the
         // controller for the lifetime of the request.
         private var inFlightController: ASAuthorizationController?
+        var presentationAnchorProvider: (() -> ASPresentationAnchor?)?
 
         init(onComplete: @escaping () -> Void, onFailure: @escaping (String) -> Void) {
             self.onComplete = onComplete
@@ -259,6 +263,9 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
         // active one and fall back to the key window if none match. Without
         // this, the auth sheet refuses to present and the request errors out.
         func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+            if let anchor = presentationAnchorProvider?() {
+                return anchor
+            }
             let active = UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
                 .first { $0.activationState == .foregroundActive }
@@ -266,12 +273,21 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
                     .compactMap { $0 as? UIWindowScene }
                     .first
 
-            guard let active else {
-                fatalError("Sign in with Apple requires an active window scene")
+            if let active {
+                return active.windows.first(where: \.isKeyWindow)
+                    ?? active.windows.first
+                    ?? UIWindow(windowScene: active)
             }
-            return active.windows.first(where: \.isKeyWindow)
-                ?? active.windows.first
-                ?? UIWindow(windowScene: active)
+            assertionFailure("Sign in with Apple requires an active window scene")
+            if #unavailable(iOS 26.0) {
+                return detachedFallbackAnchor()
+            }
+            preconditionFailure("Sign in with Apple requires an active window scene")
+        }
+
+        @available(iOS, deprecated: 26.0)
+        private func detachedFallbackAnchor() -> ASPresentationAnchor {
+            ASPresentationAnchor(frame: .zero)
         }
 
         func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {

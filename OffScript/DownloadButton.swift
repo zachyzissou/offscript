@@ -33,6 +33,8 @@ struct DownloadButton: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .overlay(Rectangle().stroke(downloadColor.opacity(0.7), lineWidth: 1))
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(downloadAccessibilityLabel)

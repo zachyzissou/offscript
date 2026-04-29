@@ -621,7 +621,7 @@ final class PlaybackController: ObservableObject {
         guard nowPlayingArtworkURL != url else { return }
         nowPlayingArtworkURL = url
         nowPlayingArtworkTask?.cancel()
-        nowPlayingArtworkTask = Task(priority: .utility) { [weak self] in
+        nowPlayingArtworkTask = Task.detached(priority: .utility) { [url] in
             let data: Data?
             if url.isFileURL {
                 data = try? Data(contentsOf: url)
@@ -632,7 +632,7 @@ final class PlaybackController: ObservableObject {
             guard let data, let image = UIImage(data: data) else { return }
             let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
             await MainActor.run {
-                guard self?.nowPlayingArtworkURL == url else { return }
+                guard PlaybackController.shared.nowPlayingArtworkURL == url else { return }
                 MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] = artwork
             }
         }

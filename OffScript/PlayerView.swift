@@ -184,6 +184,7 @@ struct PlayerView: View {
         .tint(Color.offscriptSignalYellow)
         .frame(height: 24)
         .padding(.vertical, 2)
+        .accessibilityLabel("Playback position")
         .accessibilityValue("\(Int(progressValue * 100)) percent")
     }
 
@@ -227,7 +228,7 @@ struct PlayerView: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 26, weight: .bold))
-                .foregroundStyle(.black)
+                .foregroundStyle(Color.offscriptStudioBlack)
                 .frame(width: 80, height: 56)
                 .background(Color.offscriptSignalYellow)
         }
@@ -503,6 +504,8 @@ struct PlayerView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .overlay(Rectangle().stroke(color.opacity(0.7), lineWidth: 1))
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
     }
 
     // MARK: empty
@@ -655,7 +658,7 @@ private struct PlayerSuggestionRow: View {
             } label: {
                 Image(systemName: "play.fill")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.black)
+                    .foregroundStyle(Color.offscriptStudioBlack)
                     .frame(width: 30, height: 30)
                     .background(Color.offscriptSignalYellow)
                     .frame(width: 44, height: 44)

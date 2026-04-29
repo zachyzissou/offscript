@@ -98,7 +98,7 @@ struct MiniPlayer: View {
                     } label: {
                         Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.black)
+                            .foregroundStyle(Color.offscriptStudioBlack)
                             .frame(width: 36, height: 36)
                             .background(Color.offscriptSignalYellow)
                             .frame(width: 44, height: 44)

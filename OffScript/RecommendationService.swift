@@ -111,8 +111,8 @@ final class RecommendationService {
         return HomeFeedSection(
             title: mode == .discovery ? "New Frequencies" : "Discovery Check",
             subtitle: mode == .discovery
-                ? "New channels scored only from your saved local signal."
-                : "A small new-show lane, kept behind your existing evidence.",
+                ? "Fetched from Apple Podcasts Search, then ranked on-device from saved signal."
+                : "A small Apple Podcasts Search lane, kept behind your existing evidence.",
             discoveryResults: results
         )
     }
@@ -140,7 +140,9 @@ final class RecommendationService {
         let preferences = try context.fetch(FetchDescriptor<PreferenceSignal>(
             predicate: #Predicate<PreferenceSignal> { $0.date >= signalCutoff }
         ))
-        let playbackEvents = try context.fetch(FetchDescriptor<PlaybackEvent>())
+        let playbackEvents = try context.fetch(FetchDescriptor<PlaybackEvent>(
+            predicate: #Predicate<PlaybackEvent> { $0.date >= signalCutoff }
+        ))
         let tasteProfile = try? TasteProfileService.loadOrCreate(in: context)
         let dislikedEpisodeIDs: Set<UUID> = Set(preferences.filter { $0.action == .notInterested || $0.action == .lessLikeThis }.compactMap { (signal: PreferenceSignal) -> UUID? in signal.episode.id })
         let negativePreferences = preferences.filter { $0.action == .notInterested || $0.action == .lessLikeThis }
@@ -487,11 +489,16 @@ final class RecommendationService {
         let preferences = try context.fetch(FetchDescriptor<PreferenceSignal>(
             predicate: #Predicate<PreferenceSignal> { $0.date >= signalCutoff }
         ))
-        let playbackEvents = try context.fetch(FetchDescriptor<PlaybackEvent>())
+        let skippedQuicklyRawValue = PlaybackEvent.Kind.skippedQuickly.rawValue
+        let abandonedRawValue = PlaybackEvent.Kind.abandoned.rawValue
+        let negativePlaybackEvents = try context.fetch(FetchDescriptor<PlaybackEvent>(
+            predicate: #Predicate<PlaybackEvent> {
+                $0.date >= signalCutoff && ($0.kindRawValue == skippedQuicklyRawValue || $0.kindRawValue == abandonedRawValue)
+            }
+        ))
         let tasteProfile = try? TasteProfileService.loadOrCreate(in: context)
         let likedEpisodeIDs: Set<UUID> = Set(preferences.filter { $0.action == .like || $0.action == .moreLikeThis }.compactMap { (signal: PreferenceSignal) -> UUID? in signal.episode.id })
         let negativePreferences = preferences.filter { $0.action == .notInterested || $0.action == .lessLikeThis }
-        let negativePlaybackEvents = playbackEvents.filter { $0.kind == .skippedQuickly || $0.kind == .abandoned }
         let profileByEpisodeID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.episodeID, $0) })
         let likedTags = Self.normalizedTags(profiles.lazy.filter { likedEpisodeIDs.contains($0.episodeID) }.flatMap(\.tags))
         let dislikedTags = Self.normalizedTags(

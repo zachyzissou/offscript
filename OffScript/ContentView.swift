@@ -208,7 +208,7 @@ private struct TunerTabBar: View {
                 if tab == .queue, queueBadge > 0 {
                     Text("\(min(queueBadge, 99))")
                         .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(Color.offscriptStudioBlack)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
                         .background(Color.offscriptSignalYellow)
@@ -239,12 +239,26 @@ private struct TunerTabBar: View {
 #if DEBUG
 private extension ContentView {
     /// One-shot seeder for sim/dev: launch with -offscript.debugSeedSampleData YES
-    /// (and optionally -offscript.hasSeenOnboarding YES) to populate 3 podcasts × 3 episodes
-    /// each so populated-state UI can be audited without onboarding.
+    /// (and optionally -offscript.debugSeedLibrarySize 250) to populate a
+    /// deterministic library for visual/performance audits without onboarding.
     /// No-ops once data exists.
     func configureDebugSeedDataIfNeeded() {
         let defaults = UserDefaults.standard
-        guard defaults.bool(forKey: "offscript.debugSeedSampleData") else { return }
+        let requestedLibrarySize = max(0, defaults.integer(forKey: "offscript.debugSeedLibrarySize"))
+        guard defaults.bool(forKey: "offscript.debugSeedSampleData") || requestedLibrarySize > 0 else { return }
+
+        if requestedLibrarySize > 0 {
+            let episodesPerShow = max(1, defaults.integer(forKey: "offscript.debugSeedEpisodesPerShow"))
+            let existingShows = (try? modelContext.fetchCount(FetchDescriptor<Podcast>())) ?? 0
+            let existingEpisodes = (try? modelContext.fetchCount(FetchDescriptor<Episode>())) ?? 0
+            guard existingShows != requestedLibrarySize || existingEpisodes != requestedLibrarySize * episodesPerShow else { return }
+            resetDebugLibrary()
+            seedLargeDebugLibrary(
+                showCount: requestedLibrarySize,
+                episodesPerShow: episodesPerShow
+            )
+            return
+        }
 
         let existing = (try? modelContext.fetchCount(FetchDescriptor<Podcast>())) ?? 0
         guard existing == 0 else { return }
@@ -294,6 +308,52 @@ private extension ContentView {
             }
         }
 
+        try? modelContext.save()
+    }
+
+    private func resetDebugLibrary() {
+        for episode in (try? modelContext.fetch(FetchDescriptor<Episode>())) ?? [] {
+            modelContext.delete(episode)
+        }
+        for podcast in (try? modelContext.fetch(FetchDescriptor<Podcast>())) ?? [] {
+            modelContext.delete(podcast)
+        }
+        try? modelContext.save()
+    }
+
+    private func seedLargeDebugLibrary(showCount: Int, episodesPerShow: Int) {
+        let categories = ["News", "Tech", "Comedy", "Science", "Culture", "Storytelling"]
+        for index in 0..<showCount {
+            let channel = String(format: "Channel %03d", index + 1)
+            let pod = Podcast(
+                title: channel,
+                author: "Debug Network \(index % 12 + 1)",
+                summary: "Deterministic large-library seed for scroll, search, sort, and alphabet jump QA.",
+                feedURL: URL(string: "https://debug.offscript.invalid/feeds/\(index + 1).xml")!,
+                artworkURL: nil,
+                categories: [categories[index % categories.count]],
+                isSubscribed: true
+            )
+            modelContext.insert(pod)
+
+            for episodeIndex in 0..<episodesPerShow {
+                let episode = Episode(
+                    guid: "debug-\(index + 1)-\(episodeIndex + 1)",
+                    title: "\(channel) Episode \(episodeIndex + 1)",
+                    summary: "Synthetic episode for large-library UI validation.",
+                    pubDate: Calendar.current.date(byAdding: .hour, value: -(index * episodesPerShow + episodeIndex), to: Date()) ?? Date(),
+                    duration: TimeInterval(900 + (episodeIndex % 6) * 300),
+                    audioURL: URL(string: "https://debug.offscript.invalid/audio/\(index + 1)-\(episodeIndex + 1).mp3")!,
+                    artworkURL: nil,
+                    podcast: pod
+                )
+                if episodeIndex == 0, index % 5 == 0 {
+                    episode.playedPosition = 300
+                    episode.lastPlayedAt = Date()
+                }
+                modelContext.insert(episode)
+            }
+        }
         try? modelContext.save()
     }
 
