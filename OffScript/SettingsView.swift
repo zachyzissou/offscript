@@ -659,6 +659,9 @@ struct SettingsView: View {
             return "Apple sign-in needs repair before sync can resume."
         }
         guard cloudKitAvailability.allowsSync else {
+            if cloudKitAvailability == .notConfigured {
+                return "This build is missing iCloud entitlements. Sync stays local until the signed CloudKit profile lands."
+            }
             return "Apple identity is saved; iCloud sync waits for an available iCloud account."
         }
         guard cloudSyncEnabled else {

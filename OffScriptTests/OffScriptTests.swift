@@ -689,6 +689,22 @@ struct OffScriptTests {
     }
 
     @Test
+    func cloudKitAccountStatusRequiresCloudKitEntitlements() {
+        #expect(CloudKitAccountService.entitlementsAllowCloudKitAccountStatus(
+            services: nil,
+            containerIdentifiers: nil
+        ) == false)
+        #expect(CloudKitAccountService.entitlementsAllowCloudKitAccountStatus(
+            services: ["CloudKit"],
+            containerIdentifiers: nil
+        ) == false)
+        #expect(CloudKitAccountService.entitlementsAllowCloudKitAccountStatus(
+            services: ["CloudKit"],
+            containerIdentifiers: ["iCloud.com.offscript.app"]
+        ) == true)
+    }
+
+    @Test
     @MainActor
     func libraryDirectoryOrganizerFiltersAndSortsLargeLibraries() {
         let stale = Podcast(
