@@ -200,6 +200,8 @@ struct EpisodeDetailView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(isCurrentlyPlaying ? Color.offscriptFnMode : Color.offscriptSignalYellow)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(isCurrentlyPlaying)
@@ -218,6 +220,8 @@ struct EpisodeDetailView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(episode.isQueued)
@@ -373,6 +377,8 @@ struct EpisodeDetailView: View {
                     .padding(.vertical, 6)
                     .background(feedbackGiven == .like ? Color.offscriptSignalYellow : Color.clear)
                     .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(feedbackGiven != nil)
@@ -393,6 +399,8 @@ struct EpisodeDetailView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(feedbackGiven != nil)

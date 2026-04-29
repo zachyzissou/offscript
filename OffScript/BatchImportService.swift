@@ -41,7 +41,11 @@ final class BatchImportService: ObservableObject {
         progress.values.filter { if case .failed = $0 { true } else { false } }.count
     }
 
-    var completedCount: Int { addedCount + failedCount }
+    var cancelledCount: Int {
+        progress.values.filter { if case .cancelled = $0 { true } else { false } }.count
+    }
+
+    var completedCount: Int { addedCount + failedCount + cancelledCount }
 
     var totalCount: Int { entries.count }
 
@@ -73,6 +77,7 @@ final class BatchImportService: ObservableObject {
         task?.cancel()
         task = nil
         if isRunning {
+            markUnfinishedRowsCancelled()
             phase = .finished(added: addedCount, failed: failedCount)
         }
     }
@@ -109,6 +114,7 @@ final class BatchImportService: ObservableObject {
             while let (feedURL, status) = await group.next() {
                 if Task.isCancelled {
                     group.cancelAll()
+                    markUnfinishedRowsCancelled()
                     break
                 }
                 progress[feedURL] = status
@@ -123,8 +129,20 @@ final class BatchImportService: ObservableObject {
             }
         }
 
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else {
+            markUnfinishedRowsCancelled()
+            phase = .finished(added: addedCount, failed: failedCount)
+            return
+        }
         phase = .finished(added: addedCount, failed: failedCount)
+    }
+
+    private func markUnfinishedRowsCancelled() {
+        for (feedURL, status) in progress {
+            if status == .pending || status == .importing {
+                progress[feedURL] = .cancelled
+            }
+        }
     }
 
     private static func runOne(entry: OPMLFeedEntry,

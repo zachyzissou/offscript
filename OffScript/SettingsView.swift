@@ -34,7 +34,10 @@ struct SettingsView: View {
 
     private var isSignedIn: Bool { signedInUserID != nil }
     private var isSyncActive: Bool {
-        cloudSyncEnabled && appleCredentialState.isAuthorized && cloudKitAvailability.allowsSync
+        cloudSyncEnabled
+            && appleCredentialState.isAuthorized
+            && cloudKitAvailability.allowsSync
+            && AppSettings.cloudSyncRuntimeState == .cloudBacked
     }
 
     var body: some View {
@@ -425,9 +428,7 @@ struct SettingsView: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color.offscriptPaperWhite)
                     }
-                    Text(cloudKitAvailability.allowsSync
-                         ? "iCloud syncs automatically when connected."
-                         : "Apple identity is saved; iCloud sync waits for an available iCloud account.")
+                    Text(iCloudStatusCopy)
                         .font(.system(size: 12))
                         .foregroundStyle(Color.offscriptPaperWhite.opacity(0.7))
 
@@ -589,6 +590,26 @@ struct SettingsView: View {
     private func refreshSignInState() {
         signedInUserID = AppSettings.currentUserID
         signedInDisplayName = AppSettings.displayName
+    }
+
+    private var iCloudStatusCopy: String {
+        guard appleCredentialState.isAuthorized else {
+            return "Apple sign-in needs repair before sync can resume."
+        }
+        guard cloudKitAvailability.allowsSync else {
+            return "Apple identity is saved; iCloud sync waits for an available iCloud account."
+        }
+        guard cloudSyncEnabled else {
+            return "iCloud is available. Sign in again from this panel to arm sync."
+        }
+        switch AppSettings.cloudSyncRuntimeState {
+        case .cloudBacked:
+            return "iCloud sync is active for this launch."
+        case .fallbackFailed:
+            return "iCloud is available, but this launch fell back to local storage. Restart after the next signed build."
+        case .localOnly:
+            return "iCloud is ready. Sync activates on the next app launch."
+        }
     }
 
     private func refreshSignalProfile() {

@@ -161,10 +161,10 @@ private struct PodcastGenreRail: View {
                     .foregroundStyle(Color.offscriptPaperWhite)
 
                 if isExplore {
-                    TunerLabel(text: "EXPLORE", color: .offscriptFnInfo)
+                    TunerLabel(text: "CURATED", color: .offscriptFnInfo)
                 }
                 Spacer()
-                TunerLabel(text: "\(podcasts.count) ON BAND")
+                TunerLabel(text: "\(podcasts.count) STARTERS")
             }
             .padding(.horizontal, 20)
 

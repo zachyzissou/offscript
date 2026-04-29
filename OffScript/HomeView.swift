@@ -821,7 +821,7 @@ private struct TunerRailCard: View {
                 } label: {
                     Image(systemName: "play.fill")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(Color.offscriptStudioBlack)
                         .frame(width: 30, height: 30)
                         .background(Color.offscriptSignalYellow)
                         .frame(width: 44, height: 44)

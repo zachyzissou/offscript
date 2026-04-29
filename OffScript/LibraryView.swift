@@ -323,6 +323,7 @@ struct LibraryView: View {
                         showsSection(snapshot: snapshot, scrollProxy: scrollProxy)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, OffScriptTheme.pagePadding)
                 .padding(.top, 8)
                 .padding(.bottom, 90)
@@ -529,8 +530,6 @@ private struct LibraryTunerHeader: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 TunerLabel(text: "LIBRARY · CHANNEL DIRECTORY", color: .offscriptSignalYellow)
-                Spacer()
-                TunerLabel(text: "\(showCount) CH", color: .offscriptFnInfo)
             }
 
             HStack(alignment: .firstTextBaseline) {
@@ -653,7 +652,7 @@ private struct LibraryDirectoryControls: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.offscriptSignalYellow)
 
-            TextField("",
+            TextField("Filter shows",
                       text: $query,
                       prompt: Text("FILTER SHOWS BY TITLE, AUTHOR, OR CATEGORY")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
@@ -707,7 +706,7 @@ private struct LibraryDirectoryControls: View {
         Button(action: action) {
             TunerLabel(
                 text: title,
-                color: isDisabled ? .offscriptSoftPaper.opacity(0.5) : (isSelected ? .black : .offscriptPaperWhite),
+                color: isDisabled ? .offscriptSoftPaper.opacity(0.5) : (isSelected ? .offscriptStudioBlack : .offscriptPaperWhite),
                 size: 9
             )
             .padding(.horizontal, 10)
@@ -719,6 +718,8 @@ private struct LibraryDirectoryControls: View {
                     lineWidth: 1
                 )
             )
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
@@ -742,6 +743,8 @@ private struct LibraryAlphabetRail: View {
                             .foregroundStyle(Color.offscriptSignalYellow)
                             .frame(width: 28, height: 30)
                             .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Jump to \(section.title)")
@@ -795,7 +798,9 @@ private struct TunerEpisodeRail: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -838,13 +843,14 @@ private struct TunerLibraryCard: View {
                 } label: {
                     Image(systemName: "play.fill")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(Color.offscriptStudioBlack)
                         .frame(width: 30, height: 30)
                         .background(Color.offscriptSignalYellow)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Play \(episode.title)")
 
                 Button {
                     do { try QueueService.add(episode, in: modelContext) }
@@ -860,6 +866,7 @@ private struct TunerLibraryCard: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(episode.isQueued)
+                .accessibilityLabel(episode.isQueued ? "Already queued" : "Add \(episode.title) to queue")
 
                 Spacer()
             }
@@ -1152,7 +1159,7 @@ struct PodcastDetailView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.offscriptSignalYellow)
 
-            TextField("",
+            TextField("Search episodes",
                       text: $episodeSearchQuery,
                       prompt: Text("SEARCH EPISODES")
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
@@ -1348,7 +1355,7 @@ private struct PodcastEpisodeTunerRow: View {
                 } label: {
                     Image(systemName: "play.fill")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(Color.offscriptStudioBlack)
                         .frame(width: 30, height: 30)
                         .background(Color.offscriptSignalYellow)
                         .frame(width: 44, height: 44)
@@ -1406,7 +1413,7 @@ private struct FilterRow: View {
                     } label: {
                         TunerLabel(
                             text: filter.title.uppercased(),
-                            color: selection == filter ? .black : .offscriptPaperWhite,
+                            color: selection == filter ? .offscriptStudioBlack : .offscriptPaperWhite,
                             size: 10
                         )
                         .padding(.horizontal, 12)
@@ -1416,6 +1423,8 @@ private struct FilterRow: View {
                             selection == filter ? Color.offscriptSignalYellow : Color.offscriptHairline,
                             lineWidth: 1
                         ))
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(selection == filter ? .isSelected : [])

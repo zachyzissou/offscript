@@ -40,11 +40,34 @@ final class OffScriptUITests: XCTestCase {
         XCTAssertTrue(app.screen("HomeScreen").waitForExistence(timeout: 10))
     }
 
-    private func makeApp(hasSeenOnboarding: Bool) -> XCUIApplication {
+    @MainActor
+    func testLargeLibrarySeedSmoke() throws {
+        let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 258, debugEpisodesPerShow: 3, debugLaunchTab: 1)
+        app.launch()
+
+        XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts.containing(labelContaining: "258").waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts["SHOWS · DIRECTORY"].waitForExistence(timeout: 8))
+    }
+
+    private func makeApp(
+        hasSeenOnboarding: Bool,
+        debugLibrarySize: Int = 0,
+        debugEpisodesPerShow: Int = 0,
+        debugLaunchTab: Int = 0
+    ) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += [
             "-offscript.hasSeenOnboarding",
-            hasSeenOnboarding ? "YES" : "NO"
+            hasSeenOnboarding ? "YES" : "NO",
+            "-offscript.debugSeedSampleData",
+            "NO",
+            "-offscript.debugSeedLibrarySize",
+            String(debugLibrarySize),
+            "-offscript.debugSeedEpisodesPerShow",
+            String(debugEpisodesPerShow),
+            "-offscript.debugLaunchTab",
+            String(debugLaunchTab)
         ]
         return app
     }

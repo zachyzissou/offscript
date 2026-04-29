@@ -117,12 +117,15 @@ struct OffScriptApp: App {
                     cloudKitDatabase: .automatic
                 )
                 logger.info("CloudKit sync enabled — creating ModelContainer with iCloud backing")
-                return try ModelContainer(
+                let container = try ModelContainer(
                     for: schema,
                     migrationPlan: OffScriptMigrationPlan.self,
                     configurations: [cloudConfig]
                 )
+                AppSettings.cloudSyncRuntimeState = .cloudBacked
+                return container
             } catch {
+                AppSettings.cloudSyncRuntimeState = .fallbackFailed
                 logger.warning("CloudKit ModelContainer failed, falling back to local: \(String(describing: error), privacy: .public)")
                 // Fall through to local-only
             }
@@ -134,6 +137,9 @@ struct OffScriptApp: App {
             cloudKitDatabase: .none
         )
         logger.info("Using local-only ModelContainer")
+        if !cloudKitEnabled {
+            AppSettings.cloudSyncRuntimeState = .localOnly
+        }
         return try ModelContainer(
             for: schema,
             migrationPlan: OffScriptMigrationPlan.self,

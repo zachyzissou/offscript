@@ -4,6 +4,22 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added — UI QA swarm coverage
+- **Large-library UI smoke coverage now seeds a deterministic 258-show library** and launches directly into Library, giving the 250+ show scrolling case a repeatable simulator test instead of a manual-only complaint.
+- **Debug large-library seeding now resets stale simulator data when an explicit library size is requested**, so visual audits and UI tests are not polluted by previous sample stores.
+
+### Changed — Tuner UI conformance
+- **Shared Tuner labels, tags, and readouts now scale through Dynamic Type metrics** while preserving the mono instrument-panel vocabulary.
+- **Compact Tuner keys now keep their visual size but expose 44pt hit targets** across Library, Player, Queue, Search, downloads, and episode detail actions.
+- **Discovery/search copy now names Apple Podcasts Search explicitly** and avoids implying the app is running a generic opaque algorithmic feed.
+
+### Fixed — onboarding, import, and sync UI honesty
+- **Onboarding Sign in with Apple now presents from the actual button window when available** and no longer uses the old crash-prone missing-scene path for the normal sign-in flow.
+- **Onboarding import no longer auto-completes through failed feeds.** Failed starter channels stay visible with retry and continue actions.
+- **Bulk OPML import cancellation now marks pending/importing rows as cancelled** instead of leaving them stuck mid-import.
+- **Settings no longer claims iCloud sync is active unless the launch actually opened a CloudKit-backed SwiftData container.**
+- **The SwiftData test container is explicitly local-only** so CloudKit entitlements do not break in-memory unit tests.
+
 ### Added — large-library directory controls
 - **Library now behaves like a real channel directory for 250+ show libraries.** The shows list has Tuner-styled search, scope filters, sort modes, compact/artwork row density, visible-count readouts, and an A-Z jump rail so large OPML imports are navigable without endless scrolling.
 - **Large libraries default to compact rows.** Artwork-heavy rows remain available for smaller libraries, but 120+ show libraries automatically use dense Tuner rows to reduce scroll distance and image/layout churn.

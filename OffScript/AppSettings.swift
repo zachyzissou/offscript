@@ -36,6 +36,7 @@ enum AppSettings {
         static let libraryShowDownloadedOnly = "offscript.libraryShowDownloadedOnly"
         static let librarySortMode = "offscript.librarySortMode"
         static let cloudSyncEnabled = "offscript.cloudSyncEnabled"
+        static let cloudSyncRuntimeState = "offscript.cloudSyncRuntimeState"
         static let lastCloudSyncDate = "offscript.lastCloudSyncDate"
     }
 
@@ -43,6 +44,12 @@ enum AppSettings {
         case newest
         case oldest
         case recentlyPlayed
+    }
+
+    enum CloudSyncRuntimeState: String {
+        case localOnly
+        case cloudBacked
+        case fallbackFailed
     }
 
     nonisolated enum RecommendationMode: String, CaseIterable {
@@ -147,6 +154,17 @@ enum AppSettings {
     static var cloudSyncEnabled: Bool {
         get { defaults.bool(forKey: Key.cloudSyncEnabled) }
         set { defaults.set(newValue, forKey: Key.cloudSyncEnabled) }
+    }
+
+    static var cloudSyncRuntimeState: CloudSyncRuntimeState {
+        get {
+            guard let raw = defaults.string(forKey: Key.cloudSyncRuntimeState),
+                  let state = CloudSyncRuntimeState(rawValue: raw) else {
+                return .localOnly
+            }
+            return state
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.cloudSyncRuntimeState) }
     }
 
     static var lastCloudSyncDate: Date? {

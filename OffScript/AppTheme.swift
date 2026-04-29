@@ -3,6 +3,12 @@ import ImageIO
 import SwiftUI
 import UIKit
 
+private extension CGFloat {
+    func offscriptScaled(_ textStyle: UIFont.TextStyle = .caption2) -> CGFloat {
+        UIFontMetrics(forTextStyle: textStyle).scaledValue(for: self)
+    }
+}
+
 // MARK: - HTML Stripping
 
 private enum HTMLPlainTextCache {
@@ -414,7 +420,7 @@ struct TunerTag: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+            .font(.system(size: CGFloat(8.5).offscriptScaled(), weight: .semibold, design: .monospaced))
             .tracking(1.4)
             .foregroundStyle(dim ? color.opacity(0.6) : color)
             .padding(.horizontal, 6)
@@ -441,7 +447,7 @@ struct RecommendationSignalTraceView: View {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(signals.prefix(limit)), id: \.self) { signal in
                     Text(signal.displayText.uppercased())
-                        .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                        .font(.system(size: CGFloat(8.5).offscriptScaled(), weight: .semibold, design: .monospaced))
                         .tracking(1.2)
                         .foregroundStyle(color.opacity(0.62))
                         .lineLimit(1)
@@ -490,13 +496,13 @@ struct TunerReadout: View {
             TunerTag(text: tag, color: tagColor)
             HStack(alignment: .lastTextBaseline, spacing: 4) {
                 Text(value)
-                    .font(.system(size: fontSize, weight: .light, design: .default))
+                    .font(.system(size: fontSize.offscriptScaled(.title1), weight: .light, design: .default))
                     .tracking(-1)
                     .foregroundStyle(Color.offscriptPaperWhite)
                     .monospacedDigit()
                 if let unit {
                     Text(unit)
-                        .font(.system(size: fontSize * 0.45, weight: .regular, design: .default))
+                        .font(.system(size: (fontSize * 0.45).offscriptScaled(.caption1), weight: .regular, design: .default))
                         .foregroundStyle(Color.offscriptSoftPaper)
                 }
             }
@@ -514,7 +520,7 @@ struct TunerLabel: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: size, weight: .semibold, design: .monospaced))
+            .font(.system(size: size.offscriptScaled(), weight: .semibold, design: .monospaced))
             .tracking(1.6)
             .foregroundStyle(color)
             .monospacedDigit()
