@@ -21,6 +21,7 @@ struct OffScriptTests {
         #expect(session.options.contains(.allowAirPlay))
         #expect(session.options.contains(.allowBluetoothA2DP))
         #expect(session.routeSharingPolicy == nil)
+        #expect(session.didCallSetCategoryWithPolicy == false)
         #endif
     }
 
@@ -1014,6 +1015,7 @@ private final class RecordingAudioSession: OffScriptAudioSessionApplying {
     private(set) var mode: AVAudioSession.Mode?
     private(set) var options: AVAudioSession.CategoryOptions = []
     private(set) var routeSharingPolicy: AVAudioSession.RouteSharingPolicy?
+    private(set) var didCallSetCategoryWithPolicy = false
 
     func setCategory(_ category: AVAudioSession.Category, mode: AVAudioSession.Mode, options: AVAudioSession.CategoryOptions) throws {
         self.category = category
@@ -1032,6 +1034,7 @@ private final class RecordingAudioSession: OffScriptAudioSessionApplying {
         self.mode = mode
         self.options = options
         routeSharingPolicy = policy
+        didCallSetCategoryWithPolicy = true
     }
 }
 #endif
