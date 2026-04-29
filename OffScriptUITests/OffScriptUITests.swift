@@ -41,6 +41,21 @@ final class OffScriptUITests: XCTestCase {
     }
 
     @MainActor
+    func testSettingsPanelOpensFromHome() throws {
+        let app = makeApp(hasSeenOnboarding: true)
+        app.launch()
+
+        XCTAssertTrue(app.screen("HomeScreen").waitForExistence(timeout: 10))
+        app.buttons["Open settings"].tap()
+
+        let settingsLabel = app.staticTexts["SETTINGS · CONFIG PANEL"]
+        if !settingsLabel.waitForExistence(timeout: 10) {
+            XCTFail("Settings panel did not appear. Hierarchy:\n\(app.debugDescription)")
+        }
+        XCTAssertTrue(app.buttons["Close settings"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testLargeLibrarySeedSmoke() throws {
         let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 258, debugEpisodesPerShow: 3, debugLaunchTab: 1)
         app.launch()

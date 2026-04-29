@@ -63,6 +63,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Episode switches reset duration immediately and guard artwork updates** so stale duration/artwork from the previous episode cannot race into Player or Now Playing.
 
 ### Fixed — Apple identity / iCloud sync state
+- **Opening Settings no longer crashes builds without CloudKit entitlements.** iCloud account-status checks are now gated behind a CloudKit entitlement/profile check, and Settings reports `ICLOUD · NOT CONFIGURED` until the signed CloudKit profile lands.
 - **CloudKit sync is guarded by runtime container state** so failed or unavailable iCloud-backed stores fall back to local storage instead of presenting as active sync.
 - **Settings now validates stored Sign in with Apple credentials** before treating the user as signed in. Revoked or missing credentials clear local identity and disable sync.
 - **Transient Apple credential validation failures no longer clear a saved Apple ID.** Credentials are cleared only for revoked or not-found states.
