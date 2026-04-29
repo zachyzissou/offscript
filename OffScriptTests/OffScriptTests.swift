@@ -105,6 +105,30 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func opmlImportPlanSkipsExistingNormalizedFeedsBeforeNetworkWork() throws {
+        let existing = OPMLFeedEntry(
+            feedURL: try #require(URL(string: "http://Example.com/feed.xml/")),
+            title: "Existing",
+            author: nil
+        )
+        let fresh = OPMLFeedEntry(
+            feedURL: try #require(URL(string: "https://example.com/fresh.xml")),
+            title: "Fresh",
+            author: nil
+        )
+
+        let plan = BatchImportService.importPlan(
+            for: [existing, fresh],
+            existingFeedKeys: ["https://example.com/feed.xml"]
+        )
+
+        #expect(plan.entriesToImport == [fresh])
+        #expect(plan.initialProgress[existing.feedURL] == .skipped)
+        #expect(plan.initialProgress[fresh.feedURL] == .pending)
+    }
+
+    @Test
+    @MainActor
     func queueServiceMovesItemsAndPersistsOrder() throws {
         let container = try makeContainer()
         let context = container.mainContext

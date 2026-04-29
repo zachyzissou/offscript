@@ -41,11 +41,15 @@ final class BatchImportService: ObservableObject {
         progress.values.filter { if case .failed = $0 { true } else { false } }.count
     }
 
+    var skippedCount: Int {
+        progress.values.filter { if case .skipped = $0 { true } else { false } }.count
+    }
+
     var cancelledCount: Int {
         progress.values.filter { if case .cancelled = $0 { true } else { false } }.count
     }
 
-    var completedCount: Int { addedCount + failedCount + cancelledCount }
+    var completedCount: Int { addedCount + skippedCount + failedCount + cancelledCount }
 
     var totalCount: Int { entries.count }
 
@@ -61,12 +65,19 @@ final class BatchImportService: ObservableObject {
         guard !isRunning else { return }
 
         let uniqueEntries = Self.deduplicated(entries)
+        let existingFeedKeys = Self.subscribedFeedKeys(in: modelContext)
+        let plan = Self.importPlan(for: uniqueEntries, existingFeedKeys: existingFeedKeys)
         self.entries = uniqueEntries
-        progress = Dictionary(uniqueKeysWithValues: uniqueEntries.map { ($0.feedURL, ImportRowStatus.pending) })
+        progress = plan.initialProgress
         phase = .running
 
+        guard !plan.entriesToImport.isEmpty else {
+            phase = .finished(added: addedCount, failed: failedCount)
+            return
+        }
+
         task = Task { [weak self] in
-            await self?.runBatch(entries: uniqueEntries, modelContext: modelContext)
+            await self?.runBatch(entries: plan.entriesToImport, modelContext: modelContext)
         }
     }
 
@@ -173,5 +184,36 @@ final class BatchImportService: ObservableObject {
             result.append(entry)
         }
         return result
+    }
+
+    static func importPlan(
+        for entries: [OPMLFeedEntry],
+        existingFeedKeys: Set<String>
+    ) -> (entriesToImport: [OPMLFeedEntry], initialProgress: [URL: ImportRowStatus]) {
+        var entriesToImport: [OPMLFeedEntry] = []
+        var initialProgress: [URL: ImportRowStatus] = [:]
+
+        for entry in entries {
+            if existingFeedKeys.contains(entry.feedURL.normalizedFeedKey) {
+                initialProgress[entry.feedURL] = .skipped
+            } else {
+                initialProgress[entry.feedURL] = .pending
+                entriesToImport.append(entry)
+            }
+        }
+
+        return (entriesToImport, initialProgress)
+    }
+
+    private static func subscribedFeedKeys(in modelContext: ModelContext) -> Set<String> {
+        do {
+            let descriptor = FetchDescriptor<Podcast>(
+                predicate: #Predicate<Podcast> { $0.isSubscribed }
+            )
+            return Set(try modelContext.fetch(descriptor).map { $0.feedURL.normalizedFeedKey })
+        } catch {
+            batchImportLogger.error("Existing feed preflight failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
     }
 }
