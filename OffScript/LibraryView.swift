@@ -505,7 +505,7 @@ struct LibraryView: View {
                 guard !Task.isCancelled else { return }
                 let chunk = podcastIDs[start..<min(start + chunkSize, podcastIDs.count)]
                 for podcastID in chunk {
-                    var descriptor = FetchDescriptor<Episode>(
+                    let descriptor = FetchDescriptor<Episode>(
                         predicate: #Predicate<Episode> {
                             $0.podcast.id == podcastID && $0.podcast.isSubscribed && !$0.isPlayed
                         }
