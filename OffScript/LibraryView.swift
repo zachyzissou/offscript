@@ -798,9 +798,6 @@ private struct LibraryAlphabetRail: View {
                         if let section {
                             Button {
                                 onSelect(section.id)
-                                withAnimation(.easeInOut(duration: 0.18)) {
-                                    proxy.scrollTo(key, anchor: .center)
-                                }
                             } label: {
                                 letterKey(key, isSelected: isSelected, isDisabled: false)
                             }

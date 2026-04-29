@@ -63,12 +63,12 @@ final class OffScriptUITests: XCTestCase {
             app.swipeUp()
         }
         XCTAssertTrue(carousel.isHittable)
-        let zJump = app.descendants(matching: .any)["LibraryJumpLetterZ"]
-        for _ in 0..<6 where !zJump.isHittable {
+        let zJump = carousel.descendants(matching: .any)["LibraryJumpLetterZ"]
+        XCTAssertTrue(zJump.waitForExistence(timeout: 8))
+        for _ in 0..<12 where !zJump.isHittable {
             carousel.swipeLeft()
         }
-        XCTAssertTrue(zJump.waitForExistence(timeout: 8))
-        XCTAssertTrue(zJump.isHittable)
+        XCTAssertTrue(zJump.isHittable, "Expected to reach LibraryJumpLetterZ within the alphabet carousel")
 
         zJump.tap()
 
