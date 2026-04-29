@@ -238,7 +238,7 @@ struct EpisodeDetailView: View {
         if let recommendationReason, !recommendationReason.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 TunerLabel(text: "WHY THIS · LOCAL SIGNAL", color: .offscriptSignalYellow)
-                TunerTag(text: recommendationReason, color: .offscriptSignalYellow, dim: true)
+                TunerTag(text: recommendationReason, color: .offscriptSignalYellow, dim: true, wraps: true)
                 RecommendationSignalTraceView(signals: recommendationSignals)
                 Text("This comes from local listening, queue, and preference signals on this device.")
                     .font(.system(size: 12.5, weight: .regular))

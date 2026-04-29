@@ -14,6 +14,10 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Compact Tuner keys now keep their visual size but expose 44pt hit targets** across Library, Player, Queue, Search, downloads, and episode detail actions.
 - **Discovery/search copy now names Apple Podcasts Search explicitly** and avoids implying the app is running a generic opaque algorithmic feed.
 - **Remaining app-controlled Liquid Glass controls were replaced with Tuner surfaces**: Settings toggles, Player scrubber, sign-out/unsubscribe confirmations, and sheet presentation chrome now use flat OLED panels, hairlines, and signal-yellow keys.
+- **Long recommendation reason tags now wrap inside Tuner cards** instead of forcing fixed-width mono pills that could run off Home cards.
+- **Library import is now an explicit `IMPORT` Tuner key** with an icon-only fallback when width is constrained, so the OPML/paste entry point is visible without guessing the glyph.
+- **The bottom Tuner tab indicator now slides between Home, Library, Queue, and Search** with selection haptics instead of appearing abruptly in each cell.
+- **Root page headers sit tighter to the safe area** to reclaim top-of-app space while keeping the iOS status/Dynamic Island safe region intact.
 
 ### Fixed — onboarding, import, and sync UI honesty
 - **Onboarding Sign in with Apple now presents from the actual button window when available** and no longer uses the old crash-prone missing-scene path for the normal sign-in flow.
@@ -36,6 +40,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Library summary reloads are coalesced during background OPML imports** so each imported show does not immediately retrigger the expensive per-show count path while the list is being scrolled.
 - **Library summary counts no longer issue one SwiftData `fetchCount` per subscribed show.** The page now loads the unplayed episode set once, derives the latest rail and per-show counts from that result, and avoids 250+ synchronous count queries on Library open.
 - **Library directory rendering now builds one snapshot per render pass** for filtered shows, alphabet sections, and row numbers, with debounced search input so typing does not repeatedly sort/group the whole library.
+- **Library no longer observes every OPML progress tick at the root page level.** The import strip repaints during batch progress, and the expensive directory snapshot refreshes when the batch reaches a terminal state.
 
 ### Added — recommendation tuner and signal discovery
 - **Settings now has a three-position recommendation tuner** (`SIGNAL`, `BALANCED`, `DISCOVERY`) so listeners can choose whether OffScript stays strictly inside known local evidence or opens a new-show discovery lane.

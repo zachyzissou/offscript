@@ -169,6 +169,7 @@ struct ContentView: View {
 private struct TunerTabBar: View {
     @Binding var selection: AppTab
     let queueBadge: Int
+    @Namespace private var indicatorNamespace
 
     var body: some View {
         VStack(spacing: 0) {
@@ -179,7 +180,9 @@ private struct TunerTabBar: View {
             HStack(spacing: 0) {
                 ForEach(AppTab.allCases) { tab in
                     Button {
-                        selection = tab
+                        withAnimation(.easeInOut(duration: 0.22)) {
+                            selection = tab
+                        }
                     } label: {
                         tabContent(for: tab)
                     }
@@ -193,6 +196,7 @@ private struct TunerTabBar: View {
             .padding(.bottom, 2)
             .background(Color.offscriptStudioBlack)
         }
+        .sensoryFeedback(.selection, trigger: selection.rawValue)
     }
 
     @ViewBuilder
@@ -233,6 +237,7 @@ private struct TunerTabBar: View {
                     .fill(Color.offscriptSignalYellow)
                     .frame(width: 36, height: 1)
                     .offset(y: -6)
+                    .matchedGeometryEffect(id: "tuner-tab-indicator", in: indicatorNamespace)
             }
         }
     }

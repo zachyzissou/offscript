@@ -701,7 +701,7 @@ private struct PlayerSuggestionRow: View {
             .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
 
             VStack(alignment: .leading, spacing: 3) {
-                TunerTag(text: scored.explanation, color: .offscriptSignalYellow, dim: true)
+                TunerTag(text: scored.explanation, color: .offscriptSignalYellow, dim: true, wraps: true)
                 RecommendationSignalTraceView(signals: scored.signalTrace, limit: 2, color: .offscriptSoftPaper)
                 Text(scored.episode.title)
                     .font(.system(size: 13, weight: .semibold))

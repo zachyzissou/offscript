@@ -206,7 +206,6 @@ private extension BatchImportService.Phase {
 
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
-    @ObservedObject private var batchImporter = BatchImportService.shared
     @Query(
         filter: #Predicate<Podcast> { $0.isSubscribed },
         sort: [SortDescriptor(\Podcast.title)]
@@ -282,7 +281,9 @@ struct LibraryView: View {
                     // Background OPML import status — visible whenever the
                     // batch importer is mid-flight or has just finished and
                     // hasn't been dismissed yet.
-                    LibraryBatchImportStrip()
+                    LibraryBatchImportStrip(onFinished: {
+                        scheduleLibraryEpisodeSummaryLoad()
+                    })
 
                     if subscribedPodcasts.isEmpty {
                         emptyState
@@ -326,7 +327,7 @@ struct LibraryView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, OffScriptTheme.pagePadding)
-                .padding(.top, 8)
+                .padding(.top, OffScriptTheme.rootContentTopPadding)
                 .padding(.bottom, 90)
             }
         }
@@ -341,11 +342,6 @@ struct LibraryView: View {
         .onAppear { effectiveDirectoryQuery = directoryQuery }
         .onChange(of: subscribedPodcastIDs) { _, _ in scheduleLibraryEpisodeSummaryLoad() }
         .onChange(of: directoryQuery) { _, newValue in scheduleDirectoryQuery(newValue) }
-        .onChange(of: batchImporter.phase) { _, phase in
-            if !phase.isRunning {
-                loadLibraryEpisodeSummary()
-            }
-        }
         .onDisappear {
             summaryLoadTask?.cancel()
             directoryQueryTask?.cancel()
@@ -488,9 +484,9 @@ struct LibraryView: View {
     private func scheduleLibraryEpisodeSummaryLoad() {
         summaryLoadTask?.cancel()
         summaryLoadTask = Task { @MainActor in
-            if batchImporter.isRunning {
+            if BatchImportService.shared.isRunning {
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
-                guard !Task.isCancelled, !batchImporter.isRunning else { return }
+                guard !Task.isCancelled, !BatchImportService.shared.isRunning else { return }
             }
             loadLibraryEpisodeSummary()
         }
@@ -549,13 +545,25 @@ private struct LibraryTunerHeader: View {
                 // missing feature in podcast apps; lives next to settings
                 // since both are operational chrome rather than per-content.
                 Button(action: onOpenImport) {
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.system(size: 13, weight: .semibold))
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 7) {
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.system(size: 12, weight: .semibold))
+                            TunerLabel(text: "IMPORT", color: .offscriptSignalYellow, size: 9)
+                        }
                         .foregroundStyle(Color.offscriptSignalYellow)
-                        .frame(width: 36, height: 30)
+                        .padding(.horizontal, 10)
+                        .frame(height: 30)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.offscriptSignalYellow)
+                            .frame(width: 36, height: 30)
+                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                    }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Import podcasts")
@@ -873,7 +881,7 @@ private struct TunerLibraryCard: View {
                             .foregroundStyle(Color.offscriptPaperWhite)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
-                        TunerTag(text: reason, color: .offscriptSignalYellow, dim: true)
+                        TunerTag(text: reason, color: .offscriptSignalYellow, dim: true, wraps: true)
                     }
                     Spacer()
                 }
@@ -1512,79 +1520,87 @@ private struct FilterRow: View {
 /// the user always sees what's happening once they leave the sheet.
 private struct LibraryBatchImportStrip: View {
     @ObservedObject private var importer = BatchImportService.shared
+    var onFinished: () -> Void = {}
 
     var body: some View {
-        switch importer.phase {
-        case .idle:
-            EmptyView()
-        case .running:
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    TunerLabel(text: "● IMPORTING IN BACKGROUND",
-                               color: .offscriptSignalYellow)
-                    Spacer()
-                    TunerLabel(text: "\(importer.completedCount)/\(importer.totalCount)",
-                               color: .offscriptFnInfo)
-                }
-
-                GeometryReader { proxy in
-                    let total = max(1, importer.totalCount)
-                    let done = importer.completedCount
-                    let clamped = min(max(Double(done) / Double(total), 0), 1)
-                    ZStack(alignment: .leading) {
-                        Rectangle().fill(Color.offscriptHairline)
-                        Rectangle()
-                            .fill(Color.offscriptSignalYellow)
-                            .frame(width: proxy.size.width * clamped)
+        Group {
+            switch importer.phase {
+            case .idle:
+                EmptyView()
+            case .running:
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        TunerLabel(text: "● IMPORTING IN BACKGROUND",
+                                   color: .offscriptSignalYellow)
+                        Spacer()
+                        TunerLabel(text: "\(importer.completedCount)/\(importer.totalCount)",
+                                   color: .offscriptFnInfo)
                     }
-                }
-                .frame(height: 2)
-            }
-            .padding(.vertical, 10)
-            .overlay(
-                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
-                alignment: .top
-            )
-            .overlay(
-                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
-                alignment: .bottom
-            )
 
-        case .finished(let added, let failed):
-            HStack(spacing: 12) {
-                TunerLabel(
-                    text: failed == 0 ? "✓ IMPORT COMPLETE" : "● IMPORT FINISHED",
-                    color: failed == 0 ? .offscriptFnMode : .offscriptSignalYellow
-                )
-                Text(failed == 0
-                     ? "Added \(added) shows"
-                     : "Added \(added), \(failed) failed")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Color.offscriptPaperWhite)
-                Spacer()
-                Button {
-                    importer.dismiss()
-                } label: {
-                    TunerLabel(text: "× DISMISS",
-                               color: .offscriptSoftPaper, size: 9)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
-                        .frame(minHeight: 44)
-                        .contentShape(Rectangle())
+                    GeometryReader { proxy in
+                        let total = max(1, importer.totalCount)
+                        let done = importer.completedCount
+                        let clamped = min(max(Double(done) / Double(total), 0), 1)
+                        ZStack(alignment: .leading) {
+                            Rectangle().fill(Color.offscriptHairline)
+                            Rectangle()
+                                .fill(Color.offscriptSignalYellow)
+                                .frame(width: proxy.size.width * clamped)
+                        }
+                    }
+                    .frame(height: 2)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Dismiss import status")
+                .padding(.vertical, 10)
+                .overlay(
+                    Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                    alignment: .top
+                )
+                .overlay(
+                    Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                    alignment: .bottom
+                )
+
+            case .finished(let added, let failed):
+                HStack(spacing: 12) {
+                    TunerLabel(
+                        text: failed == 0 ? "✓ IMPORT COMPLETE" : "● IMPORT FINISHED",
+                        color: failed == 0 ? .offscriptFnMode : .offscriptSignalYellow
+                    )
+                    Text(failed == 0
+                         ? "Added \(added) shows"
+                         : "Added \(added), \(failed) failed")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Color.offscriptPaperWhite)
+                    Spacer()
+                    Button {
+                        importer.dismiss()
+                    } label: {
+                        TunerLabel(text: "× DISMISS",
+                                   color: .offscriptSoftPaper, size: 9)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss import status")
+                }
+                .padding(.vertical, 10)
+                .overlay(
+                    Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                    alignment: .top
+                )
+                .overlay(
+                    Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                    alignment: .bottom
+                )
             }
-            .padding(.vertical, 10)
-            .overlay(
-                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
-                alignment: .top
-            )
-            .overlay(
-                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
-                alignment: .bottom
-            )
+        }
+        .onChange(of: importer.phase) { oldPhase, phase in
+            if oldPhase.isRunning && !phase.isRunning {
+                onFinished()
+            }
         }
     }
 }
