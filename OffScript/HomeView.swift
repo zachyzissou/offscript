@@ -626,6 +626,7 @@ private struct HeroTunerCard: View {
     let signals: [RecommendationSignal]
     @State private var feedbackStatusMessage: String?
     @State private var feedbackClearTask: Task<Void, Never>?
+    @State private var showsFeedbackActions = false
 
     private var progressValue: Double {
         guard let duration = episode.duration, duration > 0 else { return 0 }
@@ -730,11 +731,10 @@ private struct HeroTunerCard: View {
 
                     Spacer()
 
-                    Menu {
-                        Button("Like") { register(.like) }
-                        Button("More like this") { register(.moreLikeThis) }
-                        Button("Less like this") { register(.lessLikeThis) }
-                        Button(role: .destructive) { register(.notInterested) } label: { Text("Not interested") }
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            showsFeedbackActions.toggle()
+                        }
                     } label: {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 12, weight: .bold))
@@ -743,14 +743,28 @@ private struct HeroTunerCard: View {
                             .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                     }
                     .accessibilityLabel("More actions")
+                    .accessibilityHint(showsFeedbackActions ? "Double-tap to hide feedback actions." : "Double-tap to show feedback actions.")
                 }
                 .padding(.top, 4)
+
+                if showsFeedbackActions {
+                    HStack(spacing: 8) {
+                        preferenceKey("LIKE", color: .offscriptSignalYellow) { registerAndCollapse(.like) }
+                        preferenceKey("MORE", color: .offscriptFnInfo) { registerAndCollapse(.moreLikeThis) }
+                        preferenceKey("LESS", color: .offscriptSoftPaper) { registerAndCollapse(.lessLikeThis) }
+                        preferenceKey("HIDE", color: .offscriptFnRecord) { registerAndCollapse(.notInterested) }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
             .padding(14)
         }
         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(displayReason)")
+        .onChange(of: episode.id) { _, _ in
+            showsFeedbackActions = false
+        }
         .onDisappear { feedbackClearTask?.cancel() }
     }
 
@@ -803,6 +817,25 @@ private struct HeroTunerCard: View {
             }
             scheduleFeedbackStatusClear(delay: 3_000_000_000)
         }
+    }
+
+    private func registerAndCollapse(_ action: PreferenceSignal.Action) {
+        register(action)
+        withAnimation(.easeInOut(duration: 0.16)) {
+            showsFeedbackActions = false
+        }
+    }
+
+    private func preferenceKey(_ title: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            TunerLabel(text: title, color: color, size: 9)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .frame(minHeight: 44)
+                .overlay(Rectangle().stroke(color.opacity(0.65), lineWidth: 1))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func statusMessage(for action: PreferenceSignal.Action) -> String {
