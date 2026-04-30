@@ -66,7 +66,7 @@ final class OffScriptUITests: XCTestCase {
         let settingsLabel = app.staticTexts["SETTINGS · CONFIG PANEL"]
         XCTAssertTrue(settingsLabel.waitForExistence(timeout: 12), "Settings panel did not appear. Hierarchy:\n\(app.debugDescription)")
         XCTAssertTrue(app.staticTexts.containing(labelContaining: "258").waitForExistence(timeout: 12), "Settings counts did not reflect seeded library. Hierarchy:\n\(app.debugDescription)")
-        XCTAssertTrue(app.staticTexts["ICLOUD · NOT CONFIGURED"].waitForExistence(timeout: 8), "Simulator Settings should report missing iCloud entitlements without crashing. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertTrue(app.staticTexts["NOT CONFIG"].waitForExistence(timeout: 8), "Simulator Settings should report missing iCloud entitlements without crashing. Hierarchy:\n\(app.debugDescription)")
         XCTAssertTrue(app.buttons["Close settings"].waitForExistence(timeout: 5))
     }
 

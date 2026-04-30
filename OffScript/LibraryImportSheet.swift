@@ -53,43 +53,34 @@ struct LibraryImportSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.offscriptStudioBlack.ignoresSafeArea()
+        ZStack {
+            Color.offscriptStudioBlack.ignoresSafeArea()
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        header
-                        switch mode {
-                        case .menu: menuBody
-                        case .pasteURL: pasteURLBody
-                        case .opml(let entries): opmlBody(entries: entries)
-                        }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+                    switch mode {
+                    case .menu: menuBody
+                    case .pasteURL: pasteURLBody
+                    case .opml(let entries): opmlBody(entries: entries)
                     }
-                    .padding(.horizontal, OffScriptTheme.pagePadding)
-                    .padding(.top, OffScriptTheme.modalContentTopPadding)
-                    .padding(.bottom, 90)
                 }
+                .padding(.horizontal, OffScriptTheme.pagePadding)
+                .padding(.top, OffScriptTheme.modalContentTopPadding)
+                .padding(.bottom, 90)
             }
-            // No `.toolbar` ToolbarItem — iOS 26 wraps toolbar buttons in
-            // glass chrome. DONE key is rendered inline inside `header`.
-            .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .fileImporter(
-                isPresented: $opmlFilePresenting,
-                allowedContentTypes: [.opml, .xml, .data],
-                allowsMultipleSelection: false
-            ) { result in
-                handleOPMLPicked(result)
-            }
-            .sheet(isPresented: $isExportShareSheetPresented) {
-                if let exportFileURL {
-                    ShareSheet(items: [exportFileURL])
-                        .tunerModalSurface()
-                }
+        }
+        .fileImporter(
+            isPresented: $opmlFilePresenting,
+            allowedContentTypes: [.opml, .xml, .data],
+            allowsMultipleSelection: false
+        ) { result in
+            handleOPMLPicked(result)
+        }
+        .sheet(isPresented: $isExportShareSheetPresented) {
+            if let exportFileURL {
+                ShareSheet(items: [exportFileURL])
+                    .tunerModalSurface()
             }
         }
         .preferredColorScheme(.dark)
