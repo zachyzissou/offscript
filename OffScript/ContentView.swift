@@ -5,6 +5,45 @@ import SwiftUI
 
 private let appLogger = Logger(subsystem: "com.offscript", category: "App")
 
+nonisolated enum OffScriptPerformanceLog {
+    private static let logger = Logger(subsystem: "com.offscript", category: "Performance")
+    private static let signposter = OSSignposter(subsystem: "com.offscript", category: "Performance")
+
+    struct Interval {
+        fileprivate let name: StaticString
+        fileprivate let state: OSSignpostIntervalState
+        fileprivate let start: ContinuousClock.Instant
+    }
+
+    static func milliseconds(since start: ContinuousClock.Instant) -> Double {
+        let duration = start.duration(to: .now).components
+        return Double(duration.seconds) * 1_000 + Double(duration.attoseconds) / 1_000_000_000_000_000
+    }
+
+    static func begin(_ name: StaticString, metadata: String = "") -> Interval {
+        let state = signposter.beginInterval(name, "\(metadata, privacy: .public)")
+        return Interval(name: name, state: state, start: .now)
+    }
+
+    static func end(_ interval: Interval, metadata: String = "") {
+        let elapsed = milliseconds(since: interval.start)
+        signposter.endInterval(interval.name, interval.state, "\(metadata, privacy: .public)")
+        log(String(describing: interval.name), elapsedMilliseconds: elapsed, metadata: metadata)
+    }
+
+    static func log(_ name: String, since start: ContinuousClock.Instant, metadata: String = "") {
+        log(name, elapsedMilliseconds: milliseconds(since: start), metadata: metadata)
+    }
+
+    private static func log(_ name: String, elapsedMilliseconds: Double, metadata: String = "") {
+        if metadata.isEmpty {
+            logger.info("\(name, privacy: .public) completed in \(elapsedMilliseconds, format: .fixed(precision: 1), privacy: .public)ms")
+        } else {
+            logger.info("\(name, privacy: .public) completed in \(elapsedMilliseconds, format: .fixed(precision: 1), privacy: .public)ms · \(metadata, privacy: .public)")
+        }
+    }
+}
+
 // MARK: - Tab identity (typed enum, not raw Int)
 
 private enum AppTab: Int, CaseIterable, Identifiable, Hashable {
@@ -143,12 +182,20 @@ struct ContentView: View {
                 selectedTab = tab
             }
         }
-        .onChange(of: selectedTab) { _, tab in
+        .onChange(of: selectedTab) { previous, tab in
+            let interval = OffScriptPerformanceLog.begin(
+                "tab.switch",
+                metadata: "\(previous.deepLinkName)->\(tab.deepLinkName)"
+            )
             loadedTabs.insert(tab)
             NotificationCenter.default.post(
                 name: .offscriptActiveTabChanged,
                 object: nil,
                 userInfo: ["tab": tab.deepLinkName]
+            )
+            OffScriptPerformanceLog.end(
+                interval,
+                metadata: "\(previous.deepLinkName)->\(tab.deepLinkName)"
             )
         }
     }
