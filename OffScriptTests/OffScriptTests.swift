@@ -259,6 +259,42 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func opmlBatchStagingResubscribesNormalizedFeedsWithoutFullTableMatch() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let existing = Podcast(
+            title: "Dormant Feed",
+            feedURL: try #require(URL(string: "feed://EXAMPLE.com/feed.xml#rss")),
+            isSubscribed: false
+        )
+        let unrelated = Podcast(
+            title: "Unrelated",
+            feedURL: try #require(URL(string: "https://other.example.com/feed.xml")),
+            isSubscribed: true
+        )
+        context.insert(existing)
+        context.insert(unrelated)
+        try context.save()
+
+        let entry = OPMLFeedEntry(
+            feedURL: try #require(URL(string: "https://example.com/feed.xml/")),
+            title: "Restaged Feed",
+            author: nil
+        )
+
+        let stagedCount = try BatchImportService.stageSubscriptions(for: [entry], in: context)
+        let podcasts = try context.fetch(FetchDescriptor<Podcast>())
+
+        #expect(stagedCount == 1)
+        #expect(podcasts.count == 2)
+        #expect(existing.isSubscribed)
+        #expect(existing.title == "Restaged Feed")
+        #expect(existing.feedURL == entry.feedURL)
+        #expect(unrelated.title == "Unrelated")
+    }
+
+    @Test
+    @MainActor
     func failedOPMLBootstrapMarksStagedSubscriptionRetryable() throws {
         let container = try makeContainer()
         let context = container.mainContext
