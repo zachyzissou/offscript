@@ -78,6 +78,8 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Settings and Library import sheets no longer sit inside empty native navigation hosts**, reducing stray iOS navigation chrome while keeping the authored Tuner headers and inline DONE keys.
 
 ### Changed — Library performance
+- **The subscribed-show directory fetch now runs through the Library SwiftData model actor** so opening or refreshing a 250+ show Library returns value snapshots to the UI actor instead of fetching the podcast table on first paint.
+- **Library Tuner sync now batches subscribed-feed refreshes** so a 250+ show Library overlaps slow feed network requests and avoids one SwiftData podcast lookup per subscription before refreshing counts.
 - **Library activation summary queries now run through the Library SwiftData model actor** and return only visible rail episode IDs to the UI actor, reducing first-paint contention for large subscribed libraries.
 - **Count-driven Library directory badges now load through a SwiftData model actor** so exact per-show unplayed/in-progress counts no longer materialize large episode sets on the main UI actor for 250+ show libraries.
 - **Home activation now skips the full taste-profile rebuild on normal tab switches** and scores from the last saved profile plus fresh local feedback rows, reducing Library-to-Home lag for 250+ show libraries while preserving manual Retune refresh behavior.

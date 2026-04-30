@@ -498,17 +498,6 @@ nonisolated enum LibraryDirectoryOrganizer {
 }
 
 @MainActor
-enum LibraryDirectorySnapshotLoader {
-    static func subscribedPodcasts(in context: ModelContext) throws -> [LibraryDirectoryPodcast] {
-        let descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> { $0.isSubscribed },
-            sortBy: [SortDescriptor(\Podcast.title)]
-        )
-        return try context.fetch(descriptor).map(LibraryDirectoryPodcast.init(podcast:))
-    }
-}
-
-@MainActor
 enum LibraryDirectoryCountLoader {
     static func countsByPodcastID(
         podcastIDs: [UUID],
@@ -567,6 +556,16 @@ enum LibraryDirectoryCountLoader {
 
 @ModelActor
 actor LibraryDirectoryCountStore {
+    func subscribedPodcasts() throws -> [LibraryDirectoryPodcast] {
+        let descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.isSubscribed },
+            sortBy: [SortDescriptor(\Podcast.title)]
+        )
+        let podcasts = try modelContext.fetch(descriptor)
+        try Task.checkCancellation()
+        return podcasts.map(LibraryDirectoryPodcast.init(podcast:))
+    }
+
     func episodeSummary() throws -> LibraryEpisodeSummary {
         let countDescriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed }
@@ -683,6 +682,8 @@ struct LibraryView: View {
     let isActive: Bool
     let onOpenSettings: () -> Void
 
+    private static let subscriptionIDFetchChunkSize = 400
+
     private let syncService = FeedSyncService()
     @State private var isImportPresented = false
     @State private var directoryQuery = ""
@@ -705,6 +706,7 @@ struct LibraryView: View {
     @State private var isLoadingFullDirectoryCounts = false
     @State private var summaryLoadTask: Task<Void, Never>?
     @State private var fullCountLoadTask: Task<Void, Never>?
+    @State private var directoryPodcastLoadTask: Task<Void, Never>?
     @State private var directorySnapshotTask: Task<Void, Never>?
     @State private var directoryQueryTask: Task<Void, Never>?
     @State private var selectedPodcastID: UUID?
@@ -1094,28 +1096,41 @@ struct LibraryView: View {
     @MainActor
     private func loadDirectoryPodcasts(force: Bool = false) {
         guard force || !didLoadDirectoryPodcasts else { return }
+        directoryPodcastLoadTask?.cancel()
+        let modelContainer = modelContext.container
         let interval = OffScriptPerformanceLog.begin(
             "library.directory.fetch",
             metadata: "force=\(force)"
         )
-        do {
-            directoryPodcasts = try LibraryDirectorySnapshotLoader.subscribedPodcasts(in: modelContext)
-            didLoadDirectoryPodcasts = true
-            rebuildDirectorySnapshot()
-            OffScriptPerformanceLog.end(
-                interval,
-                metadata: "podcasts=\(directoryPodcasts.count) force=\(force)"
-            )
-        } catch {
-            directoryPodcasts = []
-            didLoadDirectoryPodcasts = true
-            cachedDirectorySnapshot = .empty
-            didBuildDirectorySnapshot = true
-            OffScriptPerformanceLog.end(
-                interval,
-                metadata: "podcasts=0 force=\(force) failed=true"
-            )
-            libraryLogger.error("Library directory snapshot load failed: \(error.localizedDescription, privacy: .public)")
+        directoryPodcastLoadTask = Task { @MainActor in
+            do {
+                let store = LibraryDirectoryCountStore(modelContainer: modelContainer)
+                let podcasts = try await store.subscribedPodcasts()
+                guard !Task.isCancelled else {
+                    OffScriptPerformanceLog.end(
+                        interval,
+                        metadata: "force=\(force) cancelled=true"
+                    )
+                    return
+                }
+                directoryPodcasts = podcasts
+                didLoadDirectoryPodcasts = true
+                rebuildDirectorySnapshot()
+                OffScriptPerformanceLog.end(
+                    interval,
+                    metadata: "podcasts=\(directoryPodcasts.count) force=\(force)"
+                )
+            } catch {
+                directoryPodcasts = []
+                didLoadDirectoryPodcasts = true
+                cachedDirectorySnapshot = .empty
+                didBuildDirectorySnapshot = true
+                OffScriptPerformanceLog.end(
+                    interval,
+                    metadata: "podcasts=0 force=\(force) failed=true"
+                )
+                libraryLogger.error("Library directory snapshot load failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
@@ -1153,6 +1168,7 @@ struct LibraryView: View {
     private func cancelDeferredLibraryWork() {
         summaryLoadTask?.cancel()
         fullCountLoadTask?.cancel()
+        directoryPodcastLoadTask?.cancel()
         directorySnapshotTask?.cancel()
         directoryQueryTask?.cancel()
     }
@@ -1168,6 +1184,33 @@ struct LibraryView: View {
             libraryLogger.error("Library selected podcast lookup failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
+    }
+
+    @MainActor
+    private func subscribedPodcasts(withIDs ids: [UUID]) throws -> [Podcast] {
+        var podcastsByID: [UUID: Podcast] = [:]
+        var startIndex = ids.startIndex
+        while startIndex < ids.endIndex {
+            let endIndex = ids.index(
+                startIndex,
+                offsetBy: Self.subscriptionIDFetchChunkSize,
+                limitedBy: ids.endIndex
+            ) ?? ids.endIndex
+            let chunkIDs = Set(ids[startIndex..<endIndex])
+            if !chunkIDs.isEmpty {
+                let descriptor = FetchDescriptor<Podcast>(
+                    predicate: #Predicate<Podcast> {
+                        chunkIDs.contains($0.id) && $0.isSubscribed
+                    }
+                )
+                let chunkPodcasts = try modelContext.fetch(descriptor)
+                for podcast in chunkPodcasts {
+                    podcastsByID[podcast.id] = podcast
+                }
+            }
+            startIndex = endIndex
+        }
+        return ids.compactMap { podcastsByID[$0] }
     }
 
     @MainActor
@@ -1445,13 +1488,34 @@ struct LibraryView: View {
         isSyncingLibrary = true
         defer { isSyncingLibrary = false }
         let podcastIDs = subscribedPodcastIDs
-        for podcastID in podcastIDs {
-            guard let podcast = podcast(withID: podcastID) else { continue }
-            do {
-                try await syncService.sync(podcast: podcast, in: modelContext)
-            } catch {
-                libraryLogger.error("Pull-to-refresh sync failed for '\(podcast.title, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+        guard !podcastIDs.isEmpty else { return }
+        let interval = OffScriptPerformanceLog.begin(
+            "library.sync",
+            metadata: "podcasts=\(podcastIDs.count)"
+        )
+        do {
+            let podcasts = try subscribedPodcasts(withIDs: podcastIDs)
+            let results = await syncService.sync(
+                podcasts: podcasts,
+                in: modelContext,
+                options: .standard()
+            )
+            let failures = results.filter { !$0.isSuccess }
+            for result in failures {
+                if let error = result.error {
+                    libraryLogger.error("Pull-to-refresh sync failed for '\(result.podcast.title, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+                }
             }
+            OffScriptPerformanceLog.end(
+                interval,
+                metadata: "podcasts=\(podcasts.count) failed=\(failures.count)"
+            )
+        } catch {
+            OffScriptPerformanceLog.end(
+                interval,
+                metadata: "podcasts=\(podcastIDs.count) failed=true"
+            )
+            libraryLogger.error("Pull-to-refresh sync setup failed: \(error.localizedDescription, privacy: .public)")
         }
         loadDirectoryPodcasts(force: true)
         loadLibraryEpisodeSummary()

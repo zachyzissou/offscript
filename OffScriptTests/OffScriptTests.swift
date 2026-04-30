@@ -1831,23 +1831,24 @@ struct OffScriptTests {
 
     @Test
     @MainActor
-    func libraryDirectorySnapshotLoaderBuildsValueRowsWithoutLiveQueryInvalidation() throws {
+    func libraryDirectoryCountStoreLoadsSubscribedPodcastSnapshots() async throws {
         let container = try makeContainer()
         let context = container.mainContext
-        let subscribed = Podcast(title: "Subscribed Show", feedURL: URL(string: "https://example.com/subscribed.xml")!)
+        let subscribed = Podcast(title: "Actor Directory", feedURL: URL(string: "https://example.com/actor-directory.xml")!)
         subscribed.author = "Signal Desk"
         subscribed.categories = ["Technology", "Design"]
         subscribed.latestPubDate = Date(timeIntervalSince1970: 400)
-        let unsubscribed = Podcast(title: "Ignored Show", feedURL: URL(string: "https://example.com/ignored.xml")!)
+        let unsubscribed = Podcast(title: "Actor Ignored", feedURL: URL(string: "https://example.com/actor-ignored-directory.xml")!)
         unsubscribed.isSubscribed = false
         context.insert(subscribed)
         context.insert(unsubscribed)
         try context.save()
 
-        let snapshots = try LibraryDirectorySnapshotLoader.subscribedPodcasts(in: context)
+        let store = LibraryDirectoryCountStore(modelContainer: container)
+        let snapshots = try await store.subscribedPodcasts()
 
         #expect(snapshots.map(\.id) == [subscribed.id])
-        #expect(snapshots.first?.title == "Subscribed Show")
+        #expect(snapshots.first?.title == "Actor Directory")
         #expect(snapshots.first?.author == "Signal Desk")
         #expect(snapshots.first?.categories == ["Technology", "Design"])
         #expect(snapshots.first?.latestPubDate == Date(timeIntervalSince1970: 400))
