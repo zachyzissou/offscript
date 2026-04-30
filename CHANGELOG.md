@@ -38,6 +38,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Discovery genre matches now stay low-confidence until backed by local evidence** such as latest-episode tag overlap, topic matches, show affinity, or feed freshness, and genre-only WHY copy no longer claims local evidence.
 
 ### Fixed — onboarding, import, and sync UI honesty
+- **Onboarding background hydration now yields and waits briefly after local subscription completion** so the first Home render is not immediately contending with starter-feed apply/save work on the main SwiftData context.
 - **Settings and Sign in with Apple now log identity, iCloud, signal-profile, and Keychain OSStatus breadcrumbs** so TestFlight Settings crashes and Apple sign-in failures can be correlated to the failing subsystem.
 - **Onboarding Sign in with Apple no longer has an iOS 26 missing-window precondition crash path** and now logs Keychain OSStatus details when credential persistence fails.
 - **Large OPML bootstrap imports now fetch feeds concurrently but apply SwiftData changes serially** and cap bootstrap RSS parsing to the small starter window, reducing 250+ show import stalls without changing normal full-feed sync.
