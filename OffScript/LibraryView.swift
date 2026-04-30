@@ -993,7 +993,7 @@ struct LibraryView: View {
                 .lineSpacing(2)
 
             NavigationLink {
-                SearchView()
+                SearchView(hidesRootNavigationBar: false)
             } label: {
                 HStack {
                     TunerLabel(text: "→ FIND SHOWS", color: .offscriptSignalYellow, size: 11)
@@ -2094,6 +2094,7 @@ struct PodcastDetailView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)

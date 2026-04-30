@@ -520,7 +520,7 @@ private struct HomeEmptyState: View {
                 .lineSpacing(2)
 
             NavigationLink {
-                SearchView()
+                SearchView(hidesRootNavigationBar: false)
             } label: {
                 HStack {
                     TunerLabel(text: "→ BROWSE SEARCH", color: .offscriptSignalYellow, size: 11)

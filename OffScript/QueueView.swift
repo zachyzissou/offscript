@@ -70,7 +70,7 @@ struct QueueView: View {
                 .lineSpacing(2)
 
             NavigationLink {
-                SearchView()
+                SearchView(hidesRootNavigationBar: false)
             } label: {
                 HStack {
                     TunerLabel(text: "→ EXPLORE SHOWS", color: .offscriptSignalYellow, size: 11)
