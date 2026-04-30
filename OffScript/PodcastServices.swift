@@ -243,6 +243,10 @@ struct FeedSyncOptions {
     static func onboardingBootstrap(episodeLimit: Int? = 3) -> FeedSyncOptions {
         opmlBootstrap(episodeLimit: episodeLimit)
     }
+
+    static func singleAddBootstrap(episodeLimit: Int? = 12) -> FeedSyncOptions {
+        opmlBootstrap(episodeLimit: episodeLimit)
+    }
 }
 
 enum FeedSyncRetryPolicy {
@@ -390,6 +394,28 @@ final class FeedSyncService {
         podcast.lastSyncAttemptAt = .now
         podcast.syncErrorMessage = nil
         try context.save()
+        return podcast
+    }
+
+    @MainActor
+    @discardableResult
+    func subscribeThenHydrate(
+        from result: PodcastSearchResult,
+        into context: ModelContext,
+        episodeLimit: Int? = 12,
+        startHydration: Bool = true
+    ) throws -> Podcast {
+        let podcast = try stagePodcastSubscription(from: result, into: context)
+        guard startHydration else { return podcast }
+
+        Task { @MainActor in
+            try? await sync(
+                podcast: podcast,
+                in: context,
+                options: .singleAddBootstrap(episodeLimit: episodeLimit)
+            )
+        }
+
         return podcast
     }
 

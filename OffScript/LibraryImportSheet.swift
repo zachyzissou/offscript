@@ -429,7 +429,7 @@ struct LibraryImportSheet: View {
 
         do {
             let result = try await PodcastImportService.resolve(urlString: trimmed)
-            let podcast = try await syncService.importPodcast(from: result, into: modelContext)
+            let podcast = try syncService.subscribeThenHydrate(from: result, into: modelContext)
             importedTitle = podcast.title
             urlInput = ""
         } catch {

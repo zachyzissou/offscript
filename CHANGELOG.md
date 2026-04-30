@@ -63,6 +63,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ### Changed — Library performance
 - **Large OPML imports now stage subscribed shows before network sync finishes**, so 250+ show libraries appear in Library immediately while feed hydration continues in the background.
+- **Single-show adds from Home, Search, and pasted feed URLs now save the subscription before feed hydration**, then use a capped bootstrap sync in the background instead of blocking the UI on a full catalog import.
 - **Onboarding now stages selected starter shows in one SwiftData batch** instead of saving each selected podcast independently, making the three-podcast starter flow a single local commit before background hydration.
 - **Capped feed bootstrap now selects the newest episode slice without sorting full back catalogs**, so OPML and onboarding bootstrap paths do not pay full-feed sort cost when they only need the first few newest episodes.
 - **OPML batch hydration now uses a lightweight bootstrap pass** that imports only a small first slice of episodes and skips episode profile enrichment, avoiding thousands of episode/profile writes during the initial import.
