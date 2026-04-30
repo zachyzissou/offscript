@@ -493,28 +493,7 @@ struct SettingsView: View {
                     }
                 }
             } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Sign in with Apple identifies this install. iCloud availability is checked separately before sync is enabled.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.offscriptPaperWhite)
-
-                    SignInWithAppleButton(.signIn) { request in
-                        request.requestedScopes = [.fullName]
-                    } onCompletion: { result in
-                        handleSignInResult(result)
-                    }
-                    .signInWithAppleButtonStyle(.whiteOutline)
-                    .frame(height: 48)
-
-                    if let signInMessage {
-                        Text(signInMessage)
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.offscriptSoftPaper)
-                            .transition(.opacity)
-                    }
-
-                    identityStatusRows
-                }
+                signInPanel
             }
         }
         .padding(.vertical, 12)
@@ -523,6 +502,56 @@ struct SettingsView: View {
             Rectangle().fill(Color.offscriptHairline).frame(height: 1),
             alignment: .top
         )
+    }
+
+    private var signInPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                TunerLabel(text: "○ APPLE ID", color: .offscriptSoftPaper)
+                Spacer()
+                TunerLabel(text: cloudKitAvailability.allowsSync ? "ICLOUD READY" : "LOCAL MODE", color: cloudKitAvailability.allowsSync ? .offscriptFnMode : .offscriptSoftPaper, size: 8)
+            }
+
+            Text("Sign in with Apple identifies this install. iCloud availability is checked separately before sync is enabled.")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.offscriptPaperWhite.opacity(0.82))
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                identityReadout(label: "CREDENTIAL", value: appleCredentialState.shortLabel, isReady: appleCredentialState.isAuthorized)
+                Rectangle().fill(Color.offscriptHairline).frame(width: 1, height: 34)
+                identityReadout(label: "CLOUD", value: cloudKitAvailability.shortLabel, isReady: cloudKitAvailability.allowsSync)
+            }
+
+            SignInWithAppleButton(.signIn) { request in
+                request.requestedScopes = [.fullName]
+            } onCompletion: { result in
+                handleSignInResult(result)
+            }
+            .signInWithAppleButtonStyle(.whiteOutline)
+            .frame(height: 48)
+            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+
+            if let signInMessage {
+                Text(signInMessage)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.offscriptSoftPaper)
+                    .transition(.opacity)
+            }
+        }
+        .padding(12)
+        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+    }
+
+    private func identityReadout(label: String, value: String, isReady: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            TunerLabel(text: label, color: .offscriptSoftPaper, size: 8)
+            TunerLabel(text: value, color: isReady ? .offscriptFnMode : .offscriptSignalYellow, size: 9)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var identityStatusRows: some View {
