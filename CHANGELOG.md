@@ -38,6 +38,8 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **The Library alphabet selector is back to the compact `#-Z` carousel form** while keeping the working direct-letter jump behavior and selected/disabled Tuner states.
 
 ### Changed — Library performance
+- **Large OPML imports now stage subscribed shows before network sync finishes**, so 250+ show libraries appear in Library immediately while feed hydration continues in the background.
+- **OPML batch hydration now uses a lightweight bootstrap pass** that imports only a small first slice of episodes and skips episode profile enrichment, avoiding thousands of episode/profile writes during the initial import.
 - **The root Library podcast query now filters subscribed shows in SwiftData instead of fetching every historical podcast and filtering in Swift.**
 - **Library summary reloads are coalesced during background OPML imports** so each imported show does not immediately retrigger the expensive per-show count path while the list is being scrolled.
 - **Library summary counts no longer issue one SwiftData `fetchCount` per subscribed show.** The page now loads the unplayed episode set once, derives the latest rail and per-show counts from that result, and avoids 250+ synchronous count queries on Library open.

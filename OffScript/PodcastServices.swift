@@ -223,6 +223,14 @@ struct FeedSyncOptions {
             resolveExternalChapters: false
         )
     }
+
+    static func opmlBootstrap(episodeLimit: Int? = 3) -> FeedSyncOptions {
+        FeedSyncOptions(
+            episodeLimit: episodeLimit,
+            enrichmentMode: .skip,
+            resolveExternalChapters: false
+        )
+    }
 }
 
 final class FeedSyncService {

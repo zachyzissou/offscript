@@ -129,6 +129,109 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func opmlBatchStagesSubscriptionsBeforeNetworkWork() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let entries = (1...258).map { index in
+            OPMLFeedEntry(
+                feedURL: URL(string: "https://example.com/feed-\(index).xml")!,
+                title: "Imported Show \(index)",
+                author: "Author \(index)"
+            )
+        }
+
+        let stagedCount = try BatchImportService.stageSubscriptions(
+            for: entries,
+            in: context
+        )
+
+        let podcasts = try context.fetch(FetchDescriptor<Podcast>())
+        #expect(stagedCount == 258)
+        #expect(podcasts.count == 258)
+        #expect(podcasts.allSatisfy { $0.isSubscribed } == true)
+        #expect(podcasts.first(where: { $0.title == "Imported Show 258" })?.syncStatus == "syncing")
+    }
+
+    @Test
+    @MainActor
+    func opmlBatchStagingResubscribesExistingNormalizedFeeds() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let existing = Podcast(
+            title: "Old Title",
+            feedURL: try #require(URL(string: "http://example.com/feed.xml/")),
+            isSubscribed: false
+        )
+        context.insert(existing)
+        try context.save()
+        let entry = OPMLFeedEntry(
+            feedURL: try #require(URL(string: "https://example.com/feed.xml")),
+            title: "New OPML Title",
+            author: "OPML Author"
+        )
+
+        let stagedCount = try BatchImportService.stageSubscriptions(for: [entry], in: context)
+
+        let podcasts = try context.fetch(FetchDescriptor<Podcast>())
+        #expect(stagedCount == 1)
+        #expect(podcasts.count == 1)
+        #expect(existing.isSubscribed)
+        #expect(existing.title == "New OPML Title")
+        #expect(existing.author == "OPML Author")
+        #expect(existing.syncStatus == "syncing")
+    }
+
+    @Test
+    @MainActor
+    func failedOPMLBootstrapMarksStagedSubscriptionRetryable() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let entry = OPMLFeedEntry(
+            feedURL: try #require(URL(string: "https://example.com/bad-feed.xml")),
+            title: "Bad Feed",
+            author: nil
+        )
+        try BatchImportService.stageSubscriptions(for: [entry], in: context)
+
+        BatchImportService.markStagedSubscriptionFailed(
+            entry: entry,
+            error: URLError(.timedOut),
+            in: context
+        )
+
+        let podcast = try #require(try context.fetch(FetchDescriptor<Podcast>()).first)
+        #expect(podcast.isSubscribed)
+        #expect(podcast.syncStatus == "failed")
+        #expect(podcast.syncFailureCount == 1)
+        #expect(podcast.syncErrorMessage?.isEmpty == false)
+        #expect(podcast.nextRetryAt != nil)
+    }
+
+    @Test
+    @MainActor
+    func cancelledOPMLBootstrapClearsUnlaunchedStagedSubscriptions() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let entries = (1...12).map { index in
+            OPMLFeedEntry(
+                feedURL: URL(string: "https://example.com/cancel-\(index).xml")!,
+                title: "Cancel Show \(index)",
+                author: nil
+            )
+        }
+        try BatchImportService.stageSubscriptions(for: entries, in: context)
+
+        BatchImportService.markStagedSubscriptionsCancelled(for: entries, in: context)
+
+        let podcasts = try context.fetch(FetchDescriptor<Podcast>())
+        #expect(podcasts.count == 12)
+        #expect(podcasts.contains(where: { $0.syncStatus == "syncing" }) == false)
+        #expect(podcasts.allSatisfy { $0.isSubscribed } == true)
+        #expect(podcasts.allSatisfy { $0.nextRetryAt == nil } == true)
+    }
+
+    @Test
+    @MainActor
     func queueServiceMovesItemsAndPersistsOrder() throws {
         let container = try makeContainer()
         let context = container.mainContext
@@ -1247,6 +1350,53 @@ struct OffScriptTests {
         #expect(episode.chapters.isEmpty)
         #expect(profile.episodeID == episode.id)
         #expect(!profile.tags.isEmpty)
+    }
+
+    @Test
+    @MainActor
+    func feedSyncOPMLBootstrapCapsEpisodesAndSkipsProfiles() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let result = PodcastSearchResult(
+            title: "Bootstrap Show",
+            author: "Bootstrap Author",
+            feedURL: URL(string: "https://example.com/bootstrap.xml")!,
+            artworkURL: nil,
+            websiteURL: nil,
+            summary: nil
+        )
+        let parsed = ParsedFeed(
+            title: "Bootstrap Show",
+            author: "Bootstrap Author",
+            summary: nil,
+            websiteURL: nil,
+            artworkURL: nil,
+            categories: ["Technology"],
+            items: (1...10).map { index in
+                ParsedFeedItem(
+                    guid: "bootstrap-\(index)",
+                    title: "Bootstrap Episode \(index)",
+                    summary: "Episode imported during OPML bootstrap.",
+                    pubDate: Date().addingTimeInterval(TimeInterval(-index)),
+                    duration: 1_800,
+                    audioURL: URL(string: "https://example.com/bootstrap-\(index).mp3")!,
+                    externalChapterURL: URL(string: "https://example.com/bootstrap-\(index)-chapters.json")!
+                )
+            }
+        )
+
+        _ = try await FeedSyncService().importPodcast(
+            from: result,
+            parsedFeed: parsed,
+            into: context,
+            options: .opmlBootstrap()
+        )
+
+        let episodes = try context.fetch(FetchDescriptor<Episode>())
+        let profiles = try context.fetch(FetchDescriptor<EpisodeProfile>())
+        #expect(episodes.count == 3)
+        #expect(episodes.allSatisfy { $0.chapters.isEmpty })
+        #expect(profiles.isEmpty)
     }
 
     @Test
