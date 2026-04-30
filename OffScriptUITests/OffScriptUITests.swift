@@ -136,6 +136,35 @@ final class OffScriptUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["A Channel 001"].waitForExistence(timeout: 10))
     }
 
+    @MainActor
+    func testTunerDetailScreensUseInlineBackChrome() throws {
+        let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 4, debugEpisodesPerShow: 2, debugLaunchTab: 1)
+        app.launch()
+
+        XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts["SHOWS · DIRECTORY"].waitForExistence(timeout: 8))
+
+        for _ in 0..<3 where !app.staticTexts["A Channel 001"].exists {
+            app.swipeUp()
+        }
+        tapWhenReady(app.staticTexts["A Channel 001"], in: app, name: "A Channel 001 row")
+        XCTAssertTrue(app.screen("PodcastDetailScreen").waitForExistence(timeout: 10), "Podcast detail did not open. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertTrue(app.buttons["PodcastDetailBackButton"].waitForExistence(timeout: 5), "Podcast detail inline back control missing. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertFalse(app.navigationBars.buttons["Library"].exists, "Podcast detail exposed native Library back chrome. Hierarchy:\n\(app.debugDescription)")
+
+        tapWhenReady(app.staticTexts["A Channel 001 Episode 1"], in: app, name: "A Channel 001 Episode 1", maxSwipes: 6)
+        XCTAssertTrue(app.screen("EpisodeDetailScreen").waitForExistence(timeout: 10), "Episode detail did not open. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertTrue(app.buttons["EpisodeDetailBackButton"].waitForExistence(timeout: 5), "Episode detail inline back control missing. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertFalse(app.navigationBars.buttons["Back"].exists, "Episode detail exposed native Back chrome. Hierarchy:\n\(app.debugDescription)")
+
+        app.buttons["EpisodeDetailBackButton"].tap()
+        XCTAssertTrue(app.screen("PodcastDetailScreen").waitForExistence(timeout: 8), "Episode back did not return to podcast detail. Hierarchy:\n\(app.debugDescription)")
+
+        app.buttons["PodcastDetailBackButton"].tap()
+        XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 8), "Podcast back did not return to library. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertTrue(app.staticTexts["SHOWS · DIRECTORY"].waitForExistence(timeout: 5))
+    }
+
     private func tapWhenReady(
         _ element: XCUIElement,
         in app: XCUIApplication,

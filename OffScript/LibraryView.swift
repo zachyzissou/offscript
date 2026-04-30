@@ -1591,6 +1591,7 @@ private struct LibraryDirectoryMissingShowView: View {
 // MARK: - PodcastDetailView (Tuner channel detail)
 
 struct PodcastDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     let podcast: Podcast
     @State private var filter: EpisodeFilter = .all
@@ -1609,6 +1610,14 @@ struct PodcastDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                TunerInlineBackButton(
+                    label: "BACK",
+                    accessibilityLabel: "Back to library",
+                    accessibilityIdentifier: "PodcastDetailBackButton"
+                ) {
+                    dismiss()
+                }
+
                 PodcastDetailTunerHeader(podcast: podcast, episodeCount: matchingEpisodeCount)
 
                 // Custom Tuner search input — `.searchable()` renders a system
@@ -1677,8 +1686,10 @@ struct PodcastDetailView: View {
             .padding(.bottom, 90)
         }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
+        .accessibilityIdentifier("PodcastDetailScreen")
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
