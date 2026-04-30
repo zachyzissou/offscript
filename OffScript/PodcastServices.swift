@@ -207,12 +207,14 @@ struct FeedSyncOptions {
     let episodeLimit: Int?
     let enrichmentMode: EpisodeEnrichmentMode
     let resolveExternalChapters: Bool
+    let feedRequestTimeout: TimeInterval
 
     static func standard(episodeLimit: Int? = nil) -> FeedSyncOptions {
         FeedSyncOptions(
             episodeLimit: episodeLimit,
             enrichmentMode: .full,
-            resolveExternalChapters: true
+            resolveExternalChapters: true,
+            feedRequestTimeout: 20
         )
     }
 
@@ -220,7 +222,8 @@ struct FeedSyncOptions {
         FeedSyncOptions(
             episodeLimit: episodeLimit,
             enrichmentMode: .heuristic,
-            resolveExternalChapters: false
+            resolveExternalChapters: false,
+            feedRequestTimeout: 12
         )
     }
 
@@ -228,7 +231,8 @@ struct FeedSyncOptions {
         FeedSyncOptions(
             episodeLimit: episodeLimit,
             enrichmentMode: .skip,
-            resolveExternalChapters: false
+            resolveExternalChapters: false,
+            feedRequestTimeout: 8
         )
     }
 
@@ -290,7 +294,10 @@ final class FeedSyncService {
 
     @MainActor
     func importPodcast(from opmlEntry: OPMLFeedEntry, into context: ModelContext, options: FeedSyncOptions) async throws -> Podcast {
-        let fetched = try await Self.fetchParsedFeed(feedURL: opmlEntry.feedURL)
+        let fetched = try await Self.fetchParsedFeed(
+            feedURL: opmlEntry.feedURL,
+            timeout: options.feedRequestTimeout
+        )
         guard case let .feed(parsed, httpResponse) = fetched else {
             throw PodcastImportError.feedParseFailed
         }
@@ -426,7 +433,8 @@ final class FeedSyncService {
             let fetched = try await Self.fetchParsedFeed(
                 feedURL: podcast.feedURL,
                 eTag: podcast.feedETag,
-                lastModified: podcast.feedLastModified
+                lastModified: podcast.feedLastModified,
+                timeout: options.feedRequestTimeout
             )
             switch fetched {
             case .notModified:
@@ -480,7 +488,8 @@ final class FeedSyncService {
                         let fetched = try await Self.fetchParsedFeed(
                             feedURL: request.feedURL,
                             eTag: request.eTag,
-                            lastModified: request.lastModified
+                            lastModified: request.lastModified,
+                            timeout: options.feedRequestTimeout
                         )
                         return FeedSyncFetchOutcome(feedURL: request.feedURL, result: .success(fetched))
                     } catch {
@@ -722,9 +731,14 @@ final class FeedSyncService {
         case feed(ParsedFeed, HTTPURLResponse)
     }
 
-    private static func fetchParsedFeed(feedURL: URL, eTag: String? = nil, lastModified: String? = nil) async throws -> FeedFetchResult {
+    private static func fetchParsedFeed(
+        feedURL: URL,
+        eTag: String? = nil,
+        lastModified: String? = nil,
+        timeout: TimeInterval = 20
+    ) async throws -> FeedFetchResult {
         var request = URLRequest(url: feedURL)
-        request.timeoutInterval = 20
+        request.timeoutInterval = timeout
         request.setValue("application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
                          forHTTPHeaderField: "Accept")
         if let eTag {
