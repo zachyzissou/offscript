@@ -1733,6 +1733,60 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func feedSyncStagesMultipleOnboardingSubscriptionsInOneBatch() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let existing = Podcast(
+            title: "Old Starter",
+            author: "Old Author",
+            feedURL: URL(string: "https://example.com/old-starter.xml")!,
+            isSubscribed: false
+        )
+        context.insert(existing)
+        try context.save()
+
+        let results = [
+            PodcastSearchResult(
+                title: "Starter One",
+                author: "Starter Author",
+                feedURL: existing.feedURL,
+                artworkURL: URL(string: "https://example.com/starter-one.jpg")!,
+                websiteURL: URL(string: "https://example.com/one")!,
+                summary: "A staged starter show."
+            ),
+            PodcastSearchResult(
+                title: "Starter Two",
+                author: "Second Author",
+                feedURL: URL(string: "https://example.com/starter-two.xml")!,
+                artworkURL: nil,
+                websiteURL: nil,
+                summary: nil
+            ),
+            PodcastSearchResult(
+                title: "Starter Three",
+                author: "Third Author",
+                feedURL: URL(string: "https://example.com/starter-three.xml")!,
+                artworkURL: nil,
+                websiteURL: nil,
+                summary: nil
+            )
+        ]
+
+        let staged = try FeedSyncService().stagePodcastSubscriptions(from: results, into: context)
+
+        let podcasts = try context.fetch(FetchDescriptor<Podcast>())
+        #expect(staged.map(\.title) == ["Starter One", "Starter Two", "Starter Three"])
+        #expect(podcasts.count == 3)
+        #expect(existing.isSubscribed)
+        #expect(existing.title == "Starter One")
+        #expect(existing.feedURL == results[0].feedURL)
+        #expect(podcasts.allSatisfy { $0.isSubscribed })
+        #expect(podcasts.allSatisfy { $0.syncStatus == "idle" })
+        #expect(podcasts.allSatisfy { $0.lastSyncAttemptAt != nil })
+    }
+
+    @Test
+    @MainActor
     func feedSyncOnboardingBootstrapCapsEpisodesAndSkipsExpensiveEnrichment() async throws {
         let container = try makeContainer()
         let context = container.mainContext
@@ -1777,6 +1831,41 @@ struct OffScriptTests {
         #expect(episodes.allSatisfy { $0.chapters.isEmpty })
         #expect(profiles.isEmpty)
         #expect(podcast.syncStatus == "idle")
+    }
+
+    @Test
+    func feedSyncSelectsLatestCappedItemsWithoutFullFeedSort() {
+        let baseDate = Date()
+        let items = [
+            ParsedFeedItem(
+                guid: "old",
+                title: "Old",
+                summary: nil,
+                pubDate: baseDate.addingTimeInterval(-5),
+                duration: nil,
+                audioURL: URL(string: "https://example.com/old.mp3")!
+            ),
+            ParsedFeedItem(
+                guid: "newest",
+                title: "Newest",
+                summary: nil,
+                pubDate: baseDate,
+                duration: nil,
+                audioURL: URL(string: "https://example.com/newest.mp3")!
+            ),
+            ParsedFeedItem(
+                guid: "middle",
+                title: "Middle",
+                summary: nil,
+                pubDate: baseDate.addingTimeInterval(-2),
+                duration: nil,
+                audioURL: URL(string: "https://example.com/middle.mp3")!
+            )
+        ]
+
+        let capped = FeedSyncService.itemsToProcess(from: items, limit: 2)
+
+        #expect(capped.map(\.guid) == ["newest", "middle"])
     }
 
     @Test

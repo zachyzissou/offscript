@@ -327,6 +327,67 @@ final class FeedSyncService {
     }
 
     @MainActor
+    func stagePodcastSubscriptions(from results: [PodcastSearchResult], into context: ModelContext) throws -> [Podcast] {
+        guard !results.isEmpty else { return [] }
+
+        let feedURLs = Set(results.map(\.feedURL))
+        let existingPodcasts = try context.fetch(FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> {
+                feedURLs.contains($0.feedURL)
+            }
+        ))
+        var podcastByFeedKey = Dictionary(
+            existingPodcasts.map { ($0.feedURL, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let now = Date()
+        var stagedPodcasts: [Podcast] = []
+
+        for result in results {
+            let podcast: Podcast
+            if let existing = podcastByFeedKey[result.feedURL] {
+                podcast = existing
+                podcast.isSubscribed = true
+                podcast.title = result.title
+                podcast.author = result.author
+                podcast.feedURL = result.feedURL
+                podcast.artworkURL = result.artworkURL
+                podcast.websiteURL = result.websiteURL
+                podcast.summary = result.summary
+                if podcast.subscribedAt == nil {
+                    podcast.subscribedAt = now
+                }
+            } else {
+                podcast = Podcast(
+                    title: result.title,
+                    author: result.author,
+                    summary: result.summary,
+                    feedURL: result.feedURL,
+                    websiteURL: result.websiteURL,
+                    artworkURL: result.artworkURL,
+                    isSubscribed: true
+                )
+                podcast.subscribedAt = now
+                context.insert(podcast)
+                podcastByFeedKey[result.feedURL] = podcast
+            }
+
+            podcast.syncStatus = "idle"
+            podcast.lastSyncAttemptAt = now
+            podcast.syncErrorMessage = nil
+            stagedPodcasts.append(podcast)
+        }
+
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
+        return stagedPodcasts
+    }
+
+    @MainActor
     func sync(podcast: Podcast, in context: ModelContext, episodeLimit: Int? = nil) async throws {
         try await sync(podcast: podcast, in: context, options: .standard(episodeLimit: episodeLimit))
     }
@@ -416,8 +477,7 @@ final class FeedSyncService {
         podcast.syncFailureCount = 0
         podcast.nextRetryAt = nil
 
-        let sortedItems = parsed.items.sorted { ($0.pubDate ?? .distantPast) > ($1.pubDate ?? .distantPast) }
-        let itemsToProcess = options.episodeLimit.map { Array(sortedItems.prefix($0)) } ?? sortedItems
+        let itemsToProcess = Self.itemsToProcess(from: parsed.items, limit: options.episodeLimit)
         let podcastID = podcast.id
         let lookupKeys = Self.episodeLookupKeys(for: itemsToProcess)
         let existingEpisodes = try Self.fetchExistingEpisodes(
@@ -480,6 +540,32 @@ final class FeedSyncService {
         var count: Int {
             guids.count + audioURLs.count
         }
+    }
+
+    static func itemsToProcess(from items: [ParsedFeedItem], limit: Int?) -> [ParsedFeedItem] {
+        guard let limit else {
+            return items.sorted { ($0.pubDate ?? .distantPast) > ($1.pubDate ?? .distantPast) }
+        }
+        guard limit > 0 else { return [] }
+
+        var newestItems: [ParsedFeedItem] = []
+        newestItems.reserveCapacity(min(limit, items.count))
+
+        for item in items {
+            let itemDate = item.pubDate ?? .distantPast
+            let insertionIndex = newestItems.firstIndex {
+                itemDate > ($0.pubDate ?? .distantPast)
+            } ?? newestItems.endIndex
+
+            if insertionIndex < limit {
+                newestItems.insert(item, at: insertionIndex)
+                if newestItems.count > limit {
+                    newestItems.removeLast()
+                }
+            }
+        }
+
+        return newestItems
     }
 
     private static func episodeLookupKeys(for items: [ParsedFeedItem]) -> EpisodeLookupKeys {
