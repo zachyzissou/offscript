@@ -239,6 +239,7 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
         // with Apple does nothing." Apple's docs describe holding the
         // controller for the lifetime of the request.
         private var inFlightController: ASAuthorizationController?
+        private var inFlightPresentationAnchor: ASPresentationAnchor?
         var presentationAnchorProvider: (() -> ASPresentationAnchor?)?
 
         init(onComplete: @escaping () -> Void, onFailure: @escaping (String) -> Void) {
@@ -247,6 +248,13 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
         }
 
         @objc func handleSignIn() {
+            guard let anchor = resolvedPresentationAnchor() else {
+                let logger = Logger(subsystem: "com.offscript", category: "AppleSignin")
+                logger.error("Sign in with Apple requested without an active window scene")
+                onFailure("SIGN-IN NEEDS AN ACTIVE APP WINDOW. TRY AGAIN.")
+                return
+            }
+
             let request = ASAuthorizationAppleIDProvider().createRequest()
             request.requestedScopes = [.fullName]
 
@@ -254,6 +262,7 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
             controller.delegate = self
             controller.presentationContextProvider = self
             inFlightController = controller
+            inFlightPresentationAnchor = anchor
             controller.performRequests()
         }
 
@@ -263,9 +272,14 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
         // active one and fall back to the key window if none match. Without
         // this, the auth sheet refuses to present and the request errors out.
         func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-            if let anchor = presentationAnchorProvider?() {
-                return anchor
-            }
+            if let inFlightPresentationAnchor { return inFlightPresentationAnchor }
+            if let anchor = resolvedPresentationAnchor() { return anchor }
+            preconditionFailure("Sign in with Apple presentation requested without an active window scene")
+        }
+
+        private func resolvedPresentationAnchor() -> ASPresentationAnchor? {
+            if let anchor = presentationAnchorProvider?() { return anchor }
+
             let active = UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
                 .first { $0.activationState == .foregroundActive }
@@ -278,14 +292,13 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
                     ?? active.windows.first
                     ?? UIWindow(windowScene: active)
             }
-            let logger = Logger(subsystem: "com.offscript", category: "AppleSignin")
-            logger.error("Sign in with Apple requested without an active window scene; using detached fallback anchor")
-            return ASPresentationAnchor(frame: .zero)
+            return nil
         }
 
         func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
             guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
                 inFlightController = nil
+                inFlightPresentationAnchor = nil
                 onFailure("SIGN-IN RETURNED NO APPLE ID CREDENTIAL")
                 return
             }
@@ -300,6 +313,7 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
                     displayName: displayName.isEmpty ? nil : displayName
                 )
                 inFlightController = nil
+                inFlightPresentationAnchor = nil
                 Task { @MainActor in
                     AppSettings.cloudSyncEnabled = (await CloudKitAccountService.currentStatus()).allowsSync
                     onComplete()
@@ -312,6 +326,7 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
                     logger.error("Failed to persist Apple credential: \(error.localizedDescription, privacy: .public)")
                 }
                 inFlightController = nil
+                inFlightPresentationAnchor = nil
                 onFailure("SIGN-IN COULD NOT BE SAVED. TRY AGAIN.")
             }
         }
@@ -322,6 +337,7 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
             let logger = Logger(subsystem: "com.offscript", category: "AppleSignin")
             logger.error("Sign in with Apple failed: \(error.localizedDescription, privacy: .public)")
             inFlightController = nil
+            inFlightPresentationAnchor = nil
             onFailure("SIGN-IN FAILED. RETRY OR POWER ON WITHOUT SYNC.")
         }
     }
