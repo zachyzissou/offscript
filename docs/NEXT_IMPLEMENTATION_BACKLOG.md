@@ -40,7 +40,7 @@ Label prefilter:
 gh issue list \
   --state open \
   --label "agent:low-thinking-ready" \
-  --search "-label:agent:senior-required"
+  --search '-label:"agent:senior-required"'
 ```
 
 After that prefilter, confirm the selected issue is `Ready` in the OffScript

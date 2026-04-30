@@ -47,7 +47,7 @@ Label prefilter for low-thinking candidates:
 gh issue list \
   --state open \
   --label "agent:low-thinking-ready" \
-  --search "-label:agent:senior-required"
+  --search '-label:"agent:senior-required"'
 ```
 
 Before launching the agent, confirm the issue is `Ready` in the OffScript
