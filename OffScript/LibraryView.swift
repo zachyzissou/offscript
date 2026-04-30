@@ -86,6 +86,26 @@ nonisolated struct LibraryDirectorySnapshot {
     var isEmpty: Bool { podcasts.isEmpty }
 }
 
+nonisolated enum LibraryDirectoryListItem: Identifiable {
+    case sectionHeader(LibraryDirectorySection)
+    case row(LibraryDirectoryRow)
+    case sectionSeparator(String)
+    case rowSeparator(String)
+
+    var id: String {
+        switch self {
+        case let .sectionHeader(section):
+            return "header-\(section.id)"
+        case let .row(row):
+            return "row-\(row.id)"
+        case let .sectionSeparator(sectionID):
+            return "section-separator-\(sectionID)"
+        case let .rowSeparator(rowID):
+            return "row-separator-\(rowID)"
+        }
+    }
+}
+
 private struct LibraryPodcastFingerprint: Equatable {
     let id: UUID
     let title: String
@@ -211,6 +231,20 @@ nonisolated enum LibraryDirectoryOrganizer {
             return next.id
         }
         return sortedSections.last?.id
+    }
+
+    static func listItems(for sections: [LibraryDirectorySection]) -> [LibraryDirectoryListItem] {
+        sections.flatMap { section -> [LibraryDirectoryListItem] in
+            var items: [LibraryDirectoryListItem] = [.sectionHeader(section)]
+            for row in section.rows {
+                items.append(.row(row))
+                if !row.isLastInSection {
+                    items.append(.rowSeparator(row.id.uuidString))
+                }
+            }
+            items.append(.sectionSeparator(section.id))
+            return items
+        }
     }
 
     static func sections(
@@ -574,9 +608,11 @@ struct LibraryView: View {
                     }
                 }
 
+                let directoryItems = LibraryDirectoryOrganizer.listItems(for: snapshot.sections)
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(snapshot.sections) { section in
-                        VStack(alignment: .leading, spacing: 0) {
+                    ForEach(directoryItems) { item in
+                        switch item {
+                        case let .sectionHeader(section):
                             HStack {
                                 TunerLabel(text: section.title, color: .offscriptSignalYellow, size: 10)
                                     .accessibilityIdentifier("LibrarySectionHeader\(section.title)")
@@ -587,27 +623,23 @@ struct LibraryView: View {
                             .padding(.bottom, 6)
                             .id(section.id)
 
-                            ForEach(section.rows) { row in
-                                Button {
-                                    selectedPodcast = row.podcast
-                                } label: {
-                                    PodcastShelfRow(
-                                        podcast: row.podcast,
-                                        channelNumber: row.channelNumber,
-                                        unplayedCount: row.unplayedCount,
-                                        inProgressCount: row.inProgressCount,
-                                        isCompact: isCompactDirectory
-                                    )
-                                }
-                                .buttonStyle(.plain)
-
-                                if !row.isLastInSection {
-                                    Rectangle().fill(Color.offscriptHairline).frame(height: 1)
-                                }
+                        case let .row(row):
+                            Button {
+                                selectedPodcast = row.podcast
+                            } label: {
+                                PodcastShelfRow(
+                                    podcast: row.podcast,
+                                    channelNumber: row.channelNumber,
+                                    unplayedCount: row.unplayedCount,
+                                    inProgressCount: row.inProgressCount,
+                                    isCompact: isCompactDirectory
+                                )
                             }
-                        }
+                            .buttonStyle(.plain)
 
-                        Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                        case .rowSeparator, .sectionSeparator:
+                            Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                        }
                     }
                 }
                 .padding(.top, 2)

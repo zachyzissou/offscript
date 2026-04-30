@@ -1244,6 +1244,29 @@ struct OffScriptTests {
     }
 
     @Test
+    @MainActor
+    func libraryDirectoryListItemsFlattenSectionRowsForLazyRendering() {
+        let alpha = Podcast(title: "Audio Craft", feedURL: URL(string: "https://example.com/audio-flat.xml")!)
+        let another = Podcast(title: "Another Audio", feedURL: URL(string: "https://example.com/another-flat.xml")!)
+        let beta = Podcast(title: "Beta Feed", feedURL: URL(string: "https://example.com/beta-flat.xml")!)
+        let sections = LibraryDirectoryOrganizer.sections(for: [alpha, another, beta])
+
+        let items = LibraryDirectoryOrganizer.listItems(for: sections)
+        let ids = items.map(\.id)
+
+        #expect(ids == [
+            "header-library-section-A",
+            "row-\(alpha.id)",
+            "row-separator-\(alpha.id.uuidString)",
+            "row-\(another.id)",
+            "section-separator-library-section-A",
+            "header-library-section-B",
+            "row-\(beta.id)",
+            "section-separator-library-section-B"
+        ])
+    }
+
+    @Test
     func libraryDirectoryOrganizerLoadsPerShowCountsOnlyForCountDrivenModes() {
         #expect(!LibraryDirectoryOrganizer.needsPerShowUnplayedCounts(scope: .all, sort: .title))
         #expect(!LibraryDirectoryOrganizer.needsPerShowUnplayedCounts(scope: .needsSync, sort: .latest))
