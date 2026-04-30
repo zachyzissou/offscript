@@ -4,7 +4,7 @@ import SwiftUI
 
 private let libraryLogger = Logger(subsystem: "com.offscript", category: "Library")
 
-nonisolated enum LibraryDirectoryScope: String, CaseIterable, Identifiable {
+nonisolated enum LibraryDirectoryScope: String, CaseIterable, Identifiable, Sendable {
     case all
     case unplayed
     case inProgress
@@ -22,7 +22,7 @@ nonisolated enum LibraryDirectoryScope: String, CaseIterable, Identifiable {
     }
 }
 
-nonisolated enum LibraryDirectorySort: String, CaseIterable, Identifiable {
+nonisolated enum LibraryDirectorySort: String, CaseIterable, Identifiable, Sendable {
     case title
     case latest
     case attention
@@ -38,7 +38,7 @@ nonisolated enum LibraryDirectorySort: String, CaseIterable, Identifiable {
     }
 }
 
-nonisolated enum LibraryDirectoryDensity: String, CaseIterable, Identifiable {
+nonisolated enum LibraryDirectoryDensity: String, CaseIterable, Identifiable, Sendable {
     case compact
     case artwork
 
@@ -52,7 +52,7 @@ nonisolated enum LibraryDirectoryDensity: String, CaseIterable, Identifiable {
     }
 }
 
-nonisolated struct LibraryDirectoryRow: Identifiable {
+nonisolated struct LibraryDirectoryRow: Equatable, Identifiable, Sendable {
     var id: UUID { podcastID }
     let podcastID: UUID
     let title: String
@@ -64,7 +64,7 @@ nonisolated struct LibraryDirectoryRow: Identifiable {
     let isLastInSection: Bool
 }
 
-nonisolated struct LibraryDirectoryPodcast: Identifiable, Hashable {
+nonisolated struct LibraryDirectoryPodcast: Identifiable, Hashable, Sendable {
     let id: UUID
     let title: String
     let author: String?
@@ -112,7 +112,7 @@ nonisolated struct LibraryDirectoryPodcast: Identifiable, Hashable {
     }
 }
 
-nonisolated struct LibraryDirectorySection: Identifiable {
+nonisolated struct LibraryDirectorySection: Equatable, Identifiable, Sendable {
     let id: String
     let title: String
     let rowCount: Int
@@ -126,26 +126,43 @@ nonisolated struct LibraryDirectorySection: Identifiable {
     }
 }
 
-nonisolated struct LibraryDirectorySnapshot {
+nonisolated struct LibraryAlphabetTarget: Equatable, Identifiable, Sendable {
+    var id: String { key }
+    let key: String
+    let sectionID: String?
+    let isExact: Bool
+
+    var isReachable: Bool { sectionID != nil }
+    var isNearestJump: Bool { isReachable && !isExact }
+}
+
+nonisolated struct LibraryDirectorySnapshot: Sendable {
     let podcasts: [LibraryDirectoryPodcast]
     let sections: [LibraryDirectorySection]
     let listItems: [LibraryDirectoryListItem]
     let numbersByPodcastID: [UUID: Int]
+    let alphabetTargets: [LibraryAlphabetTarget]
 
-    static let empty = LibraryDirectorySnapshot(podcasts: [], sections: [], listItems: [], numbersByPodcastID: [:])
+    static let empty = LibraryDirectorySnapshot(
+        podcasts: [],
+        sections: [],
+        listItems: [],
+        numbersByPodcastID: [:],
+        alphabetTargets: LibraryDirectoryOrganizer.alphabetTargets(for: [])
+    )
 
     var visibleCount: Int { podcasts.count }
     var isEmpty: Bool { podcasts.isEmpty }
 }
 
-nonisolated struct LibraryDirectoryCounts: Equatable {
+nonisolated struct LibraryDirectoryCounts: Equatable, Sendable {
     let unplayedByPodcastID: [UUID: Int]
     let inProgressByPodcastID: [UUID: Int]
 
     static let empty = LibraryDirectoryCounts(unplayedByPodcastID: [:], inProgressByPodcastID: [:])
 }
 
-private struct LibraryDirectorySnapshotInputs: Equatable {
+private struct LibraryDirectorySnapshotInputs: Equatable, Sendable {
     let podcasts: [LibraryDirectoryPodcast]
     let query: String
     let scope: LibraryDirectoryScope
@@ -154,7 +171,7 @@ private struct LibraryDirectorySnapshotInputs: Equatable {
     let inProgressCounts: [UUID: Int]
 }
 
-nonisolated enum LibraryDirectoryListItem: Identifiable {
+nonisolated enum LibraryDirectoryListItem: Identifiable, Sendable {
     case sectionHeader(LibraryDirectorySection)
     case row(LibraryDirectoryRow)
     case sectionSeparator(String)
@@ -175,6 +192,10 @@ nonisolated enum LibraryDirectoryListItem: Identifiable {
 }
 
 nonisolated enum LibraryDirectoryOrganizer {
+    static let alphabetKeys = ["#"] + (UnicodeScalar("A").value...UnicodeScalar("Z").value).compactMap { value in
+        UnicodeScalar(value).map { String($0) }
+    }
+
     static func needsPerShowUnplayedCounts(
         scope: LibraryDirectoryScope,
         sort: LibraryDirectorySort
@@ -256,7 +277,8 @@ nonisolated enum LibraryDirectoryOrganizer {
             podcasts: filtered,
             sections: sections,
             listItems: listItems(for: sections),
-            numbersByPodcastID: numbersByPodcastID
+            numbersByPodcastID: numbersByPodcastID,
+            alphabetTargets: alphabetTargets(for: sections)
         )
     }
 
@@ -359,6 +381,18 @@ nonisolated enum LibraryDirectoryOrganizer {
             return next.id
         }
         return sortedSections.last?.id
+    }
+
+    static func alphabetTargets(for sections: [LibraryDirectorySection]) -> [LibraryAlphabetTarget] {
+        let sectionsByTitle = Dictionary(uniqueKeysWithValues: sections.map { ($0.title, $0) })
+        return alphabetKeys.map { key in
+            let exactSectionID = sectionsByTitle[key]?.id
+            return LibraryAlphabetTarget(
+                key: key,
+                sectionID: exactSectionID ?? sectionIDForAlphabetKey(key, sections: sections),
+                isExact: exactSectionID != nil
+            )
+        }
     }
 
     static func listItems(for sections: [LibraryDirectorySection]) -> [LibraryDirectoryListItem] {
@@ -569,6 +603,7 @@ struct LibraryView: View {
     @State private var isLoadingFullDirectoryCounts = false
     @State private var summaryLoadTask: Task<Void, Never>?
     @State private var fullCountLoadTask: Task<Void, Never>?
+    @State private var directorySnapshotTask: Task<Void, Never>?
     @State private var directoryQueryTask: Task<Void, Never>?
     @State private var selectedPodcastID: UUID?
     @State private var directoryPodcasts: [LibraryDirectoryPodcast] = []
@@ -715,13 +750,13 @@ struct LibraryView: View {
     }
 
     private var activeLibraryContent: some View {
-        let snapshot = didBuildDirectorySnapshot ? cachedDirectorySnapshot : makeDirectorySnapshot()
+        let snapshot = cachedDirectorySnapshot
         return ScrollViewReader { scrollProxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     LibraryTunerHeader(
                         showCount: directoryPodcasts.count,
-                        visibleCount: snapshot.visibleCount,
+                        visibleCount: didBuildDirectorySnapshot ? snapshot.visibleCount : directoryPodcasts.count,
                         unplayedCount: unplayedEpisodeCount,
                         inProgressCount: inProgressEpisodeCount,
                         onOpenImport: { isImportPresented = true },
@@ -799,27 +834,47 @@ struct LibraryView: View {
 
     @MainActor
     private func rebuildDirectorySnapshot() {
+        directorySnapshotTask?.cancel()
+        let inputs = directorySnapshotInputs
         let interval = OffScriptPerformanceLog.begin(
             "library.snapshot",
-            metadata: "podcasts=\(directoryPodcasts.count) scope=\(directoryScope.rawValue) sort=\(directorySort.rawValue)"
+            metadata: "podcasts=\(inputs.podcasts.count) scope=\(inputs.scope.rawValue) sort=\(inputs.sort.rawValue)"
         )
-        cachedDirectorySnapshot = makeDirectorySnapshot()
-        didBuildDirectorySnapshot = true
-        OffScriptPerformanceLog.end(
-            interval,
-            metadata: "podcasts=\(directoryPodcasts.count) visible=\(cachedDirectorySnapshot.visibleCount) scope=\(directoryScope.rawValue) sort=\(directorySort.rawValue)"
-        )
-    }
-
-    private func makeDirectorySnapshot() -> LibraryDirectorySnapshot {
-        LibraryDirectoryOrganizer.snapshot(
-            for: directoryPodcasts,
-            query: effectiveDirectoryQuery,
-            scope: directoryScope,
-            sort: directorySort,
-            unplayedCounts: directoryUnplayedCountsByPodcastID,
-            inProgressCounts: directoryInProgressCountsByPodcastID
-        )
+        directorySnapshotTask = Task.detached(priority: .userInitiated) {
+            guard !Task.isCancelled else {
+                await MainActor.run {
+                    OffScriptPerformanceLog.end(
+                        interval,
+                        metadata: "podcasts=\(inputs.podcasts.count) scope=\(inputs.scope.rawValue) sort=\(inputs.sort.rawValue) cancelled=true"
+                    )
+                }
+                return
+            }
+            let snapshot = LibraryDirectoryOrganizer.snapshot(
+                for: inputs.podcasts,
+                query: inputs.query,
+                scope: inputs.scope,
+                sort: inputs.sort,
+                unplayedCounts: inputs.unplayedCounts,
+                inProgressCounts: inputs.inProgressCounts
+            )
+            await MainActor.run {
+                guard !Task.isCancelled else {
+                    OffScriptPerformanceLog.end(
+                        interval,
+                        metadata: "podcasts=\(inputs.podcasts.count) scope=\(inputs.scope.rawValue) sort=\(inputs.sort.rawValue) cancelled=true"
+                    )
+                    return
+                }
+                cachedDirectorySnapshot = snapshot
+                didBuildDirectorySnapshot = true
+                reconcileSelectedDirectoryTarget(with: snapshot)
+                OffScriptPerformanceLog.end(
+                    interval,
+                    metadata: "podcasts=\(inputs.podcasts.count) visible=\(snapshot.visibleCount) scope=\(inputs.scope.rawValue) sort=\(inputs.sort.rawValue)"
+                )
+            }
+        }
     }
 
     private var emptyState: some View {
@@ -866,7 +921,10 @@ struct LibraryView: View {
                 )
             }
 
-            if snapshot.isEmpty {
+            if !didBuildDirectorySnapshot && !directoryPodcasts.isEmpty {
+                TunerLabel(text: "● BUILDING DIRECTORY INDEX", color: .offscriptSignalYellow, size: 8)
+                    .padding(.top, 2)
+            } else if snapshot.isEmpty {
                 LibraryDirectoryEmptyState(query: effectiveDirectoryQuery, scope: directoryScope)
             } else {
                 if isLoadingFullDirectoryCounts && directoryNeedsFullCounts {
@@ -875,7 +933,7 @@ struct LibraryView: View {
                 }
 
                 LibraryAlphabetRail(
-                    sections: snapshot.sections,
+                    targets: snapshot.alphabetTargets,
                     selectedSectionID: selectedDirectorySectionID,
                     selectedKey: selectedDirectoryKey
                 ) { key, sectionID in
@@ -911,6 +969,7 @@ struct LibraryView: View {
                                     inProgressCount: row.inProgressCount,
                                     isCompact: isCompactDirectory
                                 )
+                                .equatable()
                             }
                             .buttonStyle(.plain)
 
@@ -992,6 +1051,7 @@ struct LibraryView: View {
     private func cancelDeferredLibraryWork() {
         summaryLoadTask?.cancel()
         fullCountLoadTask?.cancel()
+        directorySnapshotTask?.cancel()
         directoryQueryTask?.cancel()
     }
 
@@ -1226,6 +1286,24 @@ struct LibraryView: View {
             guard !Task.isCancelled else { return }
             effectiveDirectoryQuery = query
         }
+    }
+
+    @MainActor
+    private func reconcileSelectedDirectoryTarget(with snapshot: LibraryDirectorySnapshot) {
+        guard let selectedKey = selectedDirectoryKey else {
+            if let selectedDirectorySectionID,
+               !snapshot.sections.contains(where: { $0.id == selectedDirectorySectionID }) {
+                self.selectedDirectorySectionID = nil
+            }
+            return
+        }
+        guard let target = snapshot.alphabetTargets.first(where: { $0.key == selectedKey }),
+              let sectionID = target.sectionID else {
+            self.selectedDirectoryKey = nil
+            self.selectedDirectorySectionID = nil
+            return
+        }
+        selectedDirectorySectionID = sectionID
     }
 
     @MainActor
@@ -1487,54 +1565,49 @@ private struct LibraryDirectoryControls: View {
 }
 
 private struct LibraryAlphabetRail: View {
-    let sections: [LibraryDirectorySection]
+    let targets: [LibraryAlphabetTarget]
     let selectedSectionID: String?
     let selectedKey: String?
     let onSelect: (String, String) -> Void
-
-    private let keys = ["#"] + (UnicodeScalar("A").value...UnicodeScalar("Z").value).compactMap { value in
-        UnicodeScalar(value).map { String($0) }
-    }
-
-    private var sectionsByTitle: [String: LibraryDirectorySection] {
-        Dictionary(uniqueKeysWithValues: sections.map { ($0.title, $0) })
-    }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
-                    ForEach(keys, id: \.self) { key in
-                        let section = sectionsByTitle[key]
-                        let targetSectionID = LibraryDirectoryOrganizer.sectionIDForAlphabetKey(key, sections: sections)
-                        let isNearestJump = section == nil && targetSectionID != nil
-                        let isSelected = selectedKey == key || (selectedKey == nil && selectedSectionID == section?.id)
+                    ForEach(targets) { target in
+                        let isSelected = selectedKey == target.key
+                            || (selectedKey == nil && selectedSectionID == target.sectionID && target.isExact)
 
-                        if let targetSectionID {
+                        if let targetSectionID = target.sectionID {
                             Button {
-                                onSelect(key, targetSectionID)
+                                onSelect(target.key, targetSectionID)
                             } label: {
-                                letterKey(key, isSelected: isSelected, isNearestJump: isNearestJump, isReachable: true)
+                                letterKey(
+                                    target.key,
+                                    isSelected: isSelected,
+                                    isNearestJump: target.isNearestJump,
+                                    isReachable: true
+                                )
                             }
-                            .id(key)
+                            .id(target.key)
                             .buttonStyle(.plain)
                             .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(isNearestJump ? "Jump near \(key)" : "Jump to \(key)")
-                            .accessibilityIdentifier("LibraryJumpLetter\(key)")
+                            .accessibilityLabel(target.isNearestJump ? "Jump near \(target.key)" : "Jump to \(target.key)")
+                            .accessibilityIdentifier("LibraryJumpLetter\(target.key)")
                             .accessibilityAddTraits(isSelected ? .isSelected : [])
                         } else {
-                            letterKey(key, isSelected: false, isNearestJump: false, isReachable: false)
-                                .id(key)
-                                .accessibilityLabel("No \(key) channels")
-                                .accessibilityIdentifier("LibraryJumpLetter\(key)")
+                            letterKey(target.key, isSelected: false, isNearestJump: false, isReachable: false)
+                                .id(target.key)
+                                .accessibilityLabel("No \(target.key) channels")
+                                .accessibilityIdentifier("LibraryJumpLetter\(target.key)")
                                 .accessibilityAddTraits(.isStaticText)
                         }
                     }
                 }
                 .padding(.vertical, 4)
                 .onChange(of: selectedSectionID) { _, newValue in
-                    guard let key = selectedKey ?? newValue.flatMap({ selectedSectionID in
-                        sectionsByTitle.first(where: { $0.value.id == selectedSectionID })?.key
+                    guard let key = selectedKey ?? newValue.flatMap({ sectionID in
+                        targets.first(where: { $0.sectionID == sectionID && $0.isExact })?.key
                     }) else { return }
                     withAnimation(.easeInOut(duration: 0.18)) {
                         proxy.scrollTo(key, anchor: .center)
@@ -1757,6 +1830,16 @@ private struct PodcastShelfRow: View {
                 .foregroundStyle(Color.offscriptSignalYellow)
         }
         .padding(.vertical, isCompact ? 7 : 10)
+    }
+}
+
+extension PodcastShelfRow: Equatable {
+    static func == (lhs: PodcastShelfRow, rhs: PodcastShelfRow) -> Bool {
+        lhs.row == rhs.row
+            && lhs.channelNumber == rhs.channelNumber
+            && lhs.unplayedCount == rhs.unplayedCount
+            && lhs.inProgressCount == rhs.inProgressCount
+            && lhs.isCompact == rhs.isCompact
     }
 }
 

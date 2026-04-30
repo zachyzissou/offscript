@@ -9,7 +9,7 @@ nonisolated enum OffScriptPerformanceLog {
     private static let logger = Logger(subsystem: "com.offscript", category: "Performance")
     private static let signposter = OSSignposter(subsystem: "com.offscript", category: "Performance")
 
-    struct Interval {
+    struct Interval: @unchecked Sendable {
         fileprivate let name: StaticString
         fileprivate let state: OSSignpostIntervalState
         fileprivate let start: ContinuousClock.Instant
