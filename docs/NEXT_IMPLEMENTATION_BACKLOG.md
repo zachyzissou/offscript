@@ -11,9 +11,17 @@ This backlog is safe for a senior autonomous agent that can inspect code,
 verify assumptions, and push PRs through Copilot review. It is not meant to be
 executed title-only.
 
+Every open roadmap issue now has an `Agent execution contract` in GitHub and
+one of these routing labels:
+
+- `agent:low-thinking-ready`: constrained implementation agents can work one
+  issue at a time by following the runbook.
+- `agent:needs-spec`: tighten the issue before implementation.
+- `agent:senior-required`: keep with a senior agent or owner-led workflow.
+
 For low-thinking implementation runs, start from
-[`docs/AGENT_EXECUTION_RUNBOOK.md`](AGENT_EXECUTION_RUNBOOK.md), pick one
-`Ready` issue, and require the agent to include:
+[`docs/AGENT_EXECUTION_RUNBOOK.md`](AGENT_EXECUTION_RUNBOOK.md), pick one issue
+with `agent:low-thinking-ready`, and require the agent to include:
 
 1. the issue number and lane;
 2. the exact files it expects to touch;
@@ -25,6 +33,64 @@ For low-thinking implementation runs, start from
 If an issue does not have enough context to identify files, acceptance
 criteria, verification, and non-goals, upgrade the issue first instead of
 starting implementation.
+
+Label prefilter:
+
+```sh
+gh issue list \
+  --state open \
+  --label "agent:low-thinking-ready" \
+  --search '-label:"agent:senior-required"'
+```
+
+After that prefilter, confirm the selected issue is `Ready` in the OffScript
+project. If it is still in Backlog, a senior/controller agent should either
+move it to Ready or define the first narrow slice before handing it to a
+low-thinking implementation agent.
+
+### Low-Thinking Ready Queue
+
+Use these for constrained implementation agents. Prefer the `Ready` items first;
+Backlog items are valid after selecting the first narrow slice from the issue
+contract.
+
+- #105 Speed up large OPML import for real libraries
+- #106 Reduce onboarding subscription latency
+- #107 Make Library performant with 250+ subscribed shows
+- #109 Complete full Tuner UI conformance audit
+- #114 Audit Settings crash reports and harden settings presentation
+- #115 Finish Library interaction polish
+- #116 Create a complete app test matrix
+- #118 Fix Home recommendation card text overflow
+- #123 Improve Search and discovery subscribe flow
+- #145 Fix podcast detail episode ordering
+- #126 Improve Queue workflows for heavy listeners
+- #127 Audit accessibility and Dynamic Type across Tuner UI
+
+### Senior Or Owner-Led Queue
+
+Do not give these to low-thinking agents without a senior wrapper because they
+touch release truth, Apple account/signing state, real-device behavior, broad
+product judgment, or cross-surface architecture.
+
+- #104 Fix release/build visibility source of truth
+- #108 Rebuild recommendations around authored user signal
+- #111 Expand Apple platform integrations and OLED polish
+- #112 Validate Sign in with Apple and iCloud/CloudKit paths
+- #113 Add regression coverage for background playback and silent switch behavior
+- #117 Improve release automation after PR merge
+- #120 Diagnose Xcode Cloud PrepareBuildForAppStoreConnect failures
+- #121 Handle uploaded but unassigned TestFlight builds
+- #124 Expand Player feature polish and reliability
+
+### Spec-First Queue
+
+These should become planning/spec PRs or tighter issue contracts before feature
+implementation starts.
+
+- #110 Redesign top chrome and safe-area usage
+- #119 Add Library power-user features for large collections
+- #125 Harden downloads and offline playback
 
 ## Immediate Release Lane
 
@@ -92,6 +158,7 @@ Turn Library into a power-user surface for large collections.
 - #115 Finish Library interaction polish
 - #119 Add Library power-user features for large collections
 - #123 Improve Search and discovery subscribe flow
+- #145 Fix podcast detail episode ordering
 
 ### Acceptance
 1. Alphabet #-Z carousel selection works reliably and jumps to the intended or
@@ -99,7 +166,9 @@ Turn Library into a power-user surface for large collections.
 2. Import, search, subscribe, duplicate-feed, and error states are clear.
 3. Large-library workflows include useful scopes, metadata signals, and bulk or
    repeated actions where appropriate.
-4. The Library stays visually Tuner-native and performant under real library
+4. Podcast detail episode ordering matches the show/feed chronology expected by
+   listeners and does not invert episode-number style feeds.
+5. The Library stays visually Tuner-native and performant under real library
    sizes.
 
 ## Tuner UI and Accessibility Lane
@@ -200,3 +269,4 @@ Give humans and agents a repeatable way to verify the app end to end.
 - #125 Harden downloads and offline playback
 - #126 Improve Queue workflows for heavy listeners
 - #127 Audit accessibility and Dynamic Type across Tuner UI
+- #145 Fix podcast detail episode ordering
