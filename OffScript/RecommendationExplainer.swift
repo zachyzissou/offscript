@@ -49,6 +49,24 @@ enum RecommendationExplainer {
             .map { $0.value.lowercased() }
         let source = authoredSource(from: sources)
 
+        if sources.contains("explicit signal"),
+           sources.contains("show intent"),
+           let tags = lookup["tags"],
+           let show = lookup["show"],
+           !tags.isEmpty,
+           !show.isEmpty {
+            return clipped("More from \(show), matching your \(joinedList(tags)) signal", maxCharacters: 72)
+        }
+
+        if sources.contains("completion"),
+           sources.contains("tag match"),
+           let tags = lookup["tags"],
+           let show = lookup["show"],
+           !tags.isEmpty,
+           !show.isEmpty {
+            return clipped("\(show) plus your \(joinedList(tags)) signal", maxCharacters: 72)
+        }
+
         switch source {
         case "queue":
             if let position = lookup["position"] {
@@ -62,9 +80,14 @@ enum RecommendationExplainer {
             return "Ready to pick up from your last session"
         case "completion":
             if let show = lookup["show"], !show.isEmpty {
-                return "More from \(show), a show you keep finishing"
+                return clipped("More from \(show), a show you keep finishing", maxCharacters: 72)
             }
             return "More from a show you keep finishing"
+        case "show intent":
+            if let show = lookup["show"], !show.isEmpty {
+                return clipped("More from \(show), because you asked for it", maxCharacters: 72)
+            }
+            return "More from a show you chose"
         case "show affinity":
             if let show = lookup["show"], !show.isEmpty {
                 return "More from \(show), a show you already trust"
@@ -77,7 +100,7 @@ enum RecommendationExplainer {
             return "More from the show already playing"
         case "tag match":
             if let tags = lookup["tags"], !tags.isEmpty {
-                return "Tuned to your saved \(joinedList(tags)) signal\(isPluralList(tags) ? "s" : "")"
+                return clipped("Tuned to your saved \(joinedList(tags)) signal\(isPluralList(tags) ? "s" : "")", maxCharacters: 72)
             }
             return "Tuned to your saved listening signals"
         case "taste tag":
@@ -161,6 +184,8 @@ enum RecommendationExplainer {
             "queue",
             "resume",
             "latest episode",
+            "explicit signal",
+            "show intent",
             "tag match",
             "taste tag",
             "topic overlap",
@@ -187,6 +212,16 @@ enum RecommendationExplainer {
             .filter { !$0.isEmpty }
         guard parts.count > 1 else { return parts.first ?? value }
         return parts.dropLast().joined(separator: ", ") + " and " + parts.last!
+    }
+
+    private static func clipped(_ value: String, maxCharacters: Int) -> String {
+        guard value.count > maxCharacters else { return value }
+        let boundary = value.index(value.startIndex, offsetBy: max(0, maxCharacters - 1))
+        let prefix = value[..<boundary]
+        if let lastSpace = prefix.lastIndex(where: { $0 == " " }), lastSpace > value.startIndex {
+            return String(prefix[..<lastSpace]) + "…"
+        }
+        return String(prefix) + "…"
     }
 
     private static func isPluralList(_ value: String) -> Bool {

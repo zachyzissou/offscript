@@ -69,6 +69,30 @@ enum RecommendationScorer {
 final class RecommendationService {
     let discoveryService = DiscoveryService()
 
+    private enum EvidenceStrength: Int {
+        case catalog = 0
+        case inferred = 1
+        case listened = 2
+        case chosen = 3
+
+        var displayValue: String {
+            switch self {
+            case .catalog: "catalog"
+            case .inferred: "inferred"
+            case .listened: "listened"
+            case .chosen: "chosen"
+            }
+        }
+    }
+
+    private struct RecommendationEvidence {
+        let source: String
+        let weight: Double
+        let explanation: String
+        let signals: [RecommendationSignal]
+        let strength: EvidenceStrength
+    }
+
     private struct ScoringContext {
         let profileByEpisodeID: [UUID: EpisodeProfile]
         let likedTags: Set<String>
@@ -95,8 +119,10 @@ final class RecommendationService {
         let sourceValues = Set(scored.signalTrace
             .filter { $0.label == "source" }
             .map { $0.value.lowercased() })
+        let strength = Self.signalStrength(from: scored.signalTrace)
         var score = scored.score
         score += Double(min(scored.signalTrace.count, 4)) * 4
+        score += Double(strength.rawValue) * 32
 
         if sourceValues.contains("queue") {
             score += 40
@@ -112,6 +138,52 @@ final class RecommendationService {
         }
 
         return score
+    }
+
+    private static func signalStrength(from signals: [RecommendationSignal]) -> EvidenceStrength {
+        let sources = Set(signals
+            .filter { $0.label.caseInsensitiveCompare("source") == .orderedSame }
+            .map { $0.value.lowercased() })
+        if !sources.intersection(["queue", "resume", "explicit signal", "show intent", "now playing"]).isEmpty {
+            return .chosen
+        }
+        if !sources.intersection(["completion", "show affinity", "tag match", "topic overlap", "liked episode", "recent interest"]).isEmpty {
+            return .listened
+        }
+        if !sources.intersection(["genre", "duration", "fresh", "subscription", "available"]).isEmpty {
+            return .inferred
+        }
+        return .catalog
+    }
+
+    private static func composedExplanation(primary: RecommendationEvidence, secondary: RecommendationEvidence?) -> String {
+        guard let secondary else { return primary.explanation }
+
+        if primary.source == "explicit signal", secondary.source == "show intent" {
+            let tags = primary.signals.first(where: { $0.label == "tags" })?.value ?? "your saved signal"
+            let show = secondary.signals.first(where: { $0.label == "show" })?.value ?? "that show"
+            return "You asked for more from \(show), and this matches \(tags)"
+        }
+
+        if primary.source == "show intent", secondary.source == "explicit signal" {
+            let show = primary.signals.first(where: { $0.label == "show" })?.value ?? "this show"
+            let tags = secondary.signals.first(where: { $0.label == "tags" })?.value ?? "your saved signal"
+            return "You asked for more from \(show), and this matches \(tags)"
+        }
+
+        if primary.source == "completion", secondary.source == "tag match" {
+            let show = primary.signals.first(where: { $0.label == "show" })?.value ?? "this show"
+            let tags = secondary.signals.first(where: { $0.label == "tags" })?.value ?? "your saved signal"
+            return "You keep finishing \(show), and this carries \(tags)"
+        }
+
+        if primary.source == "tag match", secondary.source == "completion" {
+            let tags = primary.signals.first(where: { $0.label == "tags" })?.value ?? "your saved signal"
+            let show = secondary.signals.first(where: { $0.label == "show" })?.value ?? "a show you finish"
+            return "Matches \(tags) from a show you keep finishing: \(show)"
+        }
+
+        return primary.explanation
     }
 
     @MainActor
@@ -327,28 +399,34 @@ final class RecommendationService {
         let durationTieBreak = durationFit * 5
         let qualityTieBreak = quality * 5
 
+        var evidence: [RecommendationEvidence] = []
+
         if let queuePosition = context.queuedPositionByEpisodeID[episode.id] {
             let positionLabel = queuePosition == 0 ? "first" : "#\(queuePosition + 1)"
-            return (
-                500 - Double(queuePosition * 10) + freshnessTieBreak,
-                "You put this \(positionLabel) in queue",
-                [
+            evidence.append(RecommendationEvidence(
+                source: "queue",
+                weight: 500 - Double(queuePosition * 10),
+                explanation: "You put this \(positionLabel) in queue",
+                signals: [
                     RecommendationSignal(label: "source", value: "queue"),
                     RecommendationSignal(label: "position", value: positionLabel)
-                ]
-            )
+                ],
+                strength: .chosen
+            ))
         }
 
         if Self.hasMeaningfulProgress(episode) {
             let remaining = max(0, (episode.duration ?? 0) - episode.playedPosition)
-            return (
-                420 + freshnessTieBreak + durationTieBreak,
-                "\(EpisodeDurationFormatter.short(remaining)) left from your last session",
-                [
+            evidence.append(RecommendationEvidence(
+                source: "resume",
+                weight: 420 + durationTieBreak,
+                explanation: "\(EpisodeDurationFormatter.short(remaining)) left from your last session",
+                signals: [
                     RecommendationSignal(label: "source", value: "resume"),
                     RecommendationSignal(label: "left", value: EpisodeDurationFormatter.short(remaining))
-                ]
-            )
+                ],
+                strength: .chosen
+            ))
         }
 
         let negativeEvidence = Self.negativeEvidence(for: episode, profileTags: profileTags, context: context)
@@ -359,80 +437,111 @@ final class RecommendationService {
 
         if !matchingExplicitTags.isEmpty {
             let sample = matchingExplicitTags.sorted().prefix(2).joined(separator: ", ")
-            return (
-                360 + Double(min(matchingExplicitTags.count, 4)) * 22 + freshnessTieBreak + qualityTieBreak - negativePenalty,
-                "Matches what you asked for: \(sample)",
-                [
+            evidence.append(RecommendationEvidence(
+                source: "explicit signal",
+                weight: 400 + Double(min(matchingExplicitTags.count, 4)) * 24,
+                explanation: "Matches what you asked for: \(sample)",
+                signals: [
                     RecommendationSignal(label: "source", value: "explicit signal"),
                     RecommendationSignal(label: "tags", value: sample)
-                ]
-            )
+                ],
+                strength: .chosen
+            ))
         }
 
         let explicitShowCount = context.explicitPositiveShowCounts[episode.podcast.title, default: 0]
         if explicitShowCount > 0 {
-            return (
-                380 + Double(min(explicitShowCount, 4)) * 20 + freshnessTieBreak + qualityTieBreak - negativePenalty,
-                "You asked for more from \(episode.podcast.title)",
-                [
+            evidence.append(RecommendationEvidence(
+                source: "show intent",
+                weight: 380 + Double(min(explicitShowCount, 4)) * 20,
+                explanation: "You asked for more from \(episode.podcast.title)",
+                signals: [
                     RecommendationSignal(label: "source", value: "show intent"),
                     RecommendationSignal(label: "show", value: episode.podcast.title),
                     RecommendationSignal(label: "signals", value: "\(explicitShowCount)")
-                ]
-            )
+                ],
+                strength: .chosen
+            ))
         }
 
         let completedShowCount = context.completedShowCounts[episode.podcast.title, default: 0]
         if completedShowCount > 0 || context.showAffinity.contains(episode.podcast.title) {
             let showSignal = max(completedShowCount, 1)
-            return (
-                320 + Double(min(showSignal, 5)) * 18 + freshnessTieBreak + qualityTieBreak - negativePenalty,
-                "You keep finishing \(episode.podcast.title)",
-                [
+            evidence.append(RecommendationEvidence(
+                source: "completion",
+                weight: 320 + Double(min(showSignal, 5)) * 18,
+                explanation: "You keep finishing \(episode.podcast.title)",
+                signals: [
                     RecommendationSignal(label: "source", value: "completion"),
                     RecommendationSignal(label: "show", value: episode.podcast.title),
                     RecommendationSignal(label: "finishes", value: "\(showSignal)")
-                ]
-            )
+                ],
+                strength: .listened
+            ))
         }
 
         if !matchingTags.isEmpty {
             let sample = matchingTags.sorted().prefix(2).joined(separator: ", ")
-            return (
-                260 + Double(min(matchingTags.count, 4)) * 16 + freshnessTieBreak + qualityTieBreak - negativePenalty,
-                "Matches your saved signal: \(sample)",
-                [
+            evidence.append(RecommendationEvidence(
+                source: "tag match",
+                weight: 260 + Double(min(matchingTags.count, 4)) * 16,
+                explanation: "Matches your saved signal: \(sample)",
+                signals: [
                     RecommendationSignal(label: "source", value: "tag match"),
                     RecommendationSignal(label: "tags", value: sample)
-                ]
-            )
+                ],
+                strength: .listened
+            ))
         }
 
         let genreMatches = Set(episode.podcast.categories.map { $0.lowercased() }).intersection(context.preferredGenres)
         if !genreMatches.isEmpty {
             let genre = genreMatches.sorted().first ?? "saved genre"
-            return (
-                210 + freshnessTieBreak + durationTieBreak - negativePenalty,
-                "Matches your selected \(genre) lane",
-                [
+            evidence.append(RecommendationEvidence(
+                source: "genre",
+                weight: 210 + durationTieBreak,
+                explanation: "Matches your selected \(genre) lane",
+                signals: [
                     RecommendationSignal(label: "source", value: "genre"),
                     RecommendationSignal(label: "lane", value: genre)
-                ]
-            )
+                ],
+                strength: .inferred
+            ))
         }
 
         if AppSettings.preferShortEpisodes, minutes <= 35 {
-            return (
-                190 + durationTieBreak + qualityTieBreak - negativePenalty,
-                "Fits your short-listen setting",
-                [
+            evidence.append(RecommendationEvidence(
+                source: "duration",
+                weight: 190 + durationTieBreak,
+                explanation: "Fits your short-listen setting",
+                signals: [
                     RecommendationSignal(label: "source", value: "duration"),
                     RecommendationSignal(label: "window", value: EpisodeDurationFormatter.short(episode.duration ?? 0))
-                ]
-            )
+                ],
+                strength: .inferred
+            ))
         }
 
-        return nil
+        guard !evidence.isEmpty else { return nil }
+        let localEvidence = evidence.filter { $0.strength == .chosen || $0.strength == .listened }
+        let usableEvidence = localEvidence.isEmpty ? evidence : localEvidence
+        let primary = usableEvidence.sorted { $0.weight > $1.weight }.first!
+        let secondary = usableEvidence
+            .filter { $0.source != primary.source }
+            .sorted { $0.weight > $1.weight }
+            .first
+        let composedScore = primary.weight
+            + (secondary.map { min($0.weight * 0.18, 72) } ?? 0)
+            + freshnessTieBreak
+            + qualityTieBreak
+            - negativePenalty
+        var trace = primary.signals
+        if let secondary {
+            trace.append(contentsOf: secondary.signals.filter { !trace.contains($0) })
+        }
+        trace.append(RecommendationSignal(label: "strength", value: primary.strength.displayValue))
+        let explanation = Self.composedExplanation(primary: primary, secondary: secondary)
+        return (composedScore, explanation, trace)
     }
 
     private func scoreWithExplanation(
