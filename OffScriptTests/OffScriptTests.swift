@@ -561,8 +561,8 @@ struct OffScriptTests {
         defer { AppSettings.preferredGenres = originalGenres }
 
         let tasteProfile = UserTasteProfile()
+        tasteProfile.topTags = ["already tuned"]
         tasteProfile.showAffinity = []
-        tasteProfile.topTags = []
         tasteProfile.lastUpdatedAt = .now
         let show = Podcast(title: "Freshly Liked Show", feedURL: URL(string: "https://example.com/freshly-liked.xml")!)
         let liked = Episode(
