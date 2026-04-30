@@ -528,9 +528,34 @@ struct RecommendationSignalTraceView: View {
     }
 }
 
-/// Ring meter — colored arc on a hairline base. value 0…1; glyph is the
-/// optical-center text (e.g. "34%", "1.2×", "OFF", "−6"); units optionally sit
-/// inside the ring. Built so a row of meters shares one optical baseline.
+/// Inline navigation key for pushed Tuner detail screens. The visible control
+/// stays compact, but the outer frame preserves a 44pt hit target.
+struct TunerInlineBackButton: View {
+    let label: String
+    let accessibilityLabel: String
+    let accessibilityIdentifier: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 11, weight: .bold))
+                TunerLabel(text: label, color: .offscriptSignalYellow, size: 10)
+            }
+            .foregroundStyle(Color.offscriptSignalYellow)
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+            .frame(minWidth: 44, minHeight: 44, alignment: .center)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+}
+
 // TunerRingMeter, TunerTrace, TunerTransportButton, TunerModeToggle,
 // TunerArtworkTile were defined for the design spec but never composed
 // into any actual screen. The Player built its own transport row, the

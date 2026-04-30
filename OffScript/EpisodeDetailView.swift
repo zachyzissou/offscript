@@ -18,6 +18,7 @@ import SwiftUI
 //   └───────────────────────────────────────────────────┘
 
 struct EpisodeDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @ObservedObject private var player = PlaybackController.shared
     @ObservedObject private var downloadService = DownloadService.shared
@@ -48,6 +49,14 @@ struct EpisodeDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
+                TunerInlineBackButton(
+                    label: "BACK",
+                    accessibilityLabel: "Back to previous screen",
+                    accessibilityIdentifier: "EpisodeDetailBackButton"
+                ) {
+                    dismiss()
+                }
+
                 specHeader
                 hero
                 if progressValue > 0, !episode.isPlayed {
@@ -74,8 +83,10 @@ struct EpisodeDetailView: View {
             .padding(.bottom, 28)
         }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
+        .accessibilityIdentifier("EpisodeDetailScreen")
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
