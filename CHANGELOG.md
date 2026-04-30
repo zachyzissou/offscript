@@ -26,6 +26,9 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Large Library sections now render as flattened lazy headers, rows, and separators** so a 250+ show directory does not build an entire oversized letter section as one SwiftUI child.
 - **The Library directory now renders from value snapshots instead of live SwiftData podcast models** so 250+ show scrolling does less model work and only resolves a show when a row is opened.
 
+### Changed — recommendation quality
+- **Explicit “more like this” and like signals now carry substantially more weight than passive completions** so recommendations follow intentional user feedback instead of feeling like generic completion-based ranking.
+
 ### Fixed — onboarding, import, and sync UI honesty
 - **Settings and Sign in with Apple now log identity, iCloud, signal-profile, and Keychain OSStatus breadcrumbs** so TestFlight Settings crashes and Apple sign-in failures can be correlated to the failing subsystem.
 - **Large OPML bootstrap imports now fetch feeds concurrently but apply SwiftData changes serially** and cap bootstrap RSS parsing to the small starter window, reducing 250+ show import stalls without changing normal full-feed sync.
