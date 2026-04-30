@@ -6,6 +6,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ### Added — UI QA swarm coverage
 - **Large-library UI smoke coverage now seeds a deterministic 258-show library** and launches directly into Library, giving the 250+ show scrolling case a repeatable simulator test instead of a manual-only complaint.
+- **Settings UI coverage now opens the config panel against a deterministic 258-show library** and verifies simulator iCloud status stays recoverable instead of crashing.
 - **Debug large-library seeding now resets stale simulator data when an explicit library size is requested**, so visual audits and UI tests are not polluted by previous sample stores.
 - **Large-library UI coverage now verifies alphabet directory jumps** by tapping the `Z` key in a 258-show Library and asserting the list scrolls to the `Z` section.
 - **Home recommendations now have a dedicated “More From Shows You Chose” lane** so explicit like/more-like-this show intent is not mislabeled as passive completion affinity.
@@ -25,6 +26,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Large Library sections now render as flattened lazy headers, rows, and separators** so a 250+ show directory does not build an entire oversized letter section as one SwiftUI child.
 
 ### Fixed — onboarding, import, and sync UI honesty
+- **Settings and Sign in with Apple now log identity, iCloud, signal-profile, and Keychain OSStatus breadcrumbs** so TestFlight Settings crashes and Apple sign-in failures can be correlated to the failing subsystem.
 - **Large OPML and onboarding bootstrap imports now use shorter feed request timeouts** so dead feeds release bounded import slots faster while normal subscribed-feed sync keeps its more patient timeout.
 - **Onboarding Sign in with Apple now presents from the actual button window when available** and no longer uses the old crash-prone missing-scene path for the normal sign-in flow.
 - **Onboarding starter subscriptions now commit immediately and hydrate in the background** using the same lightweight bootstrap profile as large imports, so picking three podcasts no longer waits on serial feed parsing, full episode enrichment, or external chapter lookups before entering the app.
