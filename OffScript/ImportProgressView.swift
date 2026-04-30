@@ -150,19 +150,16 @@ struct ImportProgressView: View {
         if hasFailures {
             return "Retry failed channels or continue with the feeds that tuned successfully."
         }
-        return "Fetching the most recent episodes for each channel. This will not pull the full back catalog; background sync handles that later."
+        return "Subscribing now. Starter episodes tune in behind the scenes so you can get into the app without waiting on feed hydration."
     }
 
-    // Onboarding-time tuning. We deliberately import only the most recent
-    // episodes per podcast so first-launch isn't waiting on a 500-episode
-    // back catalog (common for shows like NPR, etc). Background sync can
-    // backfill the rest later.
-    private let onboardingEpisodeLimit = 15
+    // Onboarding should commit selected subscriptions immediately. Starter
+    // feed hydration runs after the app opens so first launch is not gated by
+    // XML parsing, enrichment, external chapter fetches, or slow feed hosts.
     @MainActor
     private func runImports(onlyFailed: Bool = false) async {
         guard !isImporting else { return }
         isImporting = true
-        defer { isImporting = false }
 
         // Persist genre preferences immediately — doesn't depend on imports.
         UserDefaults.standard.set(selectedGenres.map(\.rawValue), forKey: "offscript.preferredGenres")
@@ -172,44 +169,63 @@ struct ImportProgressView: View {
             : podcasts
 
         // Mark all selected podcasts as importing up front so the UI shows
-        // every row pulsing — better feedback than rows lighting up serially.
+        // every row pulsing while the local subscription rows are committed.
         for podcast in selectedPodcasts {
             statuses[podcast.feedURL] = .importing
         }
 
-        // Keep SwiftData writes on the main actor. This onboarding path imports
-        // a small selected starter set; the heavy OPML path uses BatchImportService.
+        var stagedPodcasts: [Podcast] = []
         for podcast in selectedPodcasts {
             do {
-                let imported = try await syncService.importPodcast(
-                    from: podcast,
-                    into: modelContext,
-                    episodeLimit: onboardingEpisodeLimit
-                )
-                if let newestEpisode = imported.episodes
-                    .sorted(by: { $0.pubDate > $1.pubDate })
-                    .first {
-                    modelContext.insert(PreferenceSignal(action: .like, episode: newestEpisode))
-                }
+                let staged = try syncService.stagePodcastSubscription(from: podcast, into: modelContext)
+                stagedPodcasts.append(staged)
                 statuses[podcast.feedURL] = .done
             } catch {
-                importLogger.error("Onboarding import failed for \(podcast.feedURL, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                importLogger.error("Onboarding subscription staging failed for \(podcast.feedURL, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 statuses[podcast.feedURL] = .failed
             }
-        }
-
-        // Single batched save at the end — far cheaper than saving after each
-        // import (every save runs migration checks + flushes the WAL).
-        do {
-            try modelContext.save()
-        } catch {
-            importLogger.error("Failed to save imported feed: \(error.localizedDescription, privacy: .public)")
         }
 
         hasFinishedAttempt = true
         if failedCount == 0 {
             isComplete = true
+            isImporting = false
             onComplete()
+        } else {
+            isImporting = false
+        }
+
+        Task { @MainActor in
+            await syncStagedPodcastsInBackground(stagedPodcasts)
+        }
+    }
+
+    @MainActor
+    private func syncStagedPodcastsInBackground(_ podcasts: [Podcast]) async {
+        guard !podcasts.isEmpty else { return }
+
+        for podcast in podcasts {
+            do {
+                try await syncService.sync(
+                    podcast: podcast,
+                    in: modelContext,
+                    options: .onboardingBootstrap()
+                )
+                if let newestEpisode = podcast.episodes
+                    .sorted(by: { $0.pubDate > $1.pubDate })
+                    .first {
+                    modelContext.insert(PreferenceSignal(action: .like, episode: newestEpisode))
+                    try modelContext.save()
+                }
+            } catch {
+                let failureCount = podcast.syncFailureCount + 1
+                podcast.syncStatus = "failed"
+                podcast.syncFailureCount = failureCount
+                podcast.syncErrorMessage = error.localizedDescription
+                podcast.nextRetryAt = FeedSyncRetryPolicy.nextRetryDate(afterFailureCount: failureCount)
+                try? modelContext.save()
+                importLogger.error("Onboarding background sync failed for \(podcast.feedURL, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 }

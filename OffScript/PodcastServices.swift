@@ -231,6 +231,14 @@ struct FeedSyncOptions {
             resolveExternalChapters: false
         )
     }
+
+    static func onboardingBootstrap(episodeLimit: Int? = 3) -> FeedSyncOptions {
+        FeedSyncOptions(
+            episodeLimit: episodeLimit,
+            enrichmentMode: .skip,
+            resolveExternalChapters: false
+        )
+    }
 }
 
 enum FeedSyncRetryPolicy {
@@ -309,6 +317,16 @@ final class FeedSyncService {
             context.insert(podcast)
         }
 
+        return podcast
+    }
+
+    @MainActor
+    func stagePodcastSubscription(from result: PodcastSearchResult, into context: ModelContext) throws -> Podcast {
+        let podcast = try upsertPodcast(from: result, into: context)
+        podcast.syncStatus = "syncing"
+        podcast.lastSyncAttemptAt = .now
+        podcast.syncErrorMessage = nil
+        try context.save()
         return podcast
     }
 
