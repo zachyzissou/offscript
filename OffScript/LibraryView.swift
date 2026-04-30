@@ -558,6 +558,48 @@ enum LibraryDirectoryCountLoader {
     }
 }
 
+@ModelActor
+actor LibraryDirectoryCountStore {
+    func countsByPodcastID(
+        podcastIDs: [UUID],
+        needsUnplayed: Bool,
+        needsInProgress: Bool
+    ) throws -> LibraryDirectoryCounts {
+        let allowedPodcastIDs = Set(podcastIDs)
+        guard !allowedPodcastIDs.isEmpty, needsUnplayed || needsInProgress else { return .empty }
+        try Task.checkCancellation()
+
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> {
+                allowedPodcastIDs.contains($0.podcast.id)
+                    && $0.podcast.isSubscribed
+                    && !$0.isPlayed
+                    && (needsUnplayed || $0.playedPosition > 0)
+            }
+        )
+        let episodes = try modelContext.fetch(descriptor)
+        try Task.checkCancellation()
+
+        var unplayedCounts: [UUID: Int] = [:]
+        var inProgressCounts: [UUID: Int] = [:]
+        for episode in episodes {
+            let podcastID = episode.podcast.id
+            guard allowedPodcastIDs.contains(podcastID) else { continue }
+            if needsUnplayed {
+                unplayedCounts[podcastID, default: 0] += 1
+            }
+            if needsInProgress, episode.playedPosition > 0 {
+                inProgressCounts[podcastID, default: 0] += 1
+            }
+        }
+
+        return LibraryDirectoryCounts(
+            unplayedByPodcastID: needsUnplayed ? unplayedCounts : [:],
+            inProgressByPodcastID: needsInProgress ? inProgressCounts : [:]
+        )
+    }
+}
+
 private extension BatchImportService.Phase {
     var isRunning: Bool {
         if case .running = self { return true }
@@ -1200,11 +1242,13 @@ struct LibraryView: View {
         guard needsUnplayed || needsInProgress else { return }
         fullCountLoadTask?.cancel()
         isLoadingFullDirectoryCounts = true
+        let modelContainer = modelContext.container
         fullCountLoadTask = Task { @MainActor in
             await refreshFullDirectoryCounts(
                 podcastIDs: podcastIDs,
                 needsUnplayed: needsUnplayed,
-                needsInProgress: needsInProgress
+                needsInProgress: needsInProgress,
+                modelContainer: modelContainer
             )
         }
     }
@@ -1213,7 +1257,8 @@ struct LibraryView: View {
     private func refreshFullDirectoryCounts(
         podcastIDs: [UUID],
         needsUnplayed: Bool,
-        needsInProgress: Bool
+        needsInProgress: Bool,
+        modelContainer: ModelContainer
     ) async {
         let interval = OffScriptPerformanceLog.begin(
             "library.fullCounts",
@@ -1228,11 +1273,11 @@ struct LibraryView: View {
                 )
                 return
             }
-            let counts = try await LibraryDirectoryCountLoader.countsByPodcastID(
+            let countStore = LibraryDirectoryCountStore(modelContainer: modelContainer)
+            let counts = try await countStore.countsByPodcastID(
                 podcastIDs: podcastIDs,
                 needsUnplayed: needsUnplayed,
-                needsInProgress: needsInProgress,
-                context: modelContext
+                needsInProgress: needsInProgress
             )
 
             guard !Task.isCancelled else {
