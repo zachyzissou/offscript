@@ -629,6 +629,53 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func homeRecommendationsComposeExplicitTagAndShowIntent() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        AppSettings.preferredGenres = []
+        defer { AppSettings.preferredGenres = originalGenres }
+
+        let show = Podcast(title: "Decoder", feedURL: URL(string: "https://example.com/decoder.xml")!)
+        let seed = Episode(
+            title: "AI Tooling Seed",
+            pubDate: Date().addingTimeInterval(-3 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/decoder-seed.mp3")!,
+            podcast: show
+        )
+        let followUp = Episode(
+            title: "AI Tooling Follow Up",
+            pubDate: .now,
+            duration: 2_100,
+            audioURL: URL(string: "https://example.com/decoder-follow.mp3")!,
+            podcast: show
+        )
+        let seedProfile = EpisodeProfile(episodeID: seed.id)
+        seedProfile.tags = ["ai tooling"]
+        let followUpProfile = EpisodeProfile(episodeID: followUp.id)
+        followUpProfile.tags = ["ai tooling", "developer workflows"]
+
+        context.insert(show)
+        context.insert(seed)
+        context.insert(followUp)
+        context.insert(seedProfile)
+        context.insert(followUpProfile)
+        context.insert(PreferenceSignal(action: .moreLikeThis, episode: seed))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        let scoredSection = try #require(sections.first(where: { $0.episodes.contains(where: { $0.id == followUp.id }) }))
+        let trace = scoredSection.signalTrace(for: followUp)
+
+        #expect(trace.contains(RecommendationSignal(label: "source", value: "explicit signal")))
+        #expect(trace.contains(RecommendationSignal(label: "source", value: "show intent")))
+        #expect(scoredSection.explanation(for: followUp).contains("Decoder") == true)
+        #expect(scoredSection.explanation(for: followUp).contains("ai tooling") == true)
+    }
+
+    @Test
+    @MainActor
     func homeRecommendationsUseCurrentLikedShowSignalWithoutCachedProfileRefresh() throws {
         let container = try makeContainer()
         let context = container.mainContext
@@ -1191,6 +1238,22 @@ struct OffScriptTests {
         )
 
         #expect(reason == "Tuned to your saved audio craft and interviews signals")
+    }
+
+    @Test
+    func recommendationExplainerComposesAndClipsExplicitEvidence() {
+        let reason = RecommendationExplainer.authoredReason(
+            fallback: "You asked for more from Decoder, and this matches artificial intelligence infrastructure, developer workflows",
+            signals: [
+                RecommendationSignal(label: "source", value: "explicit signal"),
+                RecommendationSignal(label: "tags", value: "artificial intelligence infrastructure, developer workflows"),
+                RecommendationSignal(label: "source", value: "show intent"),
+                RecommendationSignal(label: "show", value: "Decoder")
+            ]
+        )
+
+        #expect(reason.hasPrefix("More from Decoder, matching your artificial intelligence"))
+        #expect(reason.count <= 72)
     }
 
     @Test
