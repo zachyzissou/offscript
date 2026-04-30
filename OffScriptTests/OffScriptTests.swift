@@ -1637,7 +1637,7 @@ struct OffScriptTests {
             feedURL: URL(string: "https://example.com/large-back-catalog.xml")!
         )
         let inWindow = Episode(
-            guid: "large-1",
+            guid: "stale-guid-1",
             title: "Old Title",
             pubDate: .distantPast,
             audioURL: URL(string: "https://example.com/large-1.mp3")!,
@@ -1663,6 +1663,17 @@ struct OffScriptTests {
             websiteURL: nil,
             summary: nil
         )
+        let baseDate = Date()
+        let parsedItems = (1...5).map { index in
+            ParsedFeedItem(
+                guid: "large-\(index)",
+                title: "Updated Episode \(index)",
+                summary: nil,
+                pubDate: baseDate.addingTimeInterval(TimeInterval(-index)),
+                duration: 1_800,
+                audioURL: URL(string: "https://example.com/large-\(index).mp3")!
+            )
+        }
         let parsed = ParsedFeed(
             title: "Large Back Catalog",
             author: nil,
@@ -1670,16 +1681,7 @@ struct OffScriptTests {
             websiteURL: nil,
             artworkURL: nil,
             categories: [],
-            items: (1...5).map { index in
-                ParsedFeedItem(
-                    guid: "large-\(index)",
-                    title: "Updated Episode \(index)",
-                    summary: nil,
-                    pubDate: Date().addingTimeInterval(TimeInterval(-index)),
-                    duration: 1_800,
-                    audioURL: URL(string: "https://example.com/large-\(index).mp3")!
-                )
-            }
+            items: parsedItems
         )
 
         _ = try await FeedSyncService().importPodcast(
@@ -1692,6 +1694,7 @@ struct OffScriptTests {
         let episodes = try context.fetch(FetchDescriptor<Episode>())
         #expect(episodes.count == 4)
         #expect(inWindow.title == "Updated Episode 1")
+        #expect(inWindow.guid == "stale-guid-1")
         #expect(outsideWindow.title == "Preserved Title")
         #expect(episodes.contains { $0.guid == "large-2" })
         #expect(episodes.contains { $0.guid == "large-3" })

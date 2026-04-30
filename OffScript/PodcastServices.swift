@@ -472,8 +472,14 @@ final class FeedSyncService {
     }
 
     private struct EpisodeLookupKeys {
+        static let maxPredicateKeyCount = 800
+
         let guids: Set<String>
         let audioURLs: Set<URL>
+
+        var count: Int {
+            guids.count + audioURLs.count
+        }
     }
 
     private static func episodeLookupKeys(for items: [ParsedFeedItem]) -> EpisodeLookupKeys {
@@ -490,6 +496,13 @@ final class FeedSyncService {
         in context: ModelContext
     ) throws -> [Episode] {
         guard !lookupKeys.guids.isEmpty || !lookupKeys.audioURLs.isEmpty else { return [] }
+        if lookupKeys.count > EpisodeLookupKeys.maxPredicateKeyCount {
+            return try context.fetch(FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> {
+                    $0.podcast.id == podcastID
+                }
+            ))
+        }
         let guids = lookupKeys.guids
         let audioURLs = lookupKeys.audioURLs
         return try context.fetch(FetchDescriptor<Episode>(
