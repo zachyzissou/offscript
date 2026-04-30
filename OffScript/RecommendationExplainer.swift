@@ -33,6 +33,160 @@ private struct RephraseResult {
 enum RecommendationExplainer {
     private static var cache: [UUID: String] = [:]
 
+    /// Deterministic copy pass for the synchronous UI path. This uses the
+    /// same signal trace that produced the score, so Home and Player can show
+    /// authored WHY copy without waiting on FoundationModels availability.
+    static func authoredReason(fallback: String, signals: [RecommendationSignal]) -> String {
+        var lookup: [String: String] = [:]
+        for signal in signals {
+            let key = signal.label.lowercased()
+            if lookup[key] == nil {
+                lookup[key] = signal.value
+            }
+        }
+        let sources = signals
+            .filter { $0.label.caseInsensitiveCompare("source") == .orderedSame }
+            .map { $0.value.lowercased() }
+        let source = authoredSource(from: sources)
+
+        switch source {
+        case "queue":
+            if let position = lookup["position"] {
+                return "Queued \(position) because you chose it"
+            }
+            return "Queued because you chose it"
+        case "resume":
+            if let left = lookup["left"] {
+                return "\(left) left from your last session"
+            }
+            return "Ready to pick up from your last session"
+        case "completion":
+            if let show = lookup["show"], !show.isEmpty {
+                return "More from \(show), a show you keep finishing"
+            }
+            return "More from a show you keep finishing"
+        case "show affinity":
+            if let show = lookup["show"], !show.isEmpty {
+                return "More from \(show), a show you already trust"
+            }
+            return "Similar to shows you keep finishing"
+        case "same show":
+            if let show = lookup["show"], !show.isEmpty {
+                return "More from \(show)"
+            }
+            return "More from the show already playing"
+        case "tag match":
+            if let tags = lookup["tags"], !tags.isEmpty {
+                return "Tuned to your saved \(joinedList(tags)) signal\(isPluralList(tags) ? "s" : "")"
+            }
+            return "Tuned to your saved listening signals"
+        case "taste tag":
+            if let tags = lookup["tags"], !tags.isEmpty {
+                return "Covers your \(joinedList(tags)) signal\(isPluralList(tags) ? "s" : "")"
+            }
+            return "Covers topics you keep choosing"
+        case "topic overlap":
+            if let tags = lookup["tags"], !tags.isEmpty {
+                return "Multiple topic matches: \(joinedList(tags))"
+            }
+            return "Multiple topic matches from your listens"
+        case "recent interest":
+            if let tag = lookup["tag"], !tag.isEmpty {
+                return "Fits your recent \(tag) signal"
+            }
+            return "Fits your recent listening signal"
+        case "liked episode":
+            if let tag = lookup["tag"], !tag.isEmpty {
+                return "Connects to \(tag) from episodes you liked"
+            }
+            return "Connects to episodes you liked"
+        case "now playing":
+            if let tag = lookup["tag"], !tag.isEmpty {
+                return "Pairs with your current \(tag) listen"
+            }
+            return "Pairs with what is playing now"
+        case "genre":
+            if let lane = lookup["lane"], !lane.isEmpty {
+                return "A \(lane) lane pick with local evidence behind it"
+            }
+            return "A genre-lane pick with local evidence behind it"
+        case "fresh":
+            if let show = lookup["show"], !show.isEmpty {
+                return "Fresh from \(show)"
+            }
+            if let age = lookup["age"] {
+                return "Fresh episode, \(age) old"
+            }
+            return "Fresh from your subscribed channels"
+        case "duration":
+            if fallback.localizedCaseInsensitiveContains("quick"),
+               let window = lookup["window"],
+               !window.isEmpty {
+                return "Quick \(window) listen"
+            }
+            if !fallback.localizedCaseInsensitiveContains("short-listen setting") {
+                return fallback
+            }
+            return "Fits your short-listen setting"
+        case "latest episode":
+            if let tags = lookup["tags"], !tags.isEmpty {
+                return "Latest episodes overlap your \(joinedList(tags)) signal"
+            }
+            return "Latest episodes overlap your saved signals"
+        case "subscription":
+            if let show = lookup["show"], !show.isEmpty {
+                return "From your subscribed show \(show)"
+            }
+            return "From a show in your library"
+        case "available":
+            if let show = lookup["show"], !show.isEmpty {
+                return "Available from \(show)"
+            }
+            return "Available from your library"
+        case "discovery":
+            return "Discovery match from your saved signals"
+        default:
+            return fallback
+        }
+    }
+
+    private static func authoredSource(from sources: [String]) -> String? {
+        let priority = [
+            "queue",
+            "resume",
+            "latest episode",
+            "tag match",
+            "taste tag",
+            "topic overlap",
+            "recent interest",
+            "liked episode",
+            "now playing",
+            "completion",
+            "show affinity",
+            "same show",
+            "genre",
+            "duration",
+            "fresh",
+            "subscription",
+            "available",
+            "discovery"
+        ]
+        return priority.first { sources.contains($0) } ?? sources.first
+    }
+
+    private static func joinedList(_ value: String) -> String {
+        let parts = value
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard parts.count > 1 else { return parts.first ?? value }
+        return parts.dropLast().joined(separator: ", ") + " and " + parts.last!
+    }
+
+    private static func isPluralList(_ value: String) -> Bool {
+        value.split(separator: ",").count > 1
+    }
+
     /// Returns a cached AI reason if one exists (from either the full
     /// generator or the rephraser), nil otherwise. Synchronous — safe to call
     /// from view bodies for the cache-hit path.

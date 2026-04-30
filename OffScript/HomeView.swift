@@ -553,6 +553,10 @@ private struct TunerDiscoveryRail: View {
         let key = result.feedURL.normalizedFeedKey
         let isAdded = addedIDs.contains(key) || subscribedFeedURLs.contains(key)
         let isImporting = importingID == key
+        let displayReason = RecommendationExplainer.authoredReason(
+            fallback: scored.explanation,
+            signals: scored.signalTrace
+        )
 
         return VStack(alignment: .leading, spacing: 8) {
             OffScriptArtworkView(url: result.artworkURL, cornerRadius: 3)
@@ -569,7 +573,7 @@ private struct TunerDiscoveryRail: View {
                 .multilineTextAlignment(.leading)
                 .frame(width: 168, alignment: .leading)
 
-            TunerTag(text: scored.explanation, color: .offscriptFnInfo, dim: true, wraps: true)
+            TunerTag(text: displayReason, color: .offscriptFnInfo, dim: true, wraps: true)
             RecommendationSignalTraceView(signals: scored.signalTrace, limit: 2, color: .offscriptSoftPaper)
 
             Button {
@@ -592,7 +596,7 @@ private struct TunerDiscoveryRail: View {
         }
         .frame(width: 168, alignment: .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(result.title) from \(result.author). \(scored.explanation)")
+        .accessibilityLabel("\(result.title) from \(result.author). \(displayReason)")
     }
 
     @MainActor
@@ -628,6 +632,10 @@ private struct HeroTunerCard: View {
         return episode.playedPosition / duration
     }
 
+    private var displayReason: String {
+        RecommendationExplainer.authoredReason(fallback: reason, signals: signals)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header strip — two TunerLabels mirroring the spec-sheet header
@@ -656,7 +664,7 @@ private struct HeroTunerCard: View {
                 NavigationLink {
                     EpisodeDetailView(
                         episode: episode,
-                        recommendationReason: reason,
+                        recommendationReason: displayReason,
                         recommendationSignals: signals
                     )
                 } label: {
@@ -671,7 +679,7 @@ private struct HeroTunerCard: View {
                 .buttonStyle(.plain)
 
                 // Reason as a TunerTag with signal yellow accent
-                TunerTag(text: reason, color: .offscriptSignalYellow, dim: true, wraps: true)
+                TunerTag(text: displayReason, color: .offscriptSignalYellow, dim: true, wraps: true)
                 RecommendationSignalTraceView(signals: signals)
                 HomePreferenceStatusRow(message: feedbackStatusMessage)
 
@@ -742,7 +750,7 @@ private struct HeroTunerCard: View {
         }
         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(reason)")
+        .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(displayReason)")
         .onDisappear { feedbackClearTask?.cancel() }
     }
 
@@ -874,12 +882,16 @@ private struct TunerRailCard: View {
     let reason: String
     let signals: [RecommendationSignal]
 
+    private var displayReason: String {
+        RecommendationExplainer.authoredReason(fallback: reason, signals: signals)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationLink {
                 EpisodeDetailView(
                     episode: episode,
-                    recommendationReason: reason,
+                    recommendationReason: displayReason,
                     recommendationSignals: signals
                 )
             } label: {
@@ -898,7 +910,7 @@ private struct TunerRailCard: View {
                         .multilineTextAlignment(.leading)
                         .frame(width: 168, alignment: .leading)
 
-                    TunerTag(text: reason, color: .offscriptSignalYellow, dim: true, wraps: true)
+                    TunerTag(text: displayReason, color: .offscriptSignalYellow, dim: true, wraps: true)
                     RecommendationSignalTraceView(signals: signals, limit: 2, color: .offscriptSoftPaper)
 
                     TunerLabel(text: metadata, color: .offscriptSoftPaper, size: 8)
@@ -946,7 +958,7 @@ private struct TunerRailCard: View {
         .frame(width: 188, alignment: .leading)
         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(reason)")
+        .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(displayReason)")
     }
 
     private var metadata: String {

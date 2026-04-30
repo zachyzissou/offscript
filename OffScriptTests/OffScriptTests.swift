@@ -657,6 +657,85 @@ struct OffScriptTests {
     }
 
     @Test
+    func recommendationExplainerRewritesSavedSignalReasonsFromTrace() {
+        let reason = RecommendationExplainer.authoredReason(
+            fallback: "Matches your saved signal: audio craft, interviews",
+            signals: [
+                RecommendationSignal(label: "source", value: "tag match"),
+                RecommendationSignal(label: "tags", value: "audio craft, interviews")
+            ]
+        )
+
+        #expect(reason == "Tuned to your saved audio craft and interviews signals")
+    }
+
+    @Test
+    func recommendationExplainerRewritesGenreLaneReasonsFromTrace() {
+        let reason = RecommendationExplainer.authoredReason(
+            fallback: "Matches your selected technology lane",
+            signals: [
+                RecommendationSignal(label: "source", value: "genre"),
+                RecommendationSignal(label: "lane", value: "technology")
+            ]
+        )
+
+        #expect(reason == "A technology lane pick with local evidence behind it")
+    }
+
+    @Test
+    func recommendationExplainerPrioritizesEvidenceInMixedDiscoveryTraces() {
+        let reason = RecommendationExplainer.authoredReason(
+            fallback: "Matches your saved technology lane",
+            signals: [
+                RecommendationSignal(label: "source", value: "genre"),
+                RecommendationSignal(label: "lane", value: "technology"),
+                RecommendationSignal(label: "source", value: "latest episode"),
+                RecommendationSignal(label: "tags", value: "audio craft")
+            ]
+        )
+
+        #expect(reason == "Latest episodes overlap your audio craft signal")
+    }
+
+    @Test
+    func recommendationExplainerPreservesGenericQuickDurationReasons() {
+        let reason = RecommendationExplainer.authoredReason(
+            fallback: "Quick 18m listen",
+            signals: [
+                RecommendationSignal(label: "source", value: "duration"),
+                RecommendationSignal(label: "window", value: "18m")
+            ]
+        )
+
+        #expect(reason == "Quick 18m listen")
+    }
+
+    @Test
+    func recommendationExplainerKeepsShortListenPreferenceReason() {
+        let reason = RecommendationExplainer.authoredReason(
+            fallback: "Fits your short-listen setting",
+            signals: [
+                RecommendationSignal(label: "source", value: "duration"),
+                RecommendationSignal(label: "window", value: "28m")
+            ]
+        )
+
+        #expect(reason == "Fits your short-listen setting")
+    }
+
+    @Test
+    func recommendationExplainerKeepsUnknownFallbacks() {
+        let fallback = "Special editorial pick"
+
+        let reason = RecommendationExplainer.authoredReason(
+            fallback: fallback,
+            signals: [RecommendationSignal(label: "source", value: "editor")]
+        )
+
+        #expect(reason == fallback)
+    }
+
+    @Test
     @MainActor
     func appSettingsRoundTripsPreferences() {
         let originalAutoPlay = AppSettings.autoPlayNext

@@ -51,6 +51,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home can render a Tuner-styled discovery rail** sourced from the existing taste profile, with trace rows explaining whether each new podcast came from genre, tag, show-affinity, or discovery signal. Discovery rows can be tuned into the library without leaving Home.
 
 ### Changed — taste profile quality
+- **Home, Discovery, and Player recommendation cards now use authored local signal explanations** instead of raw algorithm fallback strings like `Matches your saved signal`, keeping WHY copy concrete even when Apple Intelligence is unavailable.
 - **Taste refresh now uses weighted, decayed evidence instead of equal counts.** Recent explicit `More like this` signals beat old passive completions, while `Less like this`, `Not interested`, quick skips, and abandons demote matching tags and shows.
 - **Recommendation modes now materially change Home ranking.** `SIGNAL` excludes genre-only candidates, while `BALANCED` and `DISCOVERY` can include a separate tuned-genre lane after local evidence.
 - **Negative signals now suppress adjacent recommendations, not just the exact episode.** `Less like this`, `Not interested`, skipped, and abandoned signals carry disliked tags/show penalties into Home and Player suggestions.
