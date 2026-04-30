@@ -524,7 +524,7 @@ final class RecommendationService {
 
         guard !evidence.isEmpty else { return nil }
         let localEvidence = evidence.filter { $0.strength == .chosen || $0.strength == .listened }
-        let usableEvidence = localEvidence.isEmpty ? evidence : evidence
+        let usableEvidence = localEvidence.isEmpty ? evidence : localEvidence
         let primary = usableEvidence.sorted { $0.weight > $1.weight }.first!
         let secondary = usableEvidence
             .filter { $0.source != primary.source }
