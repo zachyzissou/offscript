@@ -129,9 +129,10 @@ nonisolated struct LibraryDirectorySection: Identifiable {
 nonisolated struct LibraryDirectorySnapshot {
     let podcasts: [LibraryDirectoryPodcast]
     let sections: [LibraryDirectorySection]
+    let listItems: [LibraryDirectoryListItem]
     let numbersByPodcastID: [UUID: Int]
 
-    static let empty = LibraryDirectorySnapshot(podcasts: [], sections: [], numbersByPodcastID: [:])
+    static let empty = LibraryDirectorySnapshot(podcasts: [], sections: [], listItems: [], numbersByPodcastID: [:])
 
     var visibleCount: Int { podcasts.count }
     var isEmpty: Bool { podcasts.isEmpty }
@@ -155,17 +156,6 @@ nonisolated enum LibraryDirectoryListItem: Identifiable {
             return "row-separator-\(rowID)"
         }
     }
-}
-
-private struct LibraryPodcastFingerprint: Equatable {
-    let id: UUID
-    let title: String
-    let author: String?
-    let categoryFingerprint: String?
-    let latestPubDate: Date?
-    let subscribedAt: Date?
-    let syncStatus: String
-    let syncFailureCount: Int
 }
 
 nonisolated enum LibraryDirectoryOrganizer {
@@ -218,14 +208,16 @@ nonisolated enum LibraryDirectoryOrganizer {
             inProgressCounts: inProgressCounts
         )
         let numbersByPodcastID = Dictionary(uniqueKeysWithValues: filtered.enumerated().map { ($0.element.id, $0.offset + 1) })
+        let sections = sections(
+            for: filtered,
+            numbersByPodcastID: numbersByPodcastID,
+            unplayedCounts: unplayedCounts,
+            inProgressCounts: inProgressCounts
+        )
         return LibraryDirectorySnapshot(
             podcasts: filtered,
-            sections: sections(
-                for: filtered,
-                numbersByPodcastID: numbersByPodcastID,
-                unplayedCounts: unplayedCounts,
-                inProgressCounts: inProgressCounts
-            ),
+            sections: sections,
+            listItems: listItems(for: sections),
             numbersByPodcastID: numbersByPodcastID
         )
     }
@@ -416,6 +408,17 @@ nonisolated enum LibraryDirectoryOrganizer {
 }
 
 @MainActor
+enum LibraryDirectorySnapshotLoader {
+    static func subscribedPodcasts(in context: ModelContext) throws -> [LibraryDirectoryPodcast] {
+        let descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.isSubscribed },
+            sortBy: [SortDescriptor(\Podcast.title)]
+        )
+        return try context.fetch(descriptor).map(LibraryDirectoryPodcast.init(podcast:))
+    }
+}
+
+@MainActor
 enum LibraryDirectoryCountLoader {
     static func unplayedCountsByPodcastID(
         podcastIDs: [UUID],
@@ -482,11 +485,6 @@ private extension BatchImportService.Phase {
 
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(
-        filter: #Predicate<Podcast> { $0.isSubscribed },
-        sort: [SortDescriptor(\Podcast.title)]
-    )
-    private var podcasts: [Podcast]
 
     let onOpenSettings: () -> Void
 
@@ -512,28 +510,11 @@ struct LibraryView: View {
     @State private var fullCountLoadTask: Task<Void, Never>?
     @State private var directoryQueryTask: Task<Void, Never>?
     @State private var selectedPodcastID: UUID?
+    @State private var directoryPodcasts: [LibraryDirectoryPodcast] = []
+    @State private var didLoadDirectoryPodcasts = false
     @State private var cachedDirectorySnapshot = LibraryDirectorySnapshot.empty
     @State private var didBuildDirectorySnapshot = false
     @State private var isSyncingLibrary = false
-
-    private var subscribedPodcasts: [Podcast] {
-        podcasts
-    }
-
-    private var directorySnapshotInputs: [LibraryPodcastFingerprint] {
-        subscribedPodcasts.map {
-            LibraryPodcastFingerprint(
-                id: $0.id,
-                title: $0.title,
-                author: $0.author,
-                categoryFingerprint: effectiveDirectoryQuery.isEmpty ? nil : $0.categories.joined(separator: "\u{1F}"),
-                latestPubDate: $0.latestPubDate,
-                subscribedAt: $0.subscribedAt,
-                syncStatus: $0.syncStatus,
-                syncFailureCount: $0.syncFailureCount
-            )
-        }
-    }
 
     private var directoryNeedsFullUnplayedCounts: Bool {
         LibraryDirectoryOrganizer.needsPerShowUnplayedCounts(scope: directoryScope, sort: directorySort)
@@ -556,11 +537,11 @@ struct LibraryView: View {
     }
 
     private var isCompactDirectory: Bool {
-        directoryDensity == .compact || subscribedPodcasts.count >= 120
+        directoryDensity == .compact || directoryPodcasts.count >= 120
     }
 
     private var subscribedPodcastIDs: [UUID] {
-        subscribedPodcasts.map(\.id)
+        directoryPodcasts.map(\.id)
     }
 
     var body: some View {
@@ -569,7 +550,7 @@ struct LibraryView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     LibraryTunerHeader(
-                        showCount: subscribedPodcasts.count,
+                        showCount: directoryPodcasts.count,
                         visibleCount: snapshot.visibleCount,
                         unplayedCount: unplayedEpisodeCount,
                         inProgressCount: inProgressEpisodeCount,
@@ -585,10 +566,11 @@ struct LibraryView: View {
                     // batch importer is mid-flight or has just finished and
                     // hasn't been dismissed yet.
                     LibraryBatchImportStrip(onFinished: {
+                        loadDirectoryPodcasts()
                         scheduleLibraryEpisodeSummaryLoad()
                     })
 
-                    if subscribedPodcasts.isEmpty {
+                    if didLoadDirectoryPodcasts && directoryPodcasts.isEmpty {
                         emptyState
                     } else {
                         if !inProgressEpisodes.isEmpty {
@@ -622,7 +604,7 @@ struct LibraryView: View {
                             scope: $directoryScope,
                             sort: $directorySort,
                             density: $directoryDensity,
-                            isForcedCompact: subscribedPodcasts.count >= 120
+                            isForcedCompact: directoryPodcasts.count >= 120
                         )
 
                         showsSection(snapshot: snapshot, scrollProxy: scrollProxy)
@@ -649,13 +631,12 @@ struct LibraryView: View {
             }
         }
         .task {
+            loadDirectoryPodcasts()
             loadLibraryEpisodeSummary()
         }
         .onAppear {
             effectiveDirectoryQuery = directoryQuery
-            rebuildDirectorySnapshot()
-        }
-        .onChange(of: directorySnapshotInputs) { _, _ in
+            loadDirectoryPodcasts()
             rebuildDirectorySnapshot()
         }
         .onChange(of: subscribedPodcastIDs) { _, _ in scheduleLibraryEpisodeSummaryLoad() }
@@ -694,7 +675,7 @@ struct LibraryView: View {
 
     private func makeDirectorySnapshot() -> LibraryDirectorySnapshot {
         LibraryDirectoryOrganizer.snapshot(
-            for: subscribedPodcasts.map(LibraryDirectoryPodcast.init(podcast:)),
+            for: directoryPodcasts,
             query: effectiveDirectoryQuery,
             scope: directoryScope,
             sort: directorySort,
@@ -739,9 +720,9 @@ struct LibraryView: View {
                 TunerLabel(text: "SHOWS · DIRECTORY", color: .offscriptSignalYellow)
                 Spacer()
                 TunerLabel(
-                    text: snapshot.visibleCount == subscribedPodcasts.count
-                        ? "\(subscribedPodcasts.count) VISIBLE"
-                        : "\(snapshot.visibleCount)/\(subscribedPodcasts.count) VISIBLE",
+                    text: snapshot.visibleCount == directoryPodcasts.count
+                        ? "\(directoryPodcasts.count) VISIBLE"
+                        : "\(snapshot.visibleCount)/\(directoryPodcasts.count) VISIBLE",
                     color: .offscriptSoftPaper,
                     size: 8
                 )
@@ -765,9 +746,8 @@ struct LibraryView: View {
                     }
                 }
 
-                let directoryItems = LibraryDirectoryOrganizer.listItems(for: snapshot.sections)
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(directoryItems) { item in
+                    ForEach(snapshot.listItems) { item in
                         switch item {
                         case let .sectionHeader(section):
                             HStack {
@@ -801,6 +781,21 @@ struct LibraryView: View {
                 }
                 .padding(.top, 2)
             }
+        }
+    }
+
+    @MainActor
+    private func loadDirectoryPodcasts() {
+        do {
+            directoryPodcasts = try LibraryDirectorySnapshotLoader.subscribedPodcasts(in: modelContext)
+            didLoadDirectoryPodcasts = true
+            rebuildDirectorySnapshot()
+        } catch {
+            directoryPodcasts = []
+            didLoadDirectoryPodcasts = true
+            cachedDirectorySnapshot = .empty
+            didBuildDirectorySnapshot = true
+            libraryLogger.error("Library directory snapshot load failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -988,13 +983,16 @@ struct LibraryView: View {
         guard !isSyncingLibrary else { return }
         isSyncingLibrary = true
         defer { isSyncingLibrary = false }
-        for podcast in subscribedPodcasts {
+        let podcastIDs = subscribedPodcastIDs
+        for podcastID in podcastIDs {
+            guard let podcast = podcast(withID: podcastID) else { continue }
             do {
                 try await syncService.sync(podcast: podcast, in: modelContext)
             } catch {
                 libraryLogger.error("Pull-to-refresh sync failed for '\(podcast.title, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             }
         }
+        loadDirectoryPodcasts()
         loadLibraryEpisodeSummary()
     }
 }
