@@ -206,27 +206,27 @@ struct ImportProgressView: View {
     private func syncStagedPodcastsInBackground(_ podcasts: [Podcast]) async {
         guard !podcasts.isEmpty else { return }
 
-        for podcast in podcasts {
-            do {
-                try await syncService.sync(
-                    podcast: podcast,
-                    in: modelContext,
-                    options: .onboardingBootstrap()
-                )
-                if let newestEpisode = podcast.episodes
+        let results = await syncService.sync(
+            podcasts: podcasts,
+            in: modelContext,
+            options: .onboardingBootstrap()
+        )
+        for result in results {
+            if result.isSuccess {
+                if let newestEpisode = result.podcast.episodes
                     .sorted(by: { $0.pubDate > $1.pubDate })
                     .first {
                     modelContext.insert(PreferenceSignal(action: .like, episode: newestEpisode))
                     modelContext.saveOrLog("OnboardingPreferenceSignal")
                 }
-            } catch {
-                let failureCount = podcast.syncFailureCount + 1
-                podcast.syncStatus = "failed"
-                podcast.syncFailureCount = failureCount
-                podcast.syncErrorMessage = error.localizedDescription
-                podcast.nextRetryAt = FeedSyncRetryPolicy.nextRetryDate(afterFailureCount: failureCount)
+            } else if let error = result.error {
+                let failureCount = result.podcast.syncFailureCount + 1
+                result.podcast.syncStatus = "failed"
+                result.podcast.syncFailureCount = failureCount
+                result.podcast.syncErrorMessage = error.localizedDescription
+                result.podcast.nextRetryAt = FeedSyncRetryPolicy.nextRetryDate(afterFailureCount: failureCount)
                 modelContext.saveOrLog("OnboardingBackgroundSync")
-                importLogger.error("Onboarding background sync failed for \(podcast.feedURL, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                importLogger.error("Onboarding background sync failed for \(result.podcast.feedURL, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
     }
