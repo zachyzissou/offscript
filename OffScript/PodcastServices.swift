@@ -416,18 +416,17 @@ final class FeedSyncService {
         podcast.syncFailureCount = 0
         podcast.nextRetryAt = nil
 
-        // Use the podcast's stable UUID (a stored property) for the predicate
-        // instead of persistentModelID, which SwiftData cannot always translate
-        // into a reliable SQLite query.
-        let podcastID = podcast.id
-        let existingEpisodes = try context.fetch(FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { $0.podcast.id == podcastID }
-        ))
-        let existingByGUID = Dictionary(existingEpisodes.map { ($0.guid, $0) }, uniquingKeysWith: { first, _ in first })
-        let existingByAudioURL = Dictionary(existingEpisodes.map { ($0.audioURL, $0) }, uniquingKeysWith: { first, _ in first })
-
         let sortedItems = parsed.items.sorted { ($0.pubDate ?? .distantPast) > ($1.pubDate ?? .distantPast) }
         let itemsToProcess = options.episodeLimit.map { Array(sortedItems.prefix($0)) } ?? sortedItems
+        let podcastID = podcast.id
+        let lookupKeys = Self.episodeLookupKeys(for: itemsToProcess)
+        let existingEpisodes = try Self.fetchExistingEpisodes(
+            for: podcastID,
+            lookupKeys: lookupKeys,
+            in: context
+        )
+        let existingByGUID = Dictionary(existingEpisodes.map { ($0.guid, $0) }, uniquingKeysWith: { first, _ in first })
+        let existingByAudioURL = Dictionary(existingEpisodes.map { ($0.audioURL, $0) }, uniquingKeysWith: { first, _ in first })
 
         for item in itemsToProcess {
             let guid = item.guid ?? item.audioURL.absoluteString
@@ -470,6 +469,34 @@ final class FeedSyncService {
         }
 
         try context.save()
+    }
+
+    private struct EpisodeLookupKeys {
+        let guids: Set<String>
+        let audioURLs: Set<URL>
+    }
+
+    private static func episodeLookupKeys(for items: [ParsedFeedItem]) -> EpisodeLookupKeys {
+        EpisodeLookupKeys(
+            guids: Set(items.map { $0.guid ?? $0.audioURL.absoluteString }),
+            audioURLs: Set(items.map(\.audioURL))
+        )
+    }
+
+    @MainActor
+    private static func fetchExistingEpisodes(
+        for podcastID: UUID,
+        lookupKeys: EpisodeLookupKeys,
+        in context: ModelContext
+    ) throws -> [Episode] {
+        guard !lookupKeys.guids.isEmpty || !lookupKeys.audioURLs.isEmpty else { return [] }
+        let guids = lookupKeys.guids
+        let audioURLs = lookupKeys.audioURLs
+        return try context.fetch(FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> {
+                $0.podcast.id == podcastID && (guids.contains($0.guid) || audioURLs.contains($0.audioURL))
+            }
+        ))
     }
 
     private enum FeedFetchResult {
