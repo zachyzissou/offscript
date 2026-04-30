@@ -39,6 +39,8 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **The Library alphabet selector is back to the compact `#-Z` carousel form** while keeping the working direct-letter jump behavior and selected/disabled Tuner states.
 
 ### Changed — Library performance
+- **Large OPML imports now stage subscribed shows before network sync finishes**, so 250+ show libraries appear in Library immediately while feed hydration continues in the background.
+- **OPML batch hydration now uses a lightweight bootstrap pass** that imports only a small first slice of episodes and skips episode profile enrichment, avoiding thousands of episode/profile writes during the initial import.
 - **The root Library podcast query now filters subscribed shows in SwiftData instead of fetching every historical podcast and filtering in Swift.**
 - **Library summary reloads are coalesced during background OPML imports** so each imported show does not immediately retrigger the expensive per-show count path while the list is being scrolled.
 - **Library summary counts no longer issue one SwiftData `fetchCount` per subscribed show.** The page now loads the unplayed episode set once, derives the latest rail and per-show counts from that result, and avoids 250+ synchronous count queries on Library open.
@@ -52,6 +54,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home can render a Tuner-styled discovery rail** sourced from the existing taste profile, with trace rows explaining whether each new podcast came from genre, tag, show-affinity, or discovery signal. Discovery rows can be tuned into the library without leaving Home.
 
 ### Changed — taste profile quality
+- **Home, Discovery, and Player recommendation cards now use authored local signal explanations** instead of raw algorithm fallback strings like `Matches your saved signal`, keeping WHY copy concrete even when Apple Intelligence is unavailable.
 - **Taste refresh now uses weighted, decayed evidence instead of equal counts.** Recent explicit `More like this` signals beat old passive completions, while `Less like this`, `Not interested`, quick skips, and abandons demote matching tags and shows.
 - **Recommendation modes now materially change Home ranking.** `SIGNAL` excludes genre-only candidates, while `BALANCED` and `DISCOVERY` can include a separate tuned-genre lane after local evidence.
 - **Negative signals now suppress adjacent recommendations, not just the exact episode.** `Less like this`, `Not interested`, skipped, and abandoned signals carry disliked tags/show penalties into Home and Player suggestions.

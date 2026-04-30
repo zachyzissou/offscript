@@ -685,6 +685,13 @@ private struct PlayerSuggestionRow: View {
     let scored: ScoredEpisode
     let rank: Int
 
+    private var displayReason: String {
+        RecommendationExplainer.authoredReason(
+            fallback: scored.explanation,
+            signals: scored.signalTrace
+        )
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Text(String(format: "%02d", rank))
@@ -701,7 +708,7 @@ private struct PlayerSuggestionRow: View {
             .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
 
             VStack(alignment: .leading, spacing: 3) {
-                TunerTag(text: scored.explanation, color: .offscriptSignalYellow, dim: true, wraps: true)
+                TunerTag(text: displayReason, color: .offscriptSignalYellow, dim: true, wraps: true)
                 RecommendationSignalTraceView(signals: scored.signalTrace, limit: 2, color: .offscriptSoftPaper)
                 Text(scored.episode.title)
                     .font(.system(size: 13, weight: .semibold))
