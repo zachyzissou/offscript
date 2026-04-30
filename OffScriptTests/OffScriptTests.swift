@@ -153,6 +153,14 @@ struct OffScriptTests {
     }
 
     @Test
+    func opmlBootstrapUsesShorterFeedTimeoutThanStandardSync() {
+        #expect(FeedSyncOptions.standard().feedRequestTimeout == 20)
+        #expect(FeedSyncOptions.fastBatchImport().feedRequestTimeout == 12)
+        #expect(FeedSyncOptions.opmlBootstrap().feedRequestTimeout == 8)
+        #expect(FeedSyncOptions.onboardingBootstrap().feedRequestTimeout == 8)
+    }
+
+    @Test
     @MainActor
     func opmlBatchStagingResubscribesExistingNormalizedFeeds() throws {
         let container = try makeContainer()

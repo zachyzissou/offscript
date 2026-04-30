@@ -24,6 +24,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Root page headers sit tighter to the safe area** to reclaim top-of-app space while keeping the iOS status/Dynamic Island safe region intact.
 
 ### Fixed — onboarding, import, and sync UI honesty
+- **Large OPML and onboarding bootstrap imports now use shorter feed request timeouts** so dead feeds release bounded import slots faster while normal subscribed-feed sync keeps its more patient timeout.
 - **Onboarding Sign in with Apple now presents from the actual button window when available** and no longer uses the old crash-prone missing-scene path for the normal sign-in flow.
 - **Onboarding starter subscriptions now commit immediately and hydrate in the background** using the same lightweight bootstrap profile as large imports, so picking three podcasts no longer waits on serial feed parsing, full episode enrichment, or external chapter lookups before entering the app.
 - **Onboarding import no longer auto-completes through failed feeds.** Failed starter channels stay visible with retry and continue actions.
