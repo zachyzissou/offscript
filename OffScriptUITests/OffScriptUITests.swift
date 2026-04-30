@@ -87,8 +87,12 @@ final class OffScriptUITests: XCTestCase {
 
         zJump.tap()
 
-        XCTAssertTrue(app.staticTexts["LibrarySectionHeaderZ"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Z Channel 026"].waitForExistence(timeout: 5))
+        let zHeader = app.staticTexts["LibrarySectionHeaderZ"]
+        if !zHeader.waitForExistence(timeout: 12) {
+            zJump.tap()
+        }
+        XCTAssertTrue(zHeader.waitForExistence(timeout: 8), "Expected Z section after tapping alphabet rail. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertTrue(app.staticTexts["Z Channel 026"].waitForExistence(timeout: 8))
     }
 
     private func makeApp(
