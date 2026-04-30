@@ -1942,6 +1942,40 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func libraryDirectoryCountStoreBucketsSubscribedShowCounts() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let kept = Podcast(title: "Actor Kept", feedURL: URL(string: "https://example.com/actor-kept.xml")!)
+        let ignored = Podcast(title: "Actor Ignored", feedURL: URL(string: "https://example.com/actor-ignored.xml")!)
+        ignored.isSubscribed = false
+
+        context.insert(kept)
+        context.insert(ignored)
+
+        let fresh = Episode(title: "Fresh", pubDate: .now, audioURL: URL(string: "https://example.com/actor-fresh.mp3")!, podcast: kept)
+        let started = Episode(title: "Started", pubDate: .now, audioURL: URL(string: "https://example.com/actor-started.mp3")!, podcast: kept)
+        started.playedPosition = 120
+        let ignoredFresh = Episode(title: "Ignored Fresh", pubDate: .now, audioURL: URL(string: "https://example.com/actor-ignored.mp3")!, podcast: ignored)
+
+        [fresh, started, ignoredFresh].forEach(context.insert)
+        try context.save()
+
+        let countStore = LibraryDirectoryCountStore(modelContainer: container)
+        let counts = try await countStore.countsByPodcastID(
+            podcastIDs: [kept.id, ignored.id],
+            needsUnplayed: true,
+            needsInProgress: true
+        )
+
+        #expect(counts.unplayedByPodcastID[kept.id] == 2)
+        #expect(counts.unplayedByPodcastID[ignored.id] == nil)
+        #expect(counts.inProgressByPodcastID[kept.id] == 1)
+        #expect(counts.inProgressByPodcastID[ignored.id] == nil)
+    }
+
+    @Test
+    @MainActor
     func libraryDirectoryCountLoaderReturnsEmptyCountsForEmptyPodcastIDs() async throws {
         let container = try makeContainer()
         let context = container.mainContext
