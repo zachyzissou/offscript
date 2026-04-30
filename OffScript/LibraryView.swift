@@ -53,30 +53,81 @@ nonisolated enum LibraryDirectoryDensity: String, CaseIterable, Identifiable {
 }
 
 nonisolated struct LibraryDirectoryRow: Identifiable {
-    var id: UUID { podcast.id }
-    let podcast: Podcast
+    var id: UUID { podcastID }
+    let podcastID: UUID
+    let title: String
+    let author: String?
+    let artworkURL: URL?
     let channelNumber: Int
     let unplayedCount: Int
     let inProgressCount: Int
     let isLastInSection: Bool
 }
 
+nonisolated struct LibraryDirectoryPodcast: Identifiable, Hashable {
+    let id: UUID
+    let title: String
+    let author: String?
+    let artworkURL: URL?
+    let categories: [String]
+    let latestPubDate: Date?
+    let subscribedAt: Date?
+    let syncStatus: String
+    let syncFailureCount: Int
+
+    init(
+        id: UUID,
+        title: String,
+        author: String? = nil,
+        artworkURL: URL? = nil,
+        categories: [String] = [],
+        latestPubDate: Date? = nil,
+        subscribedAt: Date? = nil,
+        syncStatus: String = "idle",
+        syncFailureCount: Int = 0
+    ) {
+        self.id = id
+        self.title = title
+        self.author = author
+        self.artworkURL = artworkURL
+        self.categories = categories
+        self.latestPubDate = latestPubDate
+        self.subscribedAt = subscribedAt
+        self.syncStatus = syncStatus
+        self.syncFailureCount = syncFailureCount
+    }
+
+    init(podcast: Podcast) {
+        self.init(
+            id: podcast.id,
+            title: podcast.title,
+            author: podcast.author,
+            artworkURL: podcast.artworkURL,
+            categories: podcast.categories,
+            latestPubDate: podcast.latestPubDate,
+            subscribedAt: podcast.subscribedAt,
+            syncStatus: podcast.syncStatus,
+            syncFailureCount: podcast.syncFailureCount
+        )
+    }
+}
+
 nonisolated struct LibraryDirectorySection: Identifiable {
     let id: String
     let title: String
-    let podcasts: [Podcast]
+    let rowCount: Int
     let rows: [LibraryDirectoryRow]
 
-    init(id: String, title: String, podcasts: [Podcast], rows: [LibraryDirectoryRow] = []) {
+    init(id: String, title: String, rowCount: Int, rows: [LibraryDirectoryRow] = []) {
         self.id = id
         self.title = title
-        self.podcasts = podcasts
+        self.rowCount = rowCount
         self.rows = rows
     }
 }
 
 nonisolated struct LibraryDirectorySnapshot {
-    let podcasts: [Podcast]
+    let podcasts: [LibraryDirectoryPodcast]
     let sections: [LibraryDirectorySection]
     let numbersByPodcastID: [UUID: Int]
 
@@ -140,7 +191,25 @@ nonisolated enum LibraryDirectoryOrganizer {
         unplayedCounts: [UUID: Int],
         inProgressCounts: [UUID: Int]
     ) -> LibraryDirectorySnapshot {
-        let filtered = filteredPodcasts(
+        snapshot(
+            for: podcasts.map(LibraryDirectoryPodcast.init(podcast:)),
+            query: query,
+            scope: scope,
+            sort: sort,
+            unplayedCounts: unplayedCounts,
+            inProgressCounts: inProgressCounts
+        )
+    }
+
+    static func snapshot(
+        for podcasts: [LibraryDirectoryPodcast],
+        query: String,
+        scope: LibraryDirectoryScope,
+        sort: LibraryDirectorySort,
+        unplayedCounts: [UUID: Int],
+        inProgressCounts: [UUID: Int]
+    ) -> LibraryDirectorySnapshot {
+        let filtered = filteredDirectoryPodcasts(
             podcasts,
             query: query,
             scope: scope,
@@ -169,6 +238,26 @@ nonisolated enum LibraryDirectoryOrganizer {
         unplayedCounts: [UUID: Int],
         inProgressCounts: [UUID: Int]
     ) -> [Podcast] {
+        filteredDirectoryPodcasts(
+            podcasts.map(LibraryDirectoryPodcast.init(podcast:)),
+            query: query,
+            scope: scope,
+            sort: sort,
+            unplayedCounts: unplayedCounts,
+            inProgressCounts: inProgressCounts
+        ).compactMap { rowPodcast in
+            podcasts.first { $0.id == rowPodcast.id }
+        }
+    }
+
+    static func filteredDirectoryPodcasts(
+        _ podcasts: [LibraryDirectoryPodcast],
+        query: String,
+        scope: LibraryDirectoryScope,
+        sort: LibraryDirectorySort,
+        unplayedCounts: [UUID: Int],
+        inProgressCounts: [UUID: Int]
+    ) -> [LibraryDirectoryPodcast] {
         let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
         let filtered = podcasts.filter { podcast in
@@ -214,6 +303,15 @@ nonisolated enum LibraryDirectoryOrganizer {
     }
 
     static func sections(for podcasts: [Podcast]) -> [LibraryDirectorySection] {
+        sections(
+            for: podcasts.map(LibraryDirectoryPodcast.init(podcast:)),
+            numbersByPodcastID: [:],
+            unplayedCounts: [:],
+            inProgressCounts: [:]
+        )
+    }
+
+    static func sections(for podcasts: [LibraryDirectoryPodcast]) -> [LibraryDirectorySection] {
         sections(for: podcasts, numbersByPodcastID: [:], unplayedCounts: [:], inProgressCounts: [:])
     }
 
@@ -248,7 +346,7 @@ nonisolated enum LibraryDirectoryOrganizer {
     }
 
     static func sections(
-        for podcasts: [Podcast],
+        for podcasts: [LibraryDirectoryPodcast],
         numbersByPodcastID: [UUID: Int],
         unplayedCounts: [UUID: Int],
         inProgressCounts: [UUID: Int]
@@ -262,10 +360,13 @@ nonisolated enum LibraryDirectoryOrganizer {
             return LibraryDirectorySection(
                 id: "library-section-\(title)",
                 title: title,
-                podcasts: podcasts,
+                rowCount: podcasts.count,
                 rows: podcasts.enumerated().map { index, podcast in
                     LibraryDirectoryRow(
-                        podcast: podcast,
+                        podcastID: podcast.id,
+                        title: podcast.title,
+                        author: podcast.author,
+                        artworkURL: podcast.artworkURL,
                         channelNumber: numbersByPodcastID[podcast.id] ?? (index + 1),
                         unplayedCount: unplayedCounts[podcast.id] ?? 0,
                         inProgressCount: inProgressCounts[podcast.id] ?? 0,
@@ -277,7 +378,7 @@ nonisolated enum LibraryDirectoryOrganizer {
     }
 
     private static func attentionScore(
-        _ podcast: Podcast,
+        _ podcast: LibraryDirectoryPodcast,
         unplayedCounts: [UUID: Int],
         inProgressCounts: [UUID: Int]
     ) -> Int {
@@ -309,7 +410,7 @@ nonisolated enum LibraryDirectoryOrganizer {
         }
     }
 
-    private static func titleSort(_ lhs: Podcast, _ rhs: Podcast) -> Bool {
+    private static func titleSort(_ lhs: LibraryDirectoryPodcast, _ rhs: LibraryDirectoryPodcast) -> Bool {
         lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
     }
 }
@@ -362,7 +463,7 @@ struct LibraryView: View {
     @State private var summaryLoadTask: Task<Void, Never>?
     @State private var fullCountLoadTask: Task<Void, Never>?
     @State private var directoryQueryTask: Task<Void, Never>?
-    @State private var selectedPodcast: Podcast?
+    @State private var selectedPodcastID: UUID?
     @State private var cachedDirectorySnapshot = LibraryDirectorySnapshot.empty
     @State private var didBuildDirectorySnapshot = false
 
@@ -487,8 +588,12 @@ struct LibraryView: View {
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .navigationDestination(item: $selectedPodcast) { podcast in
-            PodcastDetailView(podcast: podcast)
+        .navigationDestination(item: $selectedPodcastID) { podcastID in
+            if let podcast = podcast(withID: podcastID) {
+                PodcastDetailView(podcast: podcast)
+            } else {
+                LibraryDirectoryMissingShowView()
+            }
         }
         .task {
             loadLibraryEpisodeSummary()
@@ -537,7 +642,7 @@ struct LibraryView: View {
 
     private func makeDirectorySnapshot() -> LibraryDirectorySnapshot {
         LibraryDirectoryOrganizer.snapshot(
-            for: subscribedPodcasts,
+            for: subscribedPodcasts.map(LibraryDirectoryPodcast.init(podcast:)),
             query: effectiveDirectoryQuery,
             scope: directoryScope,
             sort: directorySort,
@@ -617,7 +722,7 @@ struct LibraryView: View {
                                 TunerLabel(text: section.title, color: .offscriptSignalYellow, size: 10)
                                     .accessibilityIdentifier("LibrarySectionHeader\(section.title)")
                                 Spacer()
-                                TunerLabel(text: "\(section.podcasts.count) CH", color: .offscriptSoftPaper, size: 8)
+                                TunerLabel(text: "\(section.rowCount) CH", color: .offscriptSoftPaper, size: 8)
                             }
                             .padding(.top, 12)
                             .padding(.bottom, 6)
@@ -625,10 +730,10 @@ struct LibraryView: View {
 
                         case let .row(row):
                             Button {
-                                selectedPodcast = row.podcast
+                                selectedPodcastID = row.podcastID
                             } label: {
                                 PodcastShelfRow(
-                                    podcast: row.podcast,
+                                    row: row,
                                     channelNumber: row.channelNumber,
                                     unplayedCount: row.unplayedCount,
                                     inProgressCount: row.inProgressCount,
@@ -644,6 +749,19 @@ struct LibraryView: View {
                 }
                 .padding(.top, 2)
             }
+        }
+    }
+
+    private func podcast(withID id: UUID) -> Podcast? {
+        do {
+            var descriptor = FetchDescriptor<Podcast>(
+                predicate: #Predicate<Podcast> { $0.id == id }
+            )
+            descriptor.fetchLimit = 1
+            return try modelContext.fetch(descriptor).first
+        } catch {
+            libraryLogger.error("Library selected podcast lookup failed: \(error.localizedDescription, privacy: .public)")
+            return nil
         }
     }
 
@@ -1267,7 +1385,7 @@ private struct TunerLibraryCard: View {
 // MARK: - Show row
 
 private struct PodcastShelfRow: View {
-    let podcast: Podcast
+    let row: LibraryDirectoryRow
     let channelNumber: Int
     let unplayedCount: Int
     let inProgressCount: Int
@@ -1282,17 +1400,17 @@ private struct PodcastShelfRow: View {
                 .frame(width: 28, alignment: .leading)
 
             if !isCompact {
-                OffScriptArtworkView(url: podcast.artworkURL, cornerRadius: 3, size: 56)
+                OffScriptArtworkView(url: row.artworkURL, cornerRadius: 3, size: 56)
                     .frame(width: 56, height: 56)
                     .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(podcast.title)
+                Text(row.title)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color.offscriptPaperWhite)
                     .lineLimit(1)
-                if let author = podcast.author {
+                if let author = row.author {
                     TunerLabel(text: author.uppercased(), color: .offscriptSoftPaper, size: 8)
                         .lineLimit(1)
                 }
@@ -1319,6 +1437,21 @@ private struct PodcastShelfRow: View {
                 .foregroundStyle(Color.offscriptSignalYellow)
         }
         .padding(.vertical, isCompact ? 7 : 10)
+    }
+}
+
+private struct LibraryDirectoryMissingShowView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TunerLabel(text: "● CHANNEL UNAVAILABLE", color: .offscriptFnRecord)
+            Text("This show is no longer in your library.")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.offscriptPaperWhite)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, OffScriptTheme.pagePadding)
+        .padding(.top, OffScriptTheme.rootContentTopPadding + 16)
+        .background(Color.offscriptStudioBlack.ignoresSafeArea())
     }
 }
 
