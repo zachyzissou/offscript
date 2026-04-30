@@ -88,6 +88,7 @@ struct LibraryImportSheet: View {
             .sheet(isPresented: $isExportShareSheetPresented) {
                 if let exportFileURL {
                     ShareSheet(items: [exportFileURL])
+                        .tunerModalSurface()
                 }
             }
         }
@@ -508,6 +509,7 @@ enum ImportRowStatus {
     case pending
     case importing
     case added
+    case skipped
     case failed
     case cancelled
 
@@ -516,6 +518,7 @@ enum ImportRowStatus {
         case .pending: "○ STANDBY"
         case .importing: "● IMPORTING"
         case .added: "✓ ADDED"
+        case .skipped: "✓ EXISTS"
         case .failed: "✕ FAILED"
         case .cancelled: "× CANCELLED"
         }
@@ -526,6 +529,7 @@ enum ImportRowStatus {
         case .pending: .offscriptSoftPaper
         case .importing: .offscriptSignalYellow
         case .added: .offscriptFnMode
+        case .skipped: .offscriptFnInfo
         case .failed: .offscriptFnRecord
         case .cancelled: .offscriptSoftPaper
         }

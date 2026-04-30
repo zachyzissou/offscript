@@ -206,7 +206,6 @@ private extension BatchImportService.Phase {
 
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
-    @ObservedObject private var batchImporter = BatchImportService.shared
     @Query(
         filter: #Predicate<Podcast> { $0.isSubscribed },
         sort: [SortDescriptor(\Podcast.title)]
@@ -231,6 +230,7 @@ struct LibraryView: View {
     @State private var directoryScope: LibraryDirectoryScope = .all
     @State private var directorySort: LibraryDirectorySort = .title
     @State private var directoryDensity: LibraryDirectoryDensity = .compact
+    @State private var selectedDirectorySectionID: String?
     @State private var freshEpisodes: [Episode] = []
     @State private var unplayedEpisodeCount = 0
     @State private var freshCountsByPodcastID: [UUID: Int] = [:]
@@ -281,7 +281,9 @@ struct LibraryView: View {
                     // Background OPML import status — visible whenever the
                     // batch importer is mid-flight or has just finished and
                     // hasn't been dismissed yet.
-                    LibraryBatchImportStrip()
+                    LibraryBatchImportStrip(onFinished: {
+                        scheduleLibraryEpisodeSummaryLoad()
+                    })
 
                     if subscribedPodcasts.isEmpty {
                         emptyState
@@ -325,7 +327,7 @@ struct LibraryView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, OffScriptTheme.pagePadding)
-                .padding(.top, 8)
+                .padding(.top, OffScriptTheme.rootContentTopPadding)
                 .padding(.bottom, 90)
             }
         }
@@ -340,11 +342,6 @@ struct LibraryView: View {
         .onAppear { effectiveDirectoryQuery = directoryQuery }
         .onChange(of: subscribedPodcastIDs) { _, _ in scheduleLibraryEpisodeSummaryLoad() }
         .onChange(of: directoryQuery) { _, newValue in scheduleDirectoryQuery(newValue) }
-        .onChange(of: batchImporter.phase) { _, phase in
-            if !phase.isRunning {
-                loadLibraryEpisodeSummary()
-            }
-        }
         .onDisappear {
             summaryLoadTask?.cancel()
             directoryQueryTask?.cancel()
@@ -354,6 +351,7 @@ struct LibraryView: View {
         // as toolbar items — iOS 26 wraps toolbar buttons in glass chrome.
         .sheet(isPresented: $isImportPresented) {
             LibraryImportSheet()
+                .tunerModalSurface()
         }
     }
 
@@ -404,7 +402,11 @@ struct LibraryView: View {
             if snapshot.isEmpty {
                 LibraryDirectoryEmptyState(query: effectiveDirectoryQuery, scope: directoryScope)
             } else {
-                LibraryAlphabetRail(sections: snapshot.sections) { sectionID in
+                LibraryAlphabetRail(
+                    sections: snapshot.sections,
+                    selectedSectionID: selectedDirectorySectionID
+                ) { sectionID in
+                    selectedDirectorySectionID = sectionID
                     withAnimation(.easeInOut(duration: 0.2)) {
                         scrollProxy.scrollTo(sectionID, anchor: .top)
                     }
@@ -415,6 +417,7 @@ struct LibraryView: View {
                         VStack(alignment: .leading, spacing: 0) {
                             HStack {
                                 TunerLabel(text: section.title, color: .offscriptSignalYellow, size: 10)
+                                    .accessibilityIdentifier("LibrarySectionHeader\(section.title)")
                                 Spacer()
                                 TunerLabel(text: "\(section.podcasts.count) CH", color: .offscriptSoftPaper, size: 8)
                             }
@@ -452,40 +455,72 @@ struct LibraryView: View {
 
     @MainActor
     private func loadLibraryEpisodeSummary() {
+        startLibraryEpisodeSummaryLoad(deferWhileImporting: false)
+    }
+
+    @MainActor
+    private func scheduleLibraryEpisodeSummaryLoad() {
+        startLibraryEpisodeSummaryLoad(deferWhileImporting: true)
+    }
+
+    @MainActor
+    private func startLibraryEpisodeSummaryLoad(deferWhileImporting: Bool) {
         summaryLoadTask?.cancel()
-        guard !subscribedPodcasts.isEmpty else {
+        let podcastIDs = subscribedPodcastIDs
+        guard !podcastIDs.isEmpty else {
             freshEpisodes = []
             unplayedEpisodeCount = 0
             freshCountsByPodcastID = [:]
             return
         }
 
+        summaryLoadTask = Task { @MainActor in
+            if deferWhileImporting, BatchImportService.shared.isRunning {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                guard !Task.isCancelled, !BatchImportService.shared.isRunning else { return }
+            }
+            await refreshLibraryEpisodeSummary(podcastIDs: podcastIDs)
+        }
+    }
+
+    @MainActor
+    private func refreshLibraryEpisodeSummary(podcastIDs: [UUID]) async {
         do {
-            let descriptor = FetchDescriptor<Episode>(
+            let countDescriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed }
+            )
+            var freshDescriptor = FetchDescriptor<Episode>(
                 predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed },
                 sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
             )
-            let unplayedEpisodes = try modelContext.fetch(descriptor)
-            unplayedEpisodeCount = unplayedEpisodes.count
-            freshEpisodes = Array(unplayedEpisodes.prefix(10))
-            freshCountsByPodcastID = Dictionary(unplayedEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +)
+            freshDescriptor.fetchLimit = 10
+
+            unplayedEpisodeCount = try modelContext.fetchCount(countDescriptor)
+            freshEpisodes = try modelContext.fetch(freshDescriptor)
+            freshCountsByPodcastID = Dictionary(freshEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +)
+
+            var counts = freshCountsByPodcastID
+            let chunkSize = 24
+            for start in stride(from: 0, to: podcastIDs.count, by: chunkSize) {
+                guard !Task.isCancelled else { return }
+                let chunk = podcastIDs[start..<min(start + chunkSize, podcastIDs.count)]
+                for podcastID in chunk {
+                    let descriptor = FetchDescriptor<Episode>(
+                        predicate: #Predicate<Episode> {
+                            $0.podcast.id == podcastID && $0.podcast.isSubscribed && !$0.isPlayed
+                        }
+                    )
+                    let count = try modelContext.fetchCount(descriptor)
+                    counts[podcastID] = count
+                }
+                freshCountsByPodcastID = counts.filter { $0.value > 0 }
+                await Task.yield()
+            }
         } catch {
             freshEpisodes = []
             unplayedEpisodeCount = 0
             freshCountsByPodcastID = [:]
             libraryLogger.error("Library summary load failed: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    @MainActor
-    private func scheduleLibraryEpisodeSummaryLoad() {
-        summaryLoadTask?.cancel()
-        summaryLoadTask = Task { @MainActor in
-            if batchImporter.isRunning {
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                guard !Task.isCancelled, !batchImporter.isRunning else { return }
-            }
-            loadLibraryEpisodeSummary()
         }
     }
 
@@ -542,13 +577,25 @@ private struct LibraryTunerHeader: View {
                 // missing feature in podcast apps; lives next to settings
                 // since both are operational chrome rather than per-content.
                 Button(action: onOpenImport) {
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.system(size: 13, weight: .semibold))
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 7) {
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.system(size: 12, weight: .semibold))
+                            TunerLabel(text: "IMPORT", color: .offscriptSignalYellow, size: 9)
+                        }
                         .foregroundStyle(Color.offscriptSignalYellow)
-                        .frame(width: 36, height: 30)
+                        .padding(.horizontal, 10)
+                        .frame(height: 30)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.offscriptSignalYellow)
+                            .frame(width: 36, height: 30)
+                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                    }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Import podcasts")
@@ -729,29 +776,75 @@ private struct LibraryDirectoryControls: View {
 
 private struct LibraryAlphabetRail: View {
     let sections: [LibraryDirectorySection]
+    let selectedSectionID: String?
     let onSelect: (String) -> Void
 
+    private let keys = ["#"] + (UnicodeScalar("A").value...UnicodeScalar("Z").value).compactMap { value in
+        UnicodeScalar(value).map { String($0) }
+    }
+
+    private var sectionsByTitle: [String: LibraryDirectorySection] {
+        Dictionary(uniqueKeysWithValues: sections.map { ($0.title, $0) })
+    }
+
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(sections) { section in
-                    Button {
-                        onSelect(section.id)
-                    } label: {
-                        Text(section.title)
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(Color.offscriptSignalYellow)
-                            .frame(width: 28, height: 30)
-                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
-                            .frame(minWidth: 44, minHeight: 44)
-                            .contentShape(Rectangle())
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(keys, id: \.self) { key in
+                        let section = sectionsByTitle[key]
+                        let isSelected = selectedSectionID == section?.id
+
+                        if let section {
+                            Button {
+                                onSelect(section.id)
+                            } label: {
+                                letterKey(key, isSelected: isSelected, isDisabled: false)
+                            }
+                            .id(key)
+                            .buttonStyle(.plain)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("Jump to \(key)")
+                            .accessibilityIdentifier("LibraryJumpLetter\(key)")
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
+                        } else {
+                            letterKey(key, isSelected: false, isDisabled: true)
+                                .id(key)
+                                .accessibilityLabel("No \(key) channels")
+                                .accessibilityIdentifier("LibraryJumpLetter\(key)")
+                                .accessibilityAddTraits(.isStaticText)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Jump to \(section.title)")
+                }
+                .padding(.vertical, 4)
+                .onChange(of: selectedSectionID) { _, newValue in
+                    guard let newValue,
+                          let key = sectionsByTitle.first(where: { $0.value.id == newValue })?.key else { return }
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        proxy.scrollTo(key, anchor: .center)
+                    }
                 }
             }
+            .accessibilityIdentifier("LibraryAlphabetCarousel")
         }
-        .padding(.vertical, 4)
+    }
+
+    private func letterKey(_ key: String, isSelected: Bool, isDisabled: Bool) -> some View {
+        Text(key)
+            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .foregroundStyle(isDisabled ? Color.offscriptTextMuted : Color.offscriptSignalYellow)
+            .frame(width: 30, height: 30)
+            .background(isSelected ? Color.offscriptSignalYellow.opacity(0.14) : Color.clear)
+            .overlay(
+                Rectangle()
+                    .stroke(
+                        isSelected ? Color.offscriptSignalYellow : Color.offscriptHairline,
+                        lineWidth: isSelected ? 1.5 : 1
+                    )
+            )
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+            .opacity(isDisabled ? 0.42 : 1)
     }
 }
 
@@ -830,7 +923,7 @@ private struct TunerLibraryCard: View {
                             .foregroundStyle(Color.offscriptPaperWhite)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
-                        TunerTag(text: reason, color: .offscriptSignalYellow, dim: true)
+                        TunerTag(text: reason, color: .offscriptSignalYellow, dim: true, wraps: true)
                     }
                     Spacer()
                 }
@@ -1239,7 +1332,9 @@ private struct PodcastDetailTunerHeader: View {
             HStack(spacing: 8) {
                 if podcast.isSubscribed {
                     Button {
-                        showUnsubscribeConfirmation = true
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            showUnsubscribeConfirmation.toggle()
+                        }
                     } label: {
                         TunerLabel(text: "× UNSUBSCRIBE", color: .offscriptFnRecord, size: 10)
                             .padding(.horizontal, 12)
@@ -1247,25 +1342,6 @@ private struct PodcastDetailTunerHeader: View {
                             .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
-                    .confirmationDialog(
-                        "Unsubscribe from \(podcast.title)?",
-                        isPresented: $showUnsubscribeConfirmation,
-                        titleVisibility: .visible
-                    ) {
-                        Button("Unsubscribe", role: .destructive) {
-                            withAnimation {
-                                // Centralized unsubscribe: clears queue
-                                // items, deletes downloaded files, removes
-                                // Spotlight index entries, and saves once.
-                                // Previously only handled queue cleanup.
-                                _ = PodcastUnsubscribeService.unsubscribe(podcast,
-                                                                          in: modelContext)
-                            }
-                        }
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("Removes the show from your library, dequeues its episodes, deletes any offline downloads, and stops it from appearing in iOS Search. Listening history is preserved.")
-                    }
                 }
 
                 if let url = podcast.websiteURL {
@@ -1285,11 +1361,56 @@ private struct PodcastDetailTunerHeader: View {
             .sheet(item: $safariURL) { item in
                 SafariView(url: item.url)
                     .ignoresSafeArea()
+                    .tunerModalSurface()
+            }
+
+            if showUnsubscribeConfirmation {
+                unsubscribeConfirmationPanel(for: podcast)
             }
 
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                 .padding(.top, 6)
         }
+    }
+
+    private func unsubscribeConfirmationPanel(for podcast: Podcast) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TunerLabel(text: "CONFIRM · UNSUBSCRIBE", color: .offscriptFnRecord)
+            Text("Removes the show from your library, dequeues its episodes, deletes offline downloads, and stops it from appearing in iOS Search. Listening history is preserved.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
+                .lineSpacing(2)
+
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showUnsubscribeConfirmation = false
+                    }
+                } label: {
+                    TunerLabel(text: "CANCEL", color: .offscriptSoftPaper, size: 10)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showUnsubscribeConfirmation = false
+                        _ = PodcastUnsubscribeService.unsubscribe(podcast, in: modelContext)
+                    }
+                } label: {
+                    TunerLabel(text: "UNSUBSCRIBE", color: .offscriptFnRecord, size: 10)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -1441,80 +1562,100 @@ private struct FilterRow: View {
 /// the user always sees what's happening once they leave the sheet.
 private struct LibraryBatchImportStrip: View {
     @ObservedObject private var importer = BatchImportService.shared
+    var onFinished: () -> Void = {}
 
     var body: some View {
-        switch importer.phase {
-        case .idle:
-            EmptyView()
-        case .running:
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    TunerLabel(text: "● IMPORTING IN BACKGROUND",
-                               color: .offscriptSignalYellow)
-                    Spacer()
-                    TunerLabel(text: "\(importer.completedCount)/\(importer.totalCount)",
-                               color: .offscriptFnInfo)
-                }
-
-                GeometryReader { proxy in
-                    let total = max(1, importer.totalCount)
-                    let done = importer.completedCount
-                    let clamped = min(max(Double(done) / Double(total), 0), 1)
-                    ZStack(alignment: .leading) {
-                        Rectangle().fill(Color.offscriptHairline)
-                        Rectangle()
-                            .fill(Color.offscriptSignalYellow)
-                            .frame(width: proxy.size.width * clamped)
+        Group {
+            switch importer.phase {
+            case .idle:
+                EmptyView()
+            case .running:
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        TunerLabel(text: "● IMPORTING IN BACKGROUND",
+                                   color: .offscriptSignalYellow)
+                        Spacer()
+                        TunerLabel(text: "\(importer.completedCount)/\(importer.totalCount)",
+                                   color: .offscriptFnInfo)
                     }
-                }
-                .frame(height: 2)
-            }
-            .padding(.vertical, 10)
-            .overlay(
-                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
-                alignment: .top
-            )
-            .overlay(
-                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
-                alignment: .bottom
-            )
 
-        case .finished(let added, let failed):
-            HStack(spacing: 12) {
-                TunerLabel(
-                    text: failed == 0 ? "✓ IMPORT COMPLETE" : "● IMPORT FINISHED",
-                    color: failed == 0 ? .offscriptFnMode : .offscriptSignalYellow
-                )
-                Text(failed == 0
-                     ? "Added \(added) shows"
-                     : "Added \(added), \(failed) failed")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Color.offscriptPaperWhite)
-                Spacer()
-                Button {
-                    importer.dismiss()
-                } label: {
-                    TunerLabel(text: "× DISMISS",
-                               color: .offscriptSoftPaper, size: 9)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
-                        .frame(minHeight: 44)
-                        .contentShape(Rectangle())
+                    GeometryReader { proxy in
+                        let total = max(1, importer.totalCount)
+                        let done = importer.completedCount
+                        let clamped = min(max(Double(done) / Double(total), 0), 1)
+                        ZStack(alignment: .leading) {
+                            Rectangle().fill(Color.offscriptHairline)
+                            Rectangle()
+                                .fill(Color.offscriptSignalYellow)
+                                .frame(width: proxy.size.width * clamped)
+                        }
+                    }
+                    .frame(height: 2)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Dismiss import status")
+                .padding(.vertical, 10)
+                .overlay(
+                    Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                    alignment: .top
+                )
+                .overlay(
+                    Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                    alignment: .bottom
+                )
+
+            case .finished(let added, let failed):
+                HStack(spacing: 12) {
+                    TunerLabel(
+                        text: failed == 0 ? "✓ IMPORT COMPLETE" : "● IMPORT FINISHED",
+                        color: failed == 0 ? .offscriptFnMode : .offscriptSignalYellow
+                    )
+                    Text(finishedSummary(added: added, failed: failed))
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Color.offscriptPaperWhite)
+                    Spacer()
+                    Button {
+                        importer.dismiss()
+                    } label: {
+                        TunerLabel(text: "× DISMISS",
+                                   color: .offscriptSoftPaper, size: 9)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss import status")
+                }
+                .padding(.vertical, 10)
+                .overlay(
+                    Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                    alignment: .top
+                )
+                .overlay(
+                    Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+                    alignment: .bottom
+                )
             }
-            .padding(.vertical, 10)
-            .overlay(
-                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
-                alignment: .top
-            )
-            .overlay(
-                Rectangle().fill(Color.offscriptHairline).frame(height: 1),
-                alignment: .bottom
-            )
         }
+        .onChange(of: importer.phase) { oldPhase, phase in
+            if oldPhase.isRunning && !phase.isRunning {
+                onFinished()
+            }
+        }
+    }
+
+    private func finishedSummary(added: Int, failed: Int) -> String {
+        let skipped = importer.skippedCount
+        if failed == 0, skipped == 0 {
+            return "Added \(added) shows"
+        }
+        if failed == 0 {
+            return "Added \(added), \(skipped) already tuned"
+        }
+        if skipped == 0 {
+            return "Added \(added), \(failed) failed"
+        }
+        return "Added \(added), \(skipped) already tuned, \(failed) failed"
     }
 }
 

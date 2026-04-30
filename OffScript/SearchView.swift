@@ -67,7 +67,7 @@ struct SearchView: View {
                 }
             }
             .padding(.horizontal, OffScriptTheme.pagePadding)
-            .padding(.top, 8)
+            .padding(.top, OffScriptTheme.rootContentTopPadding)
             .padding(.bottom, 90)
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
@@ -508,6 +508,7 @@ private struct SearchResultRow: View {
         .sheet(item: $safariURL) { item in
             SafariView(url: item.url)
                 .ignoresSafeArea()
+                .tunerModalSurface()
         }
     }
 }

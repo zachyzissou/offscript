@@ -73,12 +73,6 @@ struct SettingsView: View {
             // No `.toolbar` ToolbarItem — iOS 26 wraps toolbar buttons in
             // glass-capsule chrome that ignores .plain styling. DONE key
             // moved inline into `settingsHeader` below.
-            .alert("Sign Out", isPresented: $showSignOutConfirmation) {
-                Button("Cancel", role: .cancel) {}
-                Button("Sign Out", role: .destructive) { signOut() }
-            } message: {
-                Text("Sync will stop on next launch. Your local data will remain on this device.")
-            }
         }
     }
 
@@ -278,19 +272,41 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func tunerToggle(title: String, detail: String, isOn: Binding<Bool>) -> some View {
-        Toggle(isOn: isOn) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.offscriptPaperWhite)
-                Text(detail)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .lineSpacing(2)
+        Button {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                isOn.wrappedValue.toggle()
             }
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.offscriptPaperWhite)
+                    Text(detail)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(2)
+                }
+
+                Spacer(minLength: 10)
+
+                TunerLabel(
+                    text: isOn.wrappedValue ? "ON" : "OFF",
+                    color: isOn.wrappedValue ? .offscriptStudioBlack : .offscriptSoftPaper,
+                    size: 10
+                )
+                .frame(width: 58, height: 30)
+                .background(isOn.wrappedValue ? Color.offscriptSignalYellow : Color.clear)
+                .overlay(Rectangle().stroke(isOn.wrappedValue ? Color.offscriptSignalYellow : Color.offscriptHairline, lineWidth: 1))
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
-        .tint(Color.offscriptSignalYellow)
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(isOn.wrappedValue ? "On" : "Off")
+        .accessibilityAddTraits(isOn.wrappedValue ? [.isButton, .isSelected] : .isButton)
         .padding(.vertical, 10)
     }
 
@@ -435,7 +451,9 @@ struct SettingsView: View {
                     identityStatusRows
 
                     Button {
-                        showSignOutConfirmation = true
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            showSignOutConfirmation.toggle()
+                        }
                     } label: {
                         TunerLabel(text: "× SIGN OUT", color: .offscriptFnRecord, size: 10)
                             .padding(.horizontal, 12)
@@ -444,6 +462,10 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 4)
+
+                    if showSignOutConfirmation {
+                        signOutConfirmationPanel
+                    }
                 }
             } else {
                 VStack(alignment: .leading, spacing: 10) {
@@ -456,7 +478,7 @@ struct SettingsView: View {
                     } onCompletion: { result in
                         handleSignInResult(result)
                     }
-                    .signInWithAppleButtonStyle(.white)
+                    .signInWithAppleButtonStyle(.whiteOutline)
                     .frame(height: 48)
 
                     if let signInMessage {
@@ -565,6 +587,46 @@ struct SettingsView: View {
         }
     }
 
+    private var signOutConfirmationPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TunerLabel(text: "CONFIRM · SIGN OUT", color: .offscriptFnRecord)
+            Text("Sync will stop on next launch. Your local data will remain on this device.")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
+                .lineSpacing(2)
+
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showSignOutConfirmation = false
+                    }
+                } label: {
+                    TunerLabel(text: "CANCEL", color: .offscriptSoftPaper, size: 10)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showSignOutConfirmation = false
+                    }
+                    signOut()
+                } label: {
+                    TunerLabel(text: "SIGN OUT", color: .offscriptFnRecord, size: 10)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+        .accessibilityElement(children: .contain)
+    }
+
     private func signOut() {
         AppSettings.clearCredential()
         refreshSignInState()
@@ -597,6 +659,9 @@ struct SettingsView: View {
             return "Apple sign-in needs repair before sync can resume."
         }
         guard cloudKitAvailability.allowsSync else {
+            if cloudKitAvailability == .notConfigured {
+                return "This build is missing iCloud entitlements. Sync stays local until the signed CloudKit profile lands."
+            }
             return "Apple identity is saved; iCloud sync waits for an available iCloud account."
         }
         guard cloudSyncEnabled else {

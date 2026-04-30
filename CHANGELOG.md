@@ -7,11 +7,17 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ### Added — UI QA swarm coverage
 - **Large-library UI smoke coverage now seeds a deterministic 258-show library** and launches directly into Library, giving the 250+ show scrolling case a repeatable simulator test instead of a manual-only complaint.
 - **Debug large-library seeding now resets stale simulator data when an explicit library size is requested**, so visual audits and UI tests are not polluted by previous sample stores.
+- **Large-library UI coverage now verifies alphabet directory jumps** by tapping the `Z` key in a 258-show Library and asserting the list scrolls to the `Z` section.
 
 ### Changed — Tuner UI conformance
 - **Shared Tuner labels, tags, and readouts now scale through Dynamic Type metrics** while preserving the mono instrument-panel vocabulary.
 - **Compact Tuner keys now keep their visual size but expose 44pt hit targets** across Library, Player, Queue, Search, downloads, and episode detail actions.
 - **Discovery/search copy now names Apple Podcasts Search explicitly** and avoids implying the app is running a generic opaque algorithmic feed.
+- **Remaining app-controlled Liquid Glass controls were replaced with Tuner surfaces**: Settings toggles, Player scrubber, sign-out/unsubscribe confirmations, and sheet presentation chrome now use flat OLED panels, hairlines, and signal-yellow keys.
+- **Long recommendation reason tags now wrap inside Tuner cards** instead of forcing fixed-width mono pills that could run off Home cards.
+- **Library import is now an explicit `IMPORT` Tuner key** with an icon-only fallback when width is constrained, so the OPML/paste entry point is visible without guessing the glyph.
+- **The bottom Tuner tab indicator now slides between Home, Library, Queue, and Search** with selection haptics instead of appearing abruptly in each cell.
+- **Root page headers sit tighter to the safe area** to reclaim top-of-app space while keeping the iOS status/Dynamic Island safe region intact.
 
 ### Fixed — onboarding, import, and sync UI honesty
 - **Onboarding Sign in with Apple now presents from the actual button window when available** and no longer uses the old crash-prone missing-scene path for the normal sign-in flow.
@@ -19,6 +25,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Bulk OPML import cancellation now marks pending/importing rows as cancelled** instead of leaving them stuck mid-import.
 - **Settings no longer claims iCloud sync is active unless the launch actually opened a CloudKit-backed SwiftData container.**
 - **The SwiftData test container is explicitly local-only** so CloudKit entitlements do not break in-memory unit tests.
+- **Sentry TestFlight/App Store environment tagging now uses StoreKit 2 app transactions** instead of the deprecated receipt URL path, clearing the recurring iOS 18 `appStoreReceiptURL` archive warning.
 
 ### Fixed — Xcode Cloud signing
 - **Build number advanced to 43 after Xcode Cloud runs #40 and #41 failed exporting app build 40, and build 42 validated the emergency Apple-sign-in/App-Group-only signing path.**
@@ -28,12 +35,17 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ### Added — large-library directory controls
 - **Library now behaves like a real channel directory for 250+ show libraries.** The shows list has Tuner-styled search, scope filters, sort modes, compact/artwork row density, visible-count readouts, and an A-Z jump rail so large OPML imports are navigable without endless scrolling.
 - **Large libraries default to compact rows.** Artwork-heavy rows remain available for smaller libraries, but 120+ show libraries automatically use dense Tuner rows to reduce scroll distance and image/layout churn.
+- **The alphabet jump rail is now a full A-Z/# key bank with selected and disabled states** so large libraries expose every directory letter as a direct Tuner control instead of hiding letters in a horizontal strip.
+- **The Library alphabet selector is back to the compact `#-Z` carousel form** while keeping the working direct-letter jump behavior and selected/disabled Tuner states.
 
 ### Changed — Library performance
 - **The root Library podcast query now filters subscribed shows in SwiftData instead of fetching every historical podcast and filtering in Swift.**
 - **Library summary reloads are coalesced during background OPML imports** so each imported show does not immediately retrigger the expensive per-show count path while the list is being scrolled.
 - **Library summary counts no longer issue one SwiftData `fetchCount` per subscribed show.** The page now loads the unplayed episode set once, derives the latest rail and per-show counts from that result, and avoids 250+ synchronous count queries on Library open.
 - **Library directory rendering now builds one snapshot per render pass** for filtered shows, alphabet sections, and row numbers, with debounced search input so typing does not repeatedly sort/group the whole library.
+- **Library no longer observes every OPML progress tick at the root page level.** The import strip repaints during batch progress, and the expensive directory snapshot refreshes when the batch reaches a terminal state.
+- **Bulk OPML import now skips already-subscribed feed URLs before network fetch/parse work** using the same normalized feed-key logic as OPML dedupe, so re-importing a large library does not waste rows on feeds that are already tuned.
+- **Library summary loading now avoids hydrating the full unplayed back catalog on open.** The header count and fresh rail load from count/limited fetches first, while per-show unplayed counts fill in incrementally in small chunks.
 
 ### Added — recommendation tuner and signal discovery
 - **Settings now has a three-position recommendation tuner** (`SIGNAL`, `BALANCED`, `DISCOVERY`) so listeners can choose whether OffScript stays strictly inside known local evidence or opens a new-show discovery lane.
@@ -43,6 +55,9 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Taste refresh now uses weighted, decayed evidence instead of equal counts.** Recent explicit `More like this` signals beat old passive completions, while `Less like this`, `Not interested`, quick skips, and abandons demote matching tags and shows.
 - **Recommendation modes now materially change Home ranking.** `SIGNAL` excludes genre-only candidates, while `BALANCED` and `DISCOVERY` can include a separate tuned-genre lane after local evidence.
 - **Negative signals now suppress adjacent recommendations, not just the exact episode.** `Less like this`, `Not interested`, skipped, and abandoned signals carry disliked tags/show penalties into Home and Player suggestions.
+- **Home now reloads recommendations immediately after explicit feedback** instead of waiting for the next automatic refresh path, and the headline card shows a small retuning status after Like / More / Less / Not Interested.
+- **Discovery recommendations now inspect the latest feed preview before ranking new shows**, so Apple Podcasts Search hits with episode-level overlap beat generic genre-only catalog matches.
+- **Home headline selection now ranks the strongest authored recommendation across all local sections** instead of blindly promoting the first row of the first section.
 
 ### Fixed — playback queue and Now Playing
 - **Playing a queue row now removes that row before playback starts**, so completion/remote-next does not replay the same episode before advancing.
@@ -50,6 +65,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Episode switches reset duration immediately and guard artwork updates** so stale duration/artwork from the previous episode cannot race into Player or Now Playing.
 
 ### Fixed — Apple identity / iCloud sync state
+- **Opening Settings no longer crashes builds without CloudKit entitlements.** iCloud account-status checks are now gated behind a CloudKit entitlement/profile check, and Settings reports `ICLOUD · NOT CONFIGURED` until the signed CloudKit profile lands.
 - **CloudKit sync is guarded by runtime container state** so failed or unavailable iCloud-backed stores fall back to local storage instead of presenting as active sync.
 - **Settings now validates stored Sign in with Apple credentials** before treating the user as signed in. Revoked or missing credentials clear local identity and disable sync.
 - **Transient Apple credential validation failures no longer clear a saved Apple ID.** Credentials are cleared only for revoked or not-found states.

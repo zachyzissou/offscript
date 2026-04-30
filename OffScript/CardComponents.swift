@@ -46,7 +46,7 @@ struct EpisodeVerticalCard: View {
             // Tuner text + transport zone
             VStack(alignment: .leading, spacing: 8) {
                 if let tag = explanationTag {
-                    TunerTag(text: tag, color: .offscriptSignalYellow, dim: true)
+                    TunerTag(text: tag, color: .offscriptSignalYellow, dim: true, wraps: true)
                 }
 
                 // Podcast title in info-cyan per the function-coded color

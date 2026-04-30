@@ -32,6 +32,7 @@ enum CloudKitAccountAvailability: Equatable {
     case restricted
     case couldNotDetermine
     case temporarilyUnavailable
+    case notConfigured
 
     var allowsSync: Bool {
         self == .available
@@ -44,6 +45,7 @@ enum CloudKitAccountAvailability: Equatable {
         case .restricted: "ICLOUD · RESTRICTED"
         case .couldNotDetermine: "ICLOUD · UNKNOWN"
         case .temporarilyUnavailable: "ICLOUD · TEMPORARY ISSUE"
+        case .notConfigured: "ICLOUD · NOT CONFIGURED"
         }
     }
 }
@@ -86,6 +88,8 @@ enum AppleIdentityService {
 
 enum CloudKitAccountService {
     static func currentStatus() async -> CloudKitAccountAvailability {
+        guard hasCloudKitEntitlement else { return .notConfigured }
+
         do {
             let status = try await CKContainer.default().accountStatus()
             switch status {
@@ -105,5 +109,50 @@ enum CloudKitAccountService {
         } catch {
             return .couldNotDetermine
         }
+    }
+
+    static func entitlementsAllowCloudKitAccountStatus(
+        services: Any?,
+        containerIdentifiers: Any?
+    ) -> Bool {
+        guard let services = services as? [String],
+              services.contains("CloudKit"),
+              let containerIdentifiers = containerIdentifiers as? [String] else {
+            return false
+        }
+        return !containerIdentifiers.isEmpty
+    }
+
+    private static var hasCloudKitEntitlement: Bool {
+        #if targetEnvironment(simulator)
+        return false
+        #else
+        guard let entitlements = embeddedProvisioningProfileEntitlements else { return false }
+        return entitlementsAllowCloudKitAccountStatus(
+            services: entitlements["com.apple.developer.icloud-services"],
+            containerIdentifiers: entitlements["com.apple.developer.icloud-container-identifiers"]
+        )
+        #endif
+    }
+
+    private static var embeddedProvisioningProfileEntitlements: [String: Any]? {
+        guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
+              let data = try? Data(contentsOf: url),
+              let rawProfile = String(data: data, encoding: .isoLatin1),
+              let plistStart = rawProfile.range(of: "<plist"),
+              let plistEnd = rawProfile.range(of: "</plist>", options: .backwards) else {
+            return nil
+        }
+
+        let plistText = String(rawProfile[plistStart.lowerBound..<plistEnd.upperBound])
+        guard let plistData = plistText.data(using: .utf8),
+              let profile = try? PropertyListSerialization.propertyList(
+                from: plistData,
+                options: [],
+                format: nil
+              ) as? [String: Any] else {
+            return nil
+        }
+        return profile["Entitlements"] as? [String: Any]
     }
 }

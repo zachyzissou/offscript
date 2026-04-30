@@ -5,13 +5,11 @@ import SwiftUI
 
 private let deepLinkLogger = Logger(subsystem: "com.offscript", category: "DeepLink")
 
-/// Tab-switch notification. ContentView observes this and updates its
-/// `selectedTab` binding when an `offscript://tab/<name>` URL fires. Single
-/// userInfo key `tab` carrying a String matching one of "home", "library",
-/// "queue", "search". Lives at file scope so DeepLinkRouter doesn't need a
-/// reference to ContentView's @State.
+/// App-local notifications used to route events between independent SwiftUI
+/// surfaces without threading bindings through the whole shell.
 extension Notification.Name {
     static let offscriptSwitchTab = Notification.Name("offscript.switchTab")
+    static let offscriptRecommendationFeedbackChanged = Notification.Name("offscript.recommendationFeedbackChanged")
 }
 
 /// Centralized handler for `offscript://` URLs coming from:

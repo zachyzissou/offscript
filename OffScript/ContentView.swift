@@ -78,9 +78,11 @@ struct ContentView: View {
                 .animation(.easeInOut(duration: 0.2), value: player.currentEpisode != nil)
                 .fullScreenCover(isPresented: $player.isPlayerPresented) {
                     PlayerView()
+                        .tunerModalSurface()
                 }
                 .sheet(isPresented: $isSettingsPresented) {
                     SettingsView()
+                        .tunerModalSurface()
                 }
             } else {
                 OnboardingFlowView {
@@ -167,6 +169,7 @@ struct ContentView: View {
 private struct TunerTabBar: View {
     @Binding var selection: AppTab
     let queueBadge: Int
+    @Namespace private var indicatorNamespace
 
     var body: some View {
         VStack(spacing: 0) {
@@ -177,7 +180,9 @@ private struct TunerTabBar: View {
             HStack(spacing: 0) {
                 ForEach(AppTab.allCases) { tab in
                     Button {
-                        selection = tab
+                        withAnimation(.easeInOut(duration: 0.22)) {
+                            selection = tab
+                        }
                     } label: {
                         tabContent(for: tab)
                     }
@@ -191,6 +196,7 @@ private struct TunerTabBar: View {
             .padding(.bottom, 2)
             .background(Color.offscriptStudioBlack)
         }
+        .sensoryFeedback(.selection, trigger: selection.rawValue)
     }
 
     @ViewBuilder
@@ -231,6 +237,7 @@ private struct TunerTabBar: View {
                     .fill(Color.offscriptSignalYellow)
                     .frame(width: 36, height: 1)
                     .offset(y: -6)
+                    .matchedGeometryEffect(id: "tuner-tab-indicator", in: indicatorNamespace)
             }
         }
     }
@@ -249,9 +256,12 @@ private extension ContentView {
 
         if requestedLibrarySize > 0 {
             let episodesPerShow = max(1, defaults.integer(forKey: "offscript.debugSeedEpisodesPerShow"))
-            let existingShows = (try? modelContext.fetchCount(FetchDescriptor<Podcast>())) ?? 0
             let existingEpisodes = (try? modelContext.fetchCount(FetchDescriptor<Episode>())) ?? 0
-            guard existingShows != requestedLibrarySize || existingEpisodes != requestedLibrarySize * episodesPerShow else { return }
+            guard debugLargeLibraryNeedsReset(
+                requestedLibrarySize: requestedLibrarySize,
+                expectedEpisodes: requestedLibrarySize * episodesPerShow,
+                existingEpisodes: existingEpisodes
+            ) else { return }
             resetDebugLibrary()
             seedLargeDebugLibrary(
                 showCount: requestedLibrarySize,
@@ -311,6 +321,23 @@ private extension ContentView {
         try? modelContext.save()
     }
 
+    private func debugLargeLibraryNeedsReset(
+        requestedLibrarySize: Int,
+        expectedEpisodes: Int,
+        existingEpisodes: Int
+    ) -> Bool {
+        let podcastDescriptor = FetchDescriptor<Podcast>(
+            sortBy: [SortDescriptor(\Podcast.title)]
+        )
+        guard let existingPodcasts = try? modelContext.fetch(podcastDescriptor) else {
+            return true
+        }
+        guard existingPodcasts.count == requestedLibrarySize, existingEpisodes == expectedEpisodes else {
+            return true
+        }
+        return existingPodcasts.first?.title != "A Channel 001"
+    }
+
     private func resetDebugLibrary() {
         for episode in (try? modelContext.fetch(FetchDescriptor<Episode>())) ?? [] {
             modelContext.delete(episode)
@@ -323,8 +350,9 @@ private extension ContentView {
 
     private func seedLargeDebugLibrary(showCount: Int, episodesPerShow: Int) {
         let categories = ["News", "Tech", "Comedy", "Science", "Culture", "Storytelling"]
+        let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
         for index in 0..<showCount {
-            let channel = String(format: "Channel %03d", index + 1)
+            let channel = "\(alphabet[index % alphabet.count]) Channel \(String(format: "%03d", index + 1))"
             let pod = Podcast(
                 title: channel,
                 author: "Debug Network \(index % 12 + 1)",

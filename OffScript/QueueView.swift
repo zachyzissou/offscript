@@ -44,7 +44,7 @@ struct QueueView: View {
                 }
             }
             .padding(.horizontal, OffScriptTheme.pagePadding)
-            .padding(.top, 8)
+            .padding(.top, OffScriptTheme.rootContentTopPadding)
             .padding(.bottom, 90)
         }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())

@@ -41,6 +41,21 @@ final class OffScriptUITests: XCTestCase {
     }
 
     @MainActor
+    func testSettingsPanelOpensFromHome() throws {
+        let app = makeApp(hasSeenOnboarding: true)
+        app.launch()
+
+        XCTAssertTrue(app.screen("HomeScreen").waitForExistence(timeout: 10))
+        app.buttons["Open settings"].tap()
+
+        let settingsLabel = app.staticTexts["SETTINGS · CONFIG PANEL"]
+        if !settingsLabel.waitForExistence(timeout: 10) {
+            XCTFail("Settings panel did not appear. Hierarchy:\n\(app.debugDescription)")
+        }
+        XCTAssertTrue(app.buttons["Close settings"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testLargeLibrarySeedSmoke() throws {
         let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 258, debugEpisodesPerShow: 3, debugLaunchTab: 1)
         app.launch()
@@ -48,6 +63,32 @@ final class OffScriptUITests: XCTestCase {
         XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 12))
         XCTAssertTrue(app.staticTexts.containing(labelContaining: "258").waitForExistence(timeout: 12))
         XCTAssertTrue(app.staticTexts["SHOWS · DIRECTORY"].waitForExistence(timeout: 8))
+    }
+
+    @MainActor
+    func testLargeLibraryAlphabetRailJumpsToSelectedLetter() throws {
+        let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 258, debugEpisodesPerShow: 1, debugLaunchTab: 1)
+        app.launch()
+
+        XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts["SHOWS · DIRECTORY"].waitForExistence(timeout: 8))
+        let carousel = app.scrollViews["LibraryAlphabetCarousel"]
+        XCTAssertTrue(carousel.waitForExistence(timeout: 8))
+        for _ in 0..<4 where !carousel.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(carousel.isHittable)
+        let zJump = carousel.descendants(matching: .any)["LibraryJumpLetterZ"]
+        XCTAssertTrue(zJump.waitForExistence(timeout: 8))
+        for _ in 0..<12 where !zJump.isHittable {
+            carousel.swipeLeft()
+        }
+        XCTAssertTrue(zJump.isHittable, "Expected to reach LibraryJumpLetterZ within the alphabet carousel")
+
+        zJump.tap()
+
+        XCTAssertTrue(app.staticTexts["LibrarySectionHeaderZ"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Z Channel 026"].waitForExistence(timeout: 5))
     }
 
     private func makeApp(

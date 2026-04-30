@@ -1,6 +1,24 @@
 import Foundation
 import OSLog
 import Sentry
+import StoreKit
+
+enum SentryEnvironmentResolver {
+    static let cacheKey = "offscript.sentryEnvironment"
+
+    static func sentryEnvironment(storeKitEnvironmentRawValue rawValue: String) -> String {
+        switch rawValue.lowercased() {
+        case "sandbox":
+            return "testflight"
+        case "xcode":
+            return "debug"
+        case "production":
+            return "production"
+        default:
+            return "production"
+        }
+    }
+}
 
 /// Quota-aware Sentry initializer.
 ///
@@ -80,6 +98,7 @@ enum CrashReporter {
         }
 
         logger.info("Sentry initialized — release \(Self.releaseTag, privacy: .public), env \(Self.environment, privacy: .public)")
+        refreshStoreKitEnvironment()
     }
 
     /// `1.14.2-23` — matches App Store Connect release identifiers so you
@@ -95,13 +114,33 @@ enum CrashReporter {
         #if DEBUG
         return "debug"
         #else
-        // Sentry distinguishes TestFlight (sandbox receipt) from App Store
-        // (production receipt) automatically via the receipt URL path.
-        if let receipt = Bundle.main.appStoreReceiptURL?.lastPathComponent,
-           receipt == "sandboxReceipt" {
-            return "testflight"
+        return UserDefaults.standard.string(forKey: SentryEnvironmentResolver.cacheKey) ?? "production"
+        #endif
+    }
+
+    private static func refreshStoreKitEnvironment() {
+        #if !DEBUG
+        Task {
+            do {
+                let rawValue: String
+                switch try await AppTransaction.shared {
+                case .verified(let transaction):
+                    rawValue = transaction.environment.rawValue
+                case .unverified(let transaction, let error):
+                    rawValue = transaction.environment.rawValue
+                    logger.warning("StoreKit app transaction was unverified: \(String(describing: error), privacy: .public)")
+                }
+
+                let environment = SentryEnvironmentResolver.sentryEnvironment(storeKitEnvironmentRawValue: rawValue)
+                UserDefaults.standard.set(environment, forKey: SentryEnvironmentResolver.cacheKey)
+                SentrySDK.configureScope { scope in
+                    scope.setTag(value: environment, key: "storekit.environment")
+                }
+                logger.info("Resolved StoreKit environment \(environment, privacy: .public)")
+            } catch {
+                logger.warning("Unable to resolve StoreKit environment: \(error.localizedDescription, privacy: .public)")
+            }
         }
-        return "production"
         #endif
     }
 }

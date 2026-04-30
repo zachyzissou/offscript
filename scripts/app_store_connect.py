@@ -550,6 +550,7 @@ def command_signing_preflight(args: argparse.Namespace) -> None:
     for profile in matching_profiles:
         profile_attrs = attrs(profile)
         profile_name = profile_attrs.get("name")
+        profile_label = f"{profile_name} ({profile['id']})"
         print()
         print(f"Profile: {profile_name} id={profile['id']}")
         print(f"  state={profile_attrs.get('profileState')} expires={profile_attrs.get('expirationDate')}")
@@ -569,7 +570,7 @@ def command_signing_preflight(args: argparse.Namespace) -> None:
         print(f"  iCloud-services={services}")
         print(f"  iCloud-containers={containers}")
 
-        failures.extend(cloudkit_profile_failures(profile_name, entitlements, required_container))
+        failures.extend(cloudkit_profile_failures(profile_label, entitlements, required_container))
 
     if failures:
         print()

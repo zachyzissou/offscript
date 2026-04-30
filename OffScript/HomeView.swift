@@ -23,6 +23,8 @@ struct HomeView: View {
     @State private var errorMessage: String?
     @State private var isLoading = true
     @State private var isLoadingDiscovery = false
+    @State private var loadGeneration = 0
+    @State private var feedbackRetuneTask: Task<Void, Never>?
     let onOpenSettings: () -> Void
 
     private let recommendationService = RecommendationService()
@@ -47,8 +49,9 @@ struct HomeView: View {
                 } else {
                     let episodeSections = sections.filter { !$0.isDiscoverySection }
                     let discoverySections = sections.filter(\.isDiscoverySection)
+                    let leadScoredEpisode = RecommendationService.headlineCandidate(from: episodeSections)
 
-                    if let leadSection = episodeSections.first, let leadScoredEpisode = leadSection.scoredEpisodes.first {
+                    if let leadScoredEpisode {
                         HeroTunerCard(
                             episode: leadScoredEpisode.episode,
                             reason: leadScoredEpisode.explanation,
@@ -56,19 +59,10 @@ struct HomeView: View {
                         )
                         .padding(.horizontal, OffScriptTheme.pagePadding)
                         .padding(.bottom, 6)
-
-                        let remainingLeadEpisodes = Array(leadSection.episodes.dropFirst())
-                        if !remainingLeadEpisodes.isEmpty {
-                            TunerRail(
-                                title: "NEXT BEST PICKS",
-                                episodes: remainingLeadEpisodes,
-                                reasonProvider: { leadSection.explanation(for: $0) },
-                                signalProvider: { leadSection.signalTrace(for: $0) }
-                            )
-                        }
                     }
 
-                    ForEach(Array(episodeSections.dropFirst().enumerated()), id: \.element.id) { _, section in
+                    let railSections = Self.sections(episodeSections, excluding: leadScoredEpisode?.episode.id)
+                    ForEach(Array(railSections.enumerated()), id: \.element.id) { _, section in
                         TunerRail(
                             title: section.title.uppercased(),
                             episodes: section.episodes,
@@ -87,7 +81,7 @@ struct HomeView: View {
                     }
                 }
             }
-            .padding(.top, 8)
+            .padding(.top, OffScriptTheme.rootContentTopPadding)
             .padding(.bottom, 28)
         }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
@@ -104,39 +98,82 @@ struct HomeView: View {
         // in HomeTunerHeader instead, where we have full control.
         .task(id: recommendationModeRaw) { await loadSections() }
         .refreshable { await loadSections() }
+        .onReceive(NotificationCenter.default.publisher(for: .offscriptRecommendationFeedbackChanged)) { _ in
+            feedbackRetuneTask?.cancel()
+            feedbackRetuneTask = Task {
+                do {
+                    try await Task.sleep(nanoseconds: 180_000_000)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                await retuneAfterExplicitFeedback()
+            }
+        }
+        .onDisappear { feedbackRetuneTask?.cancel() }
     }
 
     @MainActor
     private func loadSections() async {
+        loadGeneration += 1
+        let generation = loadGeneration
+        isLoadingDiscovery = false
         do {
             let mode = AppSettings.recommendationMode
             let loaded = try recommendationService.homeSections(context: modelContext, mode: mode)
+            guard generation == loadGeneration else { return }
             withAnimation(.easeInOut(duration: 0.25)) {
                 sections = loaded
                 errorMessage = nil
                 isLoading = false
                 isLoadingDiscovery = false
             }
-            await loadDiscovery(mode: mode, existingSections: loaded)
+            await loadDiscovery(mode: mode, existingSections: loaded, generation: generation)
         } catch {
+            guard generation == loadGeneration else { return }
             homeLogger.error("loadSections failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
             isLoading = false
+            isLoadingDiscovery = false
+        }
+    }
+
+    private static func sections(_ sections: [HomeFeedSection], excluding leadEpisodeID: UUID?) -> [HomeFeedSection] {
+        guard let leadEpisodeID else { return sections }
+        return sections.compactMap { section in
+            let remaining = section.scoredEpisodes.filter { $0.episode.id != leadEpisodeID }
+            guard !remaining.isEmpty else { return nil }
+            return HomeFeedSection(title: section.title, subtitle: section.subtitle, scoredEpisodes: remaining)
         }
     }
 
     @MainActor
-    private func loadDiscovery(mode: AppSettings.RecommendationMode, existingSections: [HomeFeedSection]) async {
+    private func loadDiscovery(mode: AppSettings.RecommendationMode, existingSections: [HomeFeedSection], generation: Int) async {
         guard mode.allowsDiscovery else { return }
+        guard generation == loadGeneration else { return }
         isLoadingDiscovery = true
-        defer { isLoadingDiscovery = false }
+        defer {
+            if generation == loadGeneration {
+                isLoadingDiscovery = false
+            }
+        }
 
         if let discovery = await recommendationService.discoverySection(context: modelContext, mode: mode) {
-            guard !Task.isCancelled, AppSettings.recommendationMode == mode else { return }
+            guard !Task.isCancelled,
+                  AppSettings.recommendationMode == mode,
+                  generation == loadGeneration else { return }
             withAnimation(.easeInOut(duration: 0.25)) {
                 sections = existingSections + [discovery]
             }
         }
+    }
+
+    @MainActor
+    private func retuneAfterExplicitFeedback() async {
+        // `homeSections` reads fresh PreferenceSignal rows directly, so this
+        // updates visible recommendations without forcing a full taste-profile
+        // rebuild on the tap path.
+        await loadSections()
     }
 }
 
@@ -532,7 +569,7 @@ private struct TunerDiscoveryRail: View {
                 .multilineTextAlignment(.leading)
                 .frame(width: 168, alignment: .leading)
 
-            TunerTag(text: scored.explanation, color: .offscriptFnInfo, dim: true)
+            TunerTag(text: scored.explanation, color: .offscriptFnInfo, dim: true, wraps: true)
             RecommendationSignalTraceView(signals: scored.signalTrace, limit: 2, color: .offscriptSoftPaper)
 
             Button {
@@ -583,6 +620,8 @@ private struct HeroTunerCard: View {
     let episode: Episode
     let reason: String
     let signals: [RecommendationSignal]
+    @State private var feedbackStatusMessage: String?
+    @State private var feedbackClearTask: Task<Void, Never>?
 
     private var progressValue: Double {
         guard let duration = episode.duration, duration > 0 else { return 0 }
@@ -632,8 +671,9 @@ private struct HeroTunerCard: View {
                 .buttonStyle(.plain)
 
                 // Reason as a TunerTag with signal yellow accent
-                TunerTag(text: reason, color: .offscriptSignalYellow, dim: true)
+                TunerTag(text: reason, color: .offscriptSignalYellow, dim: true, wraps: true)
                 RecommendationSignalTraceView(signals: signals)
+                HomePreferenceStatusRow(message: feedbackStatusMessage)
 
                 // Mono metadata — date · duration. The "X LEFT" remaining
                 // time used to render here AND in the explanation tag above
@@ -703,6 +743,7 @@ private struct HeroTunerCard: View {
         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(reason)")
+        .onDisappear { feedbackClearTask?.cancel() }
     }
 
     @ViewBuilder
@@ -737,9 +778,60 @@ private struct HeroTunerCard: View {
     }
 
     private func register(_ action: PreferenceSignal.Action) {
-        modelContext.insert(PreferenceSignal(action: action, episode: episode))
-        do { try modelContext.save() }
-        catch { homeLogger.error("Failed to save preference: \(error.localizedDescription, privacy: .public)") }
+        let signal = PreferenceSignal(action: action, episode: episode)
+        modelContext.insert(signal)
+        do {
+            try modelContext.save()
+            withAnimation(.easeInOut(duration: 0.18)) {
+                feedbackStatusMessage = statusMessage(for: action)
+            }
+            scheduleFeedbackStatusClear()
+            NotificationCenter.default.post(name: .offscriptRecommendationFeedbackChanged, object: nil)
+        } catch {
+            modelContext.delete(signal)
+            homeLogger.error("Failed to save preference: \(error.localizedDescription, privacy: .public)")
+            withAnimation(.easeInOut(duration: 0.18)) {
+                feedbackStatusMessage = "COULDN'T SAVE SIGNAL"
+            }
+            scheduleFeedbackStatusClear(delay: 3_000_000_000)
+        }
+    }
+
+    private func statusMessage(for action: PreferenceSignal.Action) -> String {
+        switch action {
+        case .like: "LIKED · RETUNING"
+        case .moreLikeThis: "MORE LIKE THIS · RETUNING"
+        case .lessLikeThis: "LESS LIKE THIS · RETUNING"
+        case .notInterested: "HIDDEN FROM SIGNAL · RETUNING"
+        }
+    }
+
+    private func scheduleFeedbackStatusClear(delay: UInt64 = 2_000_000_000) {
+        feedbackClearTask?.cancel()
+        feedbackClearTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    feedbackStatusMessage = nil
+                }
+            }
+        }
+    }
+}
+
+private struct HomePreferenceStatusRow: View {
+    let message: String?
+
+    var body: some View {
+        if let message {
+            TunerLabel(text: message, color: .offscriptFnMode, size: 8)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+        }
     }
 }
 
@@ -806,7 +898,7 @@ private struct TunerRailCard: View {
                         .multilineTextAlignment(.leading)
                         .frame(width: 168, alignment: .leading)
 
-                    TunerTag(text: reason, color: .offscriptSignalYellow, dim: true)
+                    TunerTag(text: reason, color: .offscriptSignalYellow, dim: true, wraps: true)
                     RecommendationSignalTraceView(signals: signals, limit: 2, color: .offscriptSoftPaper)
 
                     TunerLabel(text: metadata, color: .offscriptSoftPaper, size: 8)
