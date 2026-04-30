@@ -73,7 +73,7 @@ private struct LibraryPodcastFingerprint: Equatable {
     let id: UUID
     let title: String
     let author: String?
-    let categories: [String]
+    let categoryFingerprint: String?
     let latestPubDate: Date?
     let subscribedAt: Date?
     let syncStatus: String
@@ -272,6 +272,7 @@ struct LibraryView: View {
     @State private var directoryQueryTask: Task<Void, Never>?
     @State private var selectedPodcast: Podcast?
     @State private var cachedDirectorySnapshot = LibraryDirectorySnapshot.empty
+    @State private var didBuildDirectorySnapshot = false
 
     private var subscribedPodcasts: [Podcast] {
         podcasts
@@ -283,7 +284,7 @@ struct LibraryView: View {
                 id: $0.id,
                 title: $0.title,
                 author: $0.author,
-                categories: $0.categories,
+                categoryFingerprint: effectiveDirectoryQuery.isEmpty ? nil : $0.categories.joined(separator: "\u{1F}"),
                 latestPubDate: $0.latestPubDate,
                 subscribedAt: $0.subscribedAt,
                 syncStatus: $0.syncStatus,
@@ -321,7 +322,7 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        let snapshot = cachedDirectorySnapshot
+        let snapshot = didBuildDirectorySnapshot ? cachedDirectorySnapshot : makeDirectorySnapshot()
         ScrollViewReader { scrollProxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -398,7 +399,6 @@ struct LibraryView: View {
             PodcastDetailView(podcast: podcast)
         }
         .task {
-            rebuildDirectorySnapshot()
             loadLibraryEpisodeSummary()
         }
         .onAppear {
@@ -407,8 +407,8 @@ struct LibraryView: View {
         }
         .onChange(of: directorySnapshotInputs) { _, _ in
             rebuildDirectorySnapshot()
-            scheduleLibraryEpisodeSummaryLoad()
         }
+        .onChange(of: subscribedPodcastIDs) { _, _ in scheduleLibraryEpisodeSummaryLoad() }
         .onChange(of: directoryQuery) { _, newValue in scheduleDirectoryQuery(newValue) }
         .onChange(of: effectiveDirectoryQuery) { _, _ in rebuildDirectorySnapshot() }
         .onChange(of: directoryScope) { _, _ in
@@ -439,7 +439,12 @@ struct LibraryView: View {
 
     @MainActor
     private func rebuildDirectorySnapshot() {
-        cachedDirectorySnapshot = LibraryDirectoryOrganizer.snapshot(
+        cachedDirectorySnapshot = makeDirectorySnapshot()
+        didBuildDirectorySnapshot = true
+    }
+
+    private func makeDirectorySnapshot() -> LibraryDirectorySnapshot {
+        LibraryDirectoryOrganizer.snapshot(
             for: subscribedPodcasts,
             query: effectiveDirectoryQuery,
             scope: directoryScope,
