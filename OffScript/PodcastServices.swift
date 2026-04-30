@@ -330,18 +330,22 @@ final class FeedSyncService {
     func stagePodcastSubscriptions(from results: [PodcastSearchResult], into context: ModelContext) throws -> [Podcast] {
         guard !results.isEmpty else { return [] }
 
-        let existingPodcasts = try context.fetch(FetchDescriptor<Podcast>())
+        let feedURLs = Set(results.map(\.feedURL))
+        let existingPodcasts = try context.fetch(FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> {
+                feedURLs.contains($0.feedURL)
+            }
+        ))
         var podcastByFeedKey = Dictionary(
-            existingPodcasts.map { ($0.feedURL.normalizedFeedKey, $0) },
+            existingPodcasts.map { ($0.feedURL, $0) },
             uniquingKeysWith: { first, _ in first }
         )
         let now = Date()
         var stagedPodcasts: [Podcast] = []
 
         for result in results {
-            let key = result.feedURL.normalizedFeedKey
             let podcast: Podcast
-            if let existing = podcastByFeedKey[key] {
+            if let existing = podcastByFeedKey[result.feedURL] {
                 podcast = existing
                 podcast.isSubscribed = true
                 podcast.title = result.title
@@ -365,7 +369,7 @@ final class FeedSyncService {
                 )
                 podcast.subscribedAt = now
                 context.insert(podcast)
-                podcastByFeedKey[key] = podcast
+                podcastByFeedKey[result.feedURL] = podcast
             }
 
             podcast.syncStatus = "idle"
@@ -374,7 +378,12 @@ final class FeedSyncService {
             stagedPodcasts.append(podcast)
         }
 
-        try context.save()
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
         return stagedPodcasts
     }
 
@@ -553,8 +562,6 @@ final class FeedSyncService {
                 if newestItems.count > limit {
                     newestItems.removeLast()
                 }
-            } else if newestItems.count < limit {
-                newestItems.append(item)
             }
         }
 
