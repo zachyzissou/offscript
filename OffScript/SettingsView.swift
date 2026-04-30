@@ -66,10 +66,12 @@ struct SettingsView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .task {
+                settingsLogger.info("Settings task started")
                 refreshCounts()
                 refreshSignInState()
                 refreshSignalProfile()
                 await refreshIdentityStatus()
+                settingsLogger.info("Settings task completed: episodes=\(episodeCount, privacy: .public), queued=\(queuedCount, privacy: .public), signedIn=\(isSignedIn, privacy: .public), apple=\(appleCredentialState.displayText, privacy: .public), iCloud=\(cloudKitAvailability.displayText, privacy: .public)")
             }
             // No `.toolbar` ToolbarItem — iOS 26 wraps toolbar buttons in
             // glass-capsule chrome that ignores .plain styling. DONE key
@@ -596,7 +598,11 @@ struct SettingsView: View {
                 withAnimation { signInMessage = "Signed in. Checking iCloud availability." }
                 settingsLogger.info("Sign in with Apple succeeded for user \(credential.user, privacy: .private)")
             } catch {
-                settingsLogger.error("Failed to persist Apple credential: \(error.localizedDescription, privacy: .public)")
+                if let keychainError = error as? UserProfileService.KeychainError {
+                    settingsLogger.error("Failed to persist Apple credential: \(keychainError.localizedDescription, privacy: .public), osStatus=\(keychainError.osStatus, privacy: .public)")
+                } else {
+                    settingsLogger.error("Failed to persist Apple credential: \(error.localizedDescription, privacy: .public)")
+                }
                 withAnimation { signInMessage = "Sign-in could not be saved. Please try again." }
             }
         case .failure(let error):
@@ -655,6 +661,7 @@ struct SettingsView: View {
 
     @MainActor
     private func refreshIdentityStatus(enableSyncWhenAvailable: Bool = false) async {
+        settingsLogger.info("Settings identity refresh started: enableSyncWhenAvailable=\(enableSyncWhenAvailable, privacy: .public)")
         appleCredentialState = await AppleIdentityService.validateStoredCredential()
         cloudKitAvailability = await CloudKitAccountService.currentStatus()
         refreshSignInState()
@@ -665,6 +672,7 @@ struct SettingsView: View {
                 ? "Signed in. Sync activates on next launch."
                 : "Signed in. iCloud is not available on this device right now."
         }
+        settingsLogger.info("Settings identity refresh completed: signedIn=\(isSignedIn, privacy: .public), apple=\(appleCredentialState.displayText, privacy: .public), iCloud=\(cloudKitAvailability.displayText, privacy: .public), cloudSyncEnabled=\(cloudSyncEnabled, privacy: .public), runtime=\(String(describing: AppSettings.cloudSyncRuntimeState), privacy: .public)")
     }
 
     private func refreshSignInState() {
@@ -706,6 +714,7 @@ struct SettingsView: View {
         completedSignalCount = (try? modelContext.fetchCount(FetchDescriptor<PlaybackEvent>(
             predicate: #Predicate<PlaybackEvent> { $0.kindRawValue == completedRawValue }
         ))) ?? 0
+        settingsLogger.info("Settings signal profile refreshed: tags=\(signalTags.count, privacy: .public), shows=\(signalShows.count, privacy: .public), explicitSignals=\(explicitSignalCount, privacy: .public), completedSignals=\(completedSignalCount, privacy: .public)")
     }
 
     private func rebuildSignalProfile() {
@@ -728,5 +737,6 @@ struct SettingsView: View {
         queuedCount   = (try? modelContext.fetchCount(
             FetchDescriptor<Episode>(predicate: #Predicate<Episode> { $0.isQueued })
         )) ?? 0
+        settingsLogger.info("Settings counts refreshed: episodes=\(episodeCount, privacy: .public), unplayed=\(unplayedCount, privacy: .public), queued=\(queuedCount, privacy: .public)")
     }
 }

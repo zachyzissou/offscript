@@ -95,7 +95,21 @@ enum UserProfileService {
         SecItemDelete(query as CFDictionary)
     }
 
-    enum KeychainError: Error {
+    enum KeychainError: LocalizedError {
         case unhandled(OSStatus)
+
+        var errorDescription: String? {
+            switch self {
+            case let .unhandled(status):
+                return "Keychain write failed with OSStatus \(status)."
+            }
+        }
+
+        var osStatus: OSStatus {
+            switch self {
+            case let .unhandled(status):
+                return status
+            }
+        }
     }
 }
