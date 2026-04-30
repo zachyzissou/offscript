@@ -224,9 +224,12 @@ final class RecommendationService {
     func homeSections(
         context: ModelContext,
         mode: AppSettings.RecommendationMode = .balanced,
-        limit: Int = 6
+        limit: Int = 6,
+        refreshTasteProfile: Bool = true
     ) throws -> [HomeFeedSection] {
-        try? TasteProfileService.refresh(in: context)
+        if refreshTasteProfile {
+            try? TasteProfileService.refresh(in: context)
+        }
         let queueItems = try context.fetch(FetchDescriptor<QueueItem>(
             sortBy: [
                 SortDescriptor(\QueueItem.position),
