@@ -1,92 +1,184 @@
-# OffScript Next Implementation Backlog
+# OffScript Roadmap and Implementation Backlog
 
-## Phase 1: Offline Completion
+This roadmap mirrors the open GitHub issue backlog so the repo has a durable
+source of truth even when the GitHub Project roadmap view is not accessible
+from automation. Priorities reflect the current release state as of
+2026-04-30.
 
-### Objective
-Make downloads and offline playback feel trustworthy in daily use.
-
-### Files
-- `/Users/zachgonser/Desktop/OffScript/OffScript/DownloadService.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/LibraryView.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/EpisodeDetailView.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/PlayerView.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/PlaybackController.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScriptTests/OffScriptTests.swift`
-
-### Tasks
-1. Add real queued-download semantics with limited concurrency.
-2. Reconcile persisted `queued` and `downloading` episodes on launch/configure.
-3. Surface active and failed download states in Library.
-4. Keep downloaded state synchronized with actual on-disk files.
-5. Add regression coverage for interrupted/failed download recovery.
-
-## Phase 2: True Podcast-Player Depth
+## Immediate Release Lane
 
 ### Objective
-Move from a good player to a genuinely podcast-native player.
+Get current `main` into TestFlight and make the release surface impossible to
+misread again.
 
-### Files
-- `/Users/zachgonser/Desktop/OffScript/OffScript/PodcastServices.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/Models.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/PlayerView.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/EpisodeDetailView.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/PlaybackController.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScriptTests/OffScriptTests.swift`
+### Issues
+- #103 Unblock next TestFlight build for current main
+- #120 Diagnose Xcode Cloud PrepareBuildForAppStoreConnect failures
+- #104 Fix release/build visibility source of truth
+- #121 Handle uploaded but unassigned TestFlight builds
+- #117 Improve release automation after PR merge
 
-### Tasks
-1. Parse first-class feed chapters where available.
-2. Add transcript-ready model plumbing.
-3. Improve end-of-episode continuity with clearer next-step actions.
-4. Make episode detail the best place to understand what you are about to hear.
+### Acceptance
+1. Xcode Cloud archives current `main` or a follow-up release commit.
+2. The visible internal TestFlight build is newer than build 62.
+3. Release tooling reports current repo build, latest uploaded build, latest
+   internal-visible build, and latest external-visible build separately.
+4. Valid but unassigned builds are treated as release failures, not shipped.
 
-## Phase 3: Discovery That Feels Curated
-
-### Objective
-Make Search and import feel like OffScript, not generic RSS acquisition.
-
-### Files
-- `/Users/zachgonser/Desktop/OffScript/OffScript/SearchView.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/CuratedPodcastCatalog.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/ImportProgressView.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/OnboardingFlowView.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/PodcastServices.swift`
-
-### Tasks
-1. Add richer show previews with latest-episode context.
-2. Expand browse from simple genres into topic/editorial groupings.
-3. Improve post-import handoff into first recommendation or first play.
-
-## Phase 4: Recommendation Credibility
+## Performance Lane
 
 ### Objective
-Make the app feel smart across Home, Queue, Player, and Search.
+Make large-library use feel fast with real 250+ show libraries.
 
-### Files
-- `/Users/zachgonser/Desktop/OffScript/OffScript/RecommendationService.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/TasteProfileService.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/HomeView.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/PlayerView.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/QueueView.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/EpisodeDetailView.swift`
+### Issues
+- #105 Speed up large OPML import for real libraries
+- #106 Reduce onboarding subscription latency
+- #107 Make Library performant with 250+ subscribed shows
+- #122 Add performance instrumentation for tab switches and Library workloads
 
-### Tasks
-1. Improve fatigue handling and taste decay.
-2. Strengthen explanation strings across all surfaces.
-3. Use queue and playback behavior more directly in ranking.
+### Acceptance
+1. Large OPML import avoids serial bottlenecks where safe and shows accurate
+   progress/cancel state.
+2. Onboarding can stage three starter subscriptions quickly and hydrate in the
+   background.
+3. Library scroll, filter, sort, and tab switching remain responsive with 250+
+   subscribed shows.
+4. Debug/perf signposts cover tab switches, Home recommendations, Library load,
+   count loading, and OPML stages.
 
-## Phase 5: Beta Durability
+## Recommendation Lane
 
 ### Objective
-Make the app survive repeated use, bad feeds, and future iteration.
+Make recommendations feel authored, local, and trustworthy instead of generic.
 
-### Files
-- `/Users/zachgonser/Desktop/OffScript/OffScript/SettingsView.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/TelemetryService.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScript/SyncCoordinator.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScriptTests/OffScriptTests.swift`
-- `/Users/zachgonser/Desktop/OffScript/OffScriptUITests/OffScriptUITests.swift`
+### Issues
+- #108 Rebuild recommendations around authored user signal
+- #118 Fix Home recommendation card text overflow
 
-### Tasks
-1. Expand diagnostics for sync/import/download history.
-2. Add deeper regression coverage around onboarding, queue autoplay, sync retries, and offline playback.
-3. Reduce remaining runtime warning debt and tighten failure messaging.
+### Acceptance
+1. Explicit feedback and meaningful listening behavior outrank generic recency.
+2. Negative feedback visibly changes Home and player suggestions.
+3. Recommendation explanations read like OffScript signal, not generic
+   algorithm copy.
+4. Long recommendation reasons never overflow cards across supported Dynamic
+   Type sizes.
+
+## Library Product Lane
+
+### Objective
+Turn Library into a power-user surface for large collections.
+
+### Issues
+- #115 Finish Library interaction polish
+- #119 Add Library power-user features for large collections
+- #123 Improve Search and discovery subscribe flow
+
+### Acceptance
+1. Alphabet #-Z carousel selection works reliably and jumps to the intended or
+   nearest section.
+2. Import, search, subscribe, duplicate-feed, and error states are clear.
+3. Large-library workflows include useful scopes, metadata signals, and bulk or
+   repeated actions where appropriate.
+4. The Library stays visually Tuner-native and performant under real library
+   sizes.
+
+## Tuner UI and Accessibility Lane
+
+### Objective
+Finish the OLED/Tuner visual system without sacrificing accessibility.
+
+### Issues
+- #109 Complete full Tuner UI conformance audit
+- #110 Redesign top chrome and safe-area usage
+- #111 Expand Apple platform integrations and OLED polish
+- #127 Audit accessibility and Dynamic Type across Tuner UI
+
+### Acceptance
+1. App-controlled Liquid Glass/system-looking controls are replaced or
+   explicitly documented as native exceptions.
+2. Top chrome uses screen space better without colliding with Dynamic Island or
+   iOS status items.
+3. OLED surfaces preserve contrast, battery-conscious black, and Tuner visual
+   rhythm.
+4. VoiceOver, Dynamic Type, reduced motion, and touch targets pass a full app
+   audit.
+
+## Apple Platform Lane
+
+### Objective
+Make Apple integrations reliable and product-relevant.
+
+### Issues
+- #112 Validate Sign in with Apple and iCloud/CloudKit paths
+- #113 Add regression coverage for background playback and silent switch behavior
+
+### Acceptance
+1. Sign in with Apple works in supported environments with clear failure copy.
+2. CloudKit/signing work remains separate until signing preflight passes.
+3. Background playback, lock screen behavior, silent switch behavior, route
+   changes, interruptions, and Now Playing controls have regression coverage or
+   a repeatable real-device checklist.
+
+## Player, Queue, and Offline Lane
+
+### Objective
+Make daily listening workflows durable beyond basic playback.
+
+### Issues
+- #124 Expand Player feature polish and reliability
+- #125 Harden downloads and offline playback
+- #126 Improve Queue workflows for heavy listeners
+
+### Acceptance
+1. Player controls, chapters, transcripts/show notes, sleep timer, rates, queue
+   actions, lock screen, and remote commands are audited together.
+2. Downloads recover from interruption, play offline, and expose retry/cleanup
+   state clearly.
+3. Queue supports heavy-listener workflows with reliable reorder, play-next,
+   remove, clear, and current/next indicators.
+
+## Test and Diagnostics Lane
+
+### Objective
+Give humans and agents a repeatable way to verify the app end to end.
+
+### Issues
+- #116 Create a complete app test matrix
+- #114 Audit Settings crash reports and harden settings presentation
+
+### Acceptance
+1. The test matrix covers onboarding, import/export, library, search, queue,
+   player, background playback, settings, identity/iCloud, recommendations,
+   widgets, and Live Activity.
+2. Each flow is classified as automated, simulator manual, or TestFlight/device
+   manual.
+3. Settings has focused smoke coverage and crash-log follow-up for the build 51
+   report.
+
+## Current Open Issue Index
+
+- #103 Unblock next TestFlight build for current main
+- #104 Fix release/build visibility source of truth
+- #105 Speed up large OPML import for real libraries
+- #106 Reduce onboarding subscription latency
+- #107 Make Library performant with 250+ subscribed shows
+- #108 Rebuild recommendations around authored user signal
+- #109 Complete full Tuner UI conformance audit
+- #110 Redesign top chrome and safe-area usage
+- #111 Expand Apple platform integrations and OLED polish
+- #112 Validate Sign in with Apple and iCloud/CloudKit paths
+- #113 Add regression coverage for background playback and silent switch behavior
+- #114 Audit Settings crash reports and harden settings presentation
+- #115 Finish Library interaction polish
+- #116 Create a complete app test matrix
+- #117 Improve release automation after PR merge
+- #118 Fix Home recommendation card text overflow
+- #119 Add Library power-user features for large collections
+- #120 Diagnose Xcode Cloud PrepareBuildForAppStoreConnect failures
+- #121 Handle uploaded but unassigned TestFlight builds
+- #122 Add performance instrumentation for tab switches and Library workloads
+- #123 Improve Search and discovery subscribe flow
+- #124 Expand Player feature polish and reliability
+- #125 Harden downloads and offline playback
+- #126 Improve Queue workflows for heavy listeners
+- #127 Audit accessibility and Dynamic Type across Tuner UI
