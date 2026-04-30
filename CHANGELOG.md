@@ -32,6 +32,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Build number advanced to 41 after Xcode Cloud runs #40 and #41 failed exporting app build 40.**
 - **Build number advanced to 42 after Xcode Cloud run #63 failed during App Store Connect preparation** while the product line continued shipping performance builds on main.
 - **Build number advanced to 43 after App Store Connect reported `2.3.11 (42)` already uploaded** despite Cloud run #64 failing during preparation.
+- **Build number advanced to 44 after App Store Connect reported `2.3.11 (43)` already uploaded** despite Cloud run #65 failing during preparation.
 - **CloudKit entitlements are temporarily withheld from the shipped target** because Apple-managed App Store and Ad Hoc profiles for `com.offscript.app` remain invalid after iCloud capability changes. The runtime still falls back to local storage and Settings reports the fallback instead of claiming sync is active.
 
 ### Added — large-library directory controls
