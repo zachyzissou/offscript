@@ -558,7 +558,7 @@ struct TunerReadout: View {
             HStack(alignment: .lastTextBaseline, spacing: 4) {
                 Text(value)
                     .font(.system(size: fontSize.offscriptScaled(.title1), weight: .light, design: .default))
-                    .tracking(-1)
+                    .tracking(0)
                     .foregroundStyle(Color.offscriptPaperWhite)
                     .monospacedDigit()
                 if let unit {

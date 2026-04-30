@@ -269,7 +269,7 @@ private struct SearchTunerHeader: View {
             }
             Text("Search")
                 .font(.system(size: 32, weight: .bold))
-                .tracking(-0.5)
+                .tracking(0)
                 .foregroundStyle(Color.offscriptPaperWhite)
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                 .padding(.top, 4)
@@ -283,7 +283,7 @@ private struct SearchPromptStrip: View {
             TunerLabel(text: "● TUNING TIP", color: .offscriptFnInfo)
             Text("Three strong inputs")
                 .font(.system(size: 16, weight: .semibold))
-                .tracking(-0.2)
+                .tracking(0)
                 .foregroundStyle(Color.offscriptPaperWhite)
             Text("Search uses Apple Podcasts results and imports RSS feeds. Exact show or host names work best; topics are broader catalog scans.")
                 .font(.system(size: 13))

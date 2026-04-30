@@ -152,7 +152,7 @@ struct PlayerView: View {
     private func titleBlock(episode: Episode) -> some View {
         Text(episode.title)
             .font(.system(size: 22, weight: .semibold))
-            .tracking(-0.4)
+            .tracking(0)
             .foregroundStyle(Color.offscriptPaperWhite)
             .lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)

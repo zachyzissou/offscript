@@ -45,7 +45,7 @@ struct PodcastPickerView: View {
                         TunerLabel(text: "02 · CHANNELS", color: .offscriptSignalYellow, size: 10)
                         Text("Tune the bank")
                             .font(.system(size: 32, weight: .bold, design: .default))
-                            .tracking(-0.6)
+                            .tracking(0)
                             .foregroundStyle(Color.offscriptPaperWhite)
                         Text("PICK 3+ CHANNELS · 2+ BANDS · WE'LL LEARN FROM HERE")
                             .font(.system(size: 9, weight: .semibold, design: .monospaced))
@@ -225,7 +225,7 @@ private struct OnboardingPodcastCard: View {
 
                 Text(podcast.title)
                     .font(.system(size: 11, weight: .semibold, design: .default))
-                    .tracking(-0.1)
+                    .tracking(0)
                     .foregroundStyle(Color.offscriptPaperWhite)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
