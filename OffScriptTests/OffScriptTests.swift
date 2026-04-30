@@ -229,6 +229,12 @@ struct OffScriptTests {
     }
 
     @Test
+    func onboardingHydrationDefersAfterCompletionToProtectFirstHomePaint() {
+        #expect(OnboardingHydrationScheduler.defaultDelayNanoseconds >= 1_000_000_000)
+        #expect(OnboardingHydrationScheduler.defaultDelayNanoseconds < 2_000_000_000)
+    }
+
+    @Test
     @MainActor
     func opmlBatchStagingResubscribesExistingNormalizedFeeds() throws {
         let container = try makeContainer()

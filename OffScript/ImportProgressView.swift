@@ -198,6 +198,8 @@ struct ImportProgressView: View {
         }
 
         Task { @MainActor in
+            await OnboardingHydrationScheduler.waitForPostOnboardingPaintGap()
+            guard !Task.isCancelled else { return }
             await syncStagedPodcastsInBackground(stagedPodcasts)
         }
     }
@@ -230,6 +232,20 @@ struct ImportProgressView: View {
                 importLogger.error("Onboarding background sync failed for \(result.podcast.feedURL, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
+    }
+}
+
+enum OnboardingHydrationScheduler {
+    nonisolated static let defaultDelayNanoseconds: UInt64 = 1_200_000_000
+
+    /// Applies a fixed post-onboarding yield plus sleep before applying feed
+    /// hydration writes on the main SwiftData context. This is a timing
+    /// heuristic only; it does not detect a completed Home render.
+    @MainActor
+    static func waitForPostOnboardingPaintGap(delayNanoseconds: UInt64 = defaultDelayNanoseconds) async {
+        await Task.yield()
+        guard delayNanoseconds > 0 else { return }
+        try? await Task.sleep(nanoseconds: delayNanoseconds)
     }
 }
 
