@@ -1942,7 +1942,7 @@ struct OffScriptTests {
 
     @Test
     @MainActor
-    func libraryDirectoryCountStoreBucketsCountsOffMainContext() async throws {
+    func libraryDirectoryCountStoreBucketsSubscribedShowCounts() async throws {
         let container = try makeContainer()
         let context = container.mainContext
 

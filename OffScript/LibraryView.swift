@@ -514,22 +514,11 @@ enum LibraryDirectoryCountLoader {
         await Task.yield()
         try Task.checkCancellation()
 
-        var unplayedCounts: [UUID: Int] = [:]
-        var inProgressCounts: [UUID: Int] = [:]
-        for episode in episodes {
-            let podcastID = episode.podcast.id
-            guard allowedPodcastIDs.contains(podcastID) else { continue }
-            if needsUnplayed {
-                unplayedCounts[podcastID, default: 0] += 1
-            }
-            if needsInProgress, episode.playedPosition > 0 {
-                inProgressCounts[podcastID, default: 0] += 1
-            }
-        }
-
-        return LibraryDirectoryCounts(
-            unplayedByPodcastID: needsUnplayed ? unplayedCounts : [:],
-            inProgressByPodcastID: needsInProgress ? inProgressCounts : [:]
+        return LibraryDirectoryCountBucketer.counts(
+            episodes: episodes,
+            allowedPodcastIDs: allowedPodcastIDs,
+            needsUnplayed: needsUnplayed,
+            needsInProgress: needsInProgress
         )
     }
 
@@ -580,6 +569,22 @@ actor LibraryDirectoryCountStore {
         let episodes = try modelContext.fetch(descriptor)
         try Task.checkCancellation()
 
+        return LibraryDirectoryCountBucketer.counts(
+            episodes: episodes,
+            allowedPodcastIDs: allowedPodcastIDs,
+            needsUnplayed: needsUnplayed,
+            needsInProgress: needsInProgress
+        )
+    }
+}
+
+private nonisolated enum LibraryDirectoryCountBucketer {
+    static func counts(
+        episodes: [Episode],
+        allowedPodcastIDs: Set<UUID>,
+        needsUnplayed: Bool,
+        needsInProgress: Bool
+    ) -> LibraryDirectoryCounts {
         var unplayedCounts: [UUID: Int] = [:]
         var inProgressCounts: [UUID: Int] = [:]
         for episode in episodes {
