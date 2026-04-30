@@ -1467,6 +1467,41 @@ struct OffScriptTests {
     }
 
     @Test
+    func libraryDirectoryOrganizerTracksMissingCountFamiliesSeparately() {
+        #expect(LibraryDirectoryOrganizer.hasLoadedRequiredFullCounts(
+            scope: .unplayed,
+            sort: .title,
+            didLoadUnplayed: true,
+            didLoadInProgress: false
+        ))
+
+        #expect(!LibraryDirectoryOrganizer.hasLoadedRequiredFullCounts(
+            scope: .inProgress,
+            sort: .title,
+            didLoadUnplayed: true,
+            didLoadInProgress: false
+        ))
+
+        let inProgressMissing = LibraryDirectoryOrganizer.missingFullCountRequirements(
+            scope: .inProgress,
+            sort: .title,
+            didLoadUnplayed: true,
+            didLoadInProgress: false
+        )
+        #expect(!inProgressMissing.unplayed)
+        #expect(inProgressMissing.inProgress)
+
+        let attentionMissing = LibraryDirectoryOrganizer.missingFullCountRequirements(
+            scope: .all,
+            sort: .attention,
+            didLoadUnplayed: true,
+            didLoadInProgress: false
+        )
+        #expect(!attentionMissing.unplayed)
+        #expect(attentionMissing.inProgress)
+    }
+
+    @Test
     @MainActor
     func libraryDirectoryOrganizerBucketsEpisodeCountsInOnePass() {
         let kept = Podcast(title: "Kept", feedURL: URL(string: "https://example.com/kept.xml")!)
@@ -1515,7 +1550,7 @@ struct OffScriptTests {
 
     @Test
     @MainActor
-    func libraryDirectoryCountLoaderCountsSubscribedShowsWithoutFetchingEpisodeLists() async throws {
+    func libraryDirectoryCountLoaderBucketsSubscribedShowCountsInScopedFetches() async throws {
         let container = try makeContainer()
         let context = container.mainContext
         let kept = Podcast(title: "Kept", feedURL: URL(string: "https://example.com/kept.xml")!)
@@ -1555,6 +1590,29 @@ struct OffScriptTests {
         #expect(inProgressCounts[kept.id] == 1)
         #expect(inProgressCounts[second.id] == 1)
         #expect(inProgressCounts[unsubscribed.id] == nil)
+    }
+
+    @Test
+    @MainActor
+    func libraryDirectoryCountLoaderReturnsEmptyCountsForEmptyPodcastIDs() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let podcast = Podcast(title: "Ignored", feedURL: URL(string: "https://example.com/ignored.xml")!)
+        context.insert(podcast)
+        context.insert(Episode(title: "Ignored Fresh", pubDate: .now, audioURL: URL(string: "https://example.com/ignored.mp3")!, podcast: podcast))
+        try context.save()
+
+        let unplayedCounts = try await LibraryDirectoryCountLoader.unplayedCountsByPodcastID(
+            podcastIDs: [],
+            context: context
+        )
+        let inProgressCounts = try await LibraryDirectoryCountLoader.inProgressCountsByPodcastID(
+            podcastIDs: [],
+            context: context
+        )
+
+        #expect(unplayedCounts.isEmpty)
+        #expect(inProgressCounts.isEmpty)
     }
 
     @Test
