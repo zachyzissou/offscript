@@ -10,7 +10,6 @@ private let settingsLogger = Logger(subsystem: "com.offscript", category: "Setti
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Query private var podcasts: [Podcast]
     @AppStorage("offscript.autoPlayNext") private var autoPlayNext = true
     @AppStorage("offscript.preferShortEpisodes") private var preferShortEpisodes = false
     @AppStorage("offscript.cloudSyncEnabled") private var cloudSyncEnabled = false
@@ -23,6 +22,7 @@ struct SettingsView: View {
     @State private var signInMessage: String?
     @State private var isDefaultRatePickerExpanded = false
 
+    @State private var subscribedPodcastCount: Int = 0
     @State private var episodeCount: Int = 0
     @State private var unplayedCount: Int = 0
     @State private var queuedCount: Int = 0
@@ -121,7 +121,7 @@ struct SettingsView: View {
 
     private var statsBlock: some View {
         HStack(spacing: 0) {
-            stat(label: "SUBSCRIBED", value: "\(podcasts.filter(\.isSubscribed).count)")
+            stat(label: "SUBSCRIBED", value: "\(subscribedPodcastCount)")
             divider
             stat(label: "EPISODES", value: "\(episodeCount)")
             divider
@@ -735,6 +735,7 @@ struct SettingsView: View {
 
     /// fetchCount-backed counts so Settings doesn't materialize the entire Episode table.
     private func refreshCounts() {
+        subscribedPodcastCount = SettingsCountService.subscribedPodcastCount(in: modelContext)
         episodeCount  = (try? modelContext.fetchCount(FetchDescriptor<Episode>())) ?? 0
         unplayedCount = (try? modelContext.fetchCount(
             FetchDescriptor<Episode>(predicate: #Predicate<Episode> { !$0.isPlayed })
@@ -742,6 +743,15 @@ struct SettingsView: View {
         queuedCount   = (try? modelContext.fetchCount(
             FetchDescriptor<Episode>(predicate: #Predicate<Episode> { $0.isQueued })
         )) ?? 0
-        settingsLogger.info("Settings counts refreshed: episodes=\(episodeCount, privacy: .public), unplayed=\(unplayedCount, privacy: .public), queued=\(queuedCount, privacy: .public)")
+        settingsLogger.info("Settings counts refreshed: subscribed=\(subscribedPodcastCount, privacy: .public), episodes=\(episodeCount, privacy: .public), unplayed=\(unplayedCount, privacy: .public), queued=\(queuedCount, privacy: .public)")
+    }
+}
+
+@MainActor
+enum SettingsCountService {
+    static func subscribedPodcastCount(in context: ModelContext) -> Int {
+        (try? context.fetchCount(
+            FetchDescriptor<Podcast>(predicate: #Predicate<Podcast> { $0.isSubscribed })
+        )) ?? 0
     }
 }

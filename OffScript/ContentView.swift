@@ -169,7 +169,6 @@ struct ContentView: View {
 private struct TunerTabBar: View {
     @Binding var selection: AppTab
     let queueBadge: Int
-    @Namespace private var indicatorNamespace
 
     var body: some View {
         VStack(spacing: 0) {
@@ -177,23 +176,39 @@ private struct TunerTabBar: View {
                 .fill(Color.offscriptHairline)
                 .frame(height: 1)
 
-            HStack(spacing: 0) {
-                ForEach(AppTab.allCases) { tab in
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.22)) {
-                            selection = tab
+            GeometryReader { proxy in
+                let segmentWidth = max(proxy.size.width / CGFloat(AppTab.allCases.count), 1)
+                ZStack(alignment: .topLeading) {
+                    Rectangle()
+                        .fill(Color.offscriptSignalYellow)
+                        .frame(width: min(42, segmentWidth * 0.44), height: 1)
+                        .offset(
+                            x: segmentWidth * CGFloat(selection.rawValue)
+                                + (segmentWidth - min(42, segmentWidth * 0.44)) / 2,
+                            y: 0
+                        )
+                        .animation(.snappy(duration: 0.28, extraBounce: 0.08), value: selection.rawValue)
+                        .accessibilityHidden(true)
+
+                    HStack(spacing: 0) {
+                        ForEach(AppTab.allCases) { tab in
+                            Button {
+                                withAnimation(.snappy(duration: 0.28, extraBounce: 0.08)) {
+                                    selection = tab
+                                }
+                            } label: {
+                                tabContent(for: tab)
+                            }
+                            .buttonStyle(.plain)
+                            .frame(width: segmentWidth)
+                            .accessibilityLabel(tab.label.capitalized)
+                            .accessibilityAddTraits(selection == tab ? .isSelected : [])
                         }
-                    } label: {
-                        tabContent(for: tab)
                     }
-                    .buttonStyle(.plain)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityLabel(tab.label.capitalized)
-                    .accessibilityAddTraits(selection == tab ? .isSelected : [])
                 }
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             }
-            .padding(.top, 6)
-            .padding(.bottom, 2)
+            .frame(height: 62)
             .background(Color.offscriptStudioBlack)
         }
         .sensoryFeedback(.selection, trigger: selection.rawValue)
@@ -229,17 +244,6 @@ private struct TunerTabBar: View {
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
-        .overlay(alignment: .top) {
-            if isActive {
-                // 1px signal-yellow active indicator at the top of the cell —
-                // matches the function-coded eyebrow rules used everywhere else.
-                Rectangle()
-                    .fill(Color.offscriptSignalYellow)
-                    .frame(width: 36, height: 1)
-                    .offset(y: -6)
-                    .matchedGeometryEffect(id: "tuner-tab-indicator", in: indicatorNamespace)
-            }
-        }
     }
 }
 
