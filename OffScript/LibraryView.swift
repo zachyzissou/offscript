@@ -415,6 +415,54 @@ nonisolated enum LibraryDirectoryOrganizer {
     }
 }
 
+@MainActor
+enum LibraryDirectoryCountLoader {
+    static func unplayedCountsByPodcastID(
+        podcastIDs: [UUID],
+        context: ModelContext
+    ) async throws -> [UUID: Int] {
+        try await countsByPodcastID(podcastIDs: podcastIDs, context: context) { podcastID in
+            FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> {
+                    $0.podcast.id == podcastID && $0.podcast.isSubscribed && !$0.isPlayed
+                }
+            )
+        }
+    }
+
+    static func inProgressCountsByPodcastID(
+        podcastIDs: [UUID],
+        context: ModelContext
+    ) async throws -> [UUID: Int] {
+        try await countsByPodcastID(podcastIDs: podcastIDs, context: context) { podcastID in
+            FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> {
+                    $0.podcast.id == podcastID && $0.podcast.isSubscribed && !$0.isPlayed && $0.playedPosition > 0
+                }
+            )
+        }
+    }
+
+    private static func countsByPodcastID(
+        podcastIDs: [UUID],
+        context: ModelContext,
+        descriptor: (UUID) -> FetchDescriptor<Episode>
+    ) async throws -> [UUID: Int] {
+        var counts: [UUID: Int] = [:]
+        for (index, podcastID) in podcastIDs.enumerated() {
+            try Task.checkCancellation()
+            let count = try context.fetchCount(descriptor(podcastID))
+            if count > 0 {
+                counts[podcastID] = count
+            }
+            if index.isMultiple(of: 20) {
+                await Task.yield()
+            }
+        }
+        return counts
+    }
+}
+
 private extension BatchImportService.Phase {
     var isRunning: Bool {
         if case .running = self { return true }
@@ -882,23 +930,14 @@ struct LibraryView: View {
                 isLoadingFullDirectoryCounts = false
                 return
             }
-            let podcastIDSet = Set(podcastIDs)
             var unplayedCounts: [UUID: Int] = [:]
             var inProgressCounts: [UUID: Int] = [:]
 
             if directoryNeedsFullUnplayedCounts {
-                let unplayedDescriptor = FetchDescriptor<Episode>(
-                    predicate: #Predicate<Episode> {
-                        $0.podcast.isSubscribed && !$0.isPlayed
-                    }
+                unplayedCounts = try await LibraryDirectoryCountLoader.unplayedCountsByPodcastID(
+                    podcastIDs: podcastIDs,
+                    context: modelContext
                 )
-                let unplayedEpisodes = try modelContext.fetch(unplayedDescriptor)
-                await Task.yield()
-                unplayedCounts = LibraryDirectoryOrganizer.countsByPodcastID(
-                    for: unplayedEpisodes,
-                    limitedTo: podcastIDSet
-                )
-                await Task.yield()
             }
 
             guard !Task.isCancelled else {
@@ -907,18 +946,10 @@ struct LibraryView: View {
             }
 
             if directoryNeedsFullInProgressCounts {
-                let inProgressDescriptor = FetchDescriptor<Episode>(
-                    predicate: #Predicate<Episode> {
-                        $0.podcast.isSubscribed && !$0.isPlayed && $0.playedPosition > 0
-                    }
+                inProgressCounts = try await LibraryDirectoryCountLoader.inProgressCountsByPodcastID(
+                    podcastIDs: podcastIDs,
+                    context: modelContext
                 )
-                let inProgressEpisodes = try modelContext.fetch(inProgressDescriptor)
-                await Task.yield()
-                inProgressCounts = LibraryDirectoryOrganizer.countsByPodcastID(
-                    for: inProgressEpisodes,
-                    limitedTo: podcastIDSet
-                )
-                await Task.yield()
             }
 
             guard !Task.isCancelled else {
