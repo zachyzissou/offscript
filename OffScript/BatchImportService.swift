@@ -55,6 +55,7 @@ final class BatchImportService: ObservableObject {
 
     private let syncService = FeedSyncService()
     private var task: Task<Void, Never>?
+    private var activeModelContext: ModelContext?
 
     private init() {}
 
@@ -68,12 +69,20 @@ final class BatchImportService: ObservableObject {
         let existingFeedKeys = Self.subscribedFeedKeys(in: modelContext)
         let plan = Self.importPlan(for: uniqueEntries, existingFeedKeys: existingFeedKeys)
         self.entries = uniqueEntries
+        activeModelContext = modelContext
         progress = plan.initialProgress
         phase = .running
 
         guard !plan.entriesToImport.isEmpty else {
             phase = .finished(added: addedCount, failed: failedCount)
+            activeModelContext = nil
             return
+        }
+
+        do {
+            _ = try Self.stageSubscriptions(for: plan.entriesToImport, in: modelContext)
+        } catch {
+            batchImportLogger.error("OPML subscription staging failed: \(error.localizedDescription, privacy: .public)")
         }
 
         task = Task { [weak self] in
@@ -88,8 +97,16 @@ final class BatchImportService: ObservableObject {
         task?.cancel()
         task = nil
         if isRunning {
+            let unfinishedEntries = entries.filter { entry in
+                let status = progress[entry.feedURL]
+                return status == .pending || status == .importing
+            }
             markUnfinishedRowsCancelled()
+            if let activeModelContext {
+                Self.markStagedSubscriptionsCancelled(for: unfinishedEntries, in: activeModelContext)
+            }
             phase = .finished(added: addedCount, failed: failedCount)
+            activeModelContext = nil
         }
     }
 
@@ -143,9 +160,11 @@ final class BatchImportService: ObservableObject {
         guard !Task.isCancelled else {
             markUnfinishedRowsCancelled()
             phase = .finished(added: addedCount, failed: failedCount)
+            activeModelContext = nil
             return
         }
         phase = .finished(added: addedCount, failed: failedCount)
+        activeModelContext = nil
     }
 
     private func markUnfinishedRowsCancelled() {
@@ -163,12 +182,14 @@ final class BatchImportService: ObservableObject {
             try Task.checkCancellation()
             _ = try await syncService.importPodcast(from: entry,
                                                     into: modelContext,
-                                                    options: .fastBatchImport(episodeLimit: 25))
+                                                    options: .opmlBootstrap())
             try Task.checkCancellation()
             return (entry.feedURL, .added)
         } catch is CancellationError {
-            return (entry.feedURL, .failed)
+            markStagedSubscriptionCancelled(entry: entry, in: modelContext)
+            return (entry.feedURL, .cancelled)
         } catch {
+            markStagedSubscriptionFailed(entry: entry, error: error, in: modelContext)
             batchImportLogger.error("OPML row failed for \(entry.feedURL.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return (entry.feedURL, .failed)
         }
@@ -203,6 +224,136 @@ final class BatchImportService: ObservableObject {
         }
 
         return (entriesToImport, initialProgress)
+    }
+
+    @discardableResult
+    static func stageSubscriptions(
+        for entries: [OPMLFeedEntry],
+        in modelContext: ModelContext
+    ) throws -> Int {
+        guard !entries.isEmpty else { return 0 }
+
+        let existingPodcasts = try modelContext.fetch(FetchDescriptor<Podcast>())
+        var podcastByFeedKey = Dictionary(
+            existingPodcasts.map { ($0.feedURL.normalizedFeedKey, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var stagedCount = 0
+        let now = Date()
+
+        for entry in entries {
+            let key = entry.feedURL.normalizedFeedKey
+            let title = entry.title.flatMap(Self.trimmedNonEmpty)
+                ?? entry.feedURL.host
+                ?? entry.feedURL.absoluteString
+            let author = entry.author.flatMap(Self.trimmedNonEmpty)
+
+            if let podcast = podcastByFeedKey[key] {
+                podcast.feedURL = entry.feedURL
+                podcast.isSubscribed = true
+                podcast.title = title
+                podcast.author = author ?? podcast.author
+                if podcast.subscribedAt == nil {
+                    podcast.subscribedAt = now
+                }
+                podcast.lastSyncAttemptAt = now
+                podcast.syncStatus = "syncing"
+                podcast.syncErrorMessage = nil
+            } else {
+                let podcast = Podcast(
+                    title: title,
+                    author: author,
+                    feedURL: entry.feedURL,
+                    isSubscribed: true
+                )
+                podcast.subscribedAt = now
+                podcast.lastSyncAttemptAt = now
+                podcast.syncStatus = "syncing"
+                modelContext.insert(podcast)
+                podcastByFeedKey[key] = podcast
+            }
+
+            stagedCount += 1
+        }
+
+        try modelContext.save()
+        return stagedCount
+    }
+
+    static func markStagedSubscriptionFailed(
+        entry: OPMLFeedEntry,
+        error: Error,
+        in modelContext: ModelContext
+    ) {
+        do {
+            guard let podcast = try stagedPodcast(for: entry, in: modelContext) else { return }
+            let failureCount = podcast.syncFailureCount + 1
+            podcast.syncStatus = "failed"
+            podcast.syncFailureCount = failureCount
+            podcast.syncErrorMessage = error.localizedDescription
+            podcast.nextRetryAt = FeedSyncRetryPolicy.nextRetryDate(afterFailureCount: failureCount)
+            try modelContext.save()
+        } catch {
+            batchImportLogger.error("Failed to mark staged OPML row failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private static func markStagedSubscriptionCancelled(
+        entry: OPMLFeedEntry,
+        in modelContext: ModelContext
+    ) {
+        do {
+            guard let podcast = try stagedPodcast(for: entry, in: modelContext) else { return }
+            podcast.syncStatus = "idle"
+            podcast.syncErrorMessage = nil
+            podcast.nextRetryAt = nil
+            try modelContext.save()
+        } catch {
+            batchImportLogger.error("Failed to mark staged OPML row cancelled: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    static func markStagedSubscriptionsCancelled(
+        for entries: [OPMLFeedEntry],
+        in modelContext: ModelContext
+    ) {
+        do {
+            let feedKeys = Set(entries.map { $0.feedURL.normalizedFeedKey })
+            guard !feedKeys.isEmpty else { return }
+            let podcasts = try modelContext.fetch(FetchDescriptor<Podcast>())
+                .filter { feedKeys.contains($0.feedURL.normalizedFeedKey) }
+            for podcast in podcasts {
+                podcast.syncStatus = "idle"
+                podcast.syncErrorMessage = nil
+                podcast.nextRetryAt = nil
+            }
+            try modelContext.save()
+        } catch {
+            batchImportLogger.error("Failed to mark staged OPML rows cancelled: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private static func stagedPodcast(
+        for entry: OPMLFeedEntry,
+        in modelContext: ModelContext
+    ) throws -> Podcast? {
+        let feedURL = entry.feedURL
+        var descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.feedURL == feedURL }
+        )
+        descriptor.fetchLimit = 1
+        if let exact = try modelContext.fetch(descriptor).first {
+            return exact
+        }
+
+        let feedKey = entry.feedURL.normalizedFeedKey
+        return try modelContext.fetch(FetchDescriptor<Podcast>())
+            .first { $0.feedURL.normalizedFeedKey == feedKey }
+    }
+
+    private static func trimmedNonEmpty(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private static func subscribedFeedKeys(in modelContext: ModelContext) -> Set<String> {

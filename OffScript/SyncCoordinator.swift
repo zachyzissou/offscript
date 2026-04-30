@@ -74,8 +74,7 @@ final class SyncCoordinator: ObservableObject {
             let failureCount = podcast.syncFailureCount + 1
             podcast.syncFailureCount = failureCount
             podcast.syncErrorMessage = error.localizedDescription
-            let retryDelay = min(pow(2.0, Double(failureCount)) * 60, 60 * 60 * 6)
-            podcast.nextRetryAt = Date().addingTimeInterval(retryDelay)
+            podcast.nextRetryAt = FeedSyncRetryPolicy.nextRetryDate(afterFailureCount: failureCount)
             updateSnapshot(for: podcast, isSyncing: false, errorMessage: error.localizedDescription)
             modelContext.saveOrLog("SyncCoordinator")
         }
