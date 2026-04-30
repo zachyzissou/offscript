@@ -77,6 +77,7 @@ enum PodcastUnsubscribeService {
         }
 
         unsubscribeLogger.info("Unsubscribe complete: \(podcast.title, privacy: .public), \(episodeIDs.count) episodes deindexed")
+        NotificationCenter.default.post(name: .offscriptLibrarySubscriptionsChanged, object: podcast.id)
         return true
     }
 }
