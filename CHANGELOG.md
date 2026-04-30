@@ -22,6 +22,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Library import is now an explicit `IMPORT` Tuner key** with an icon-only fallback when width is constrained, so the OPML/paste entry point is visible without guessing the glyph.
 - **The bottom Tuner tab indicator now slides between Home, Library, Queue, and Search** with selection haptics instead of appearing abruptly in each cell.
 - **Root page headers sit tighter to the safe area** to reclaim top-of-app space while keeping the iOS status/Dynamic Island safe region intact.
+- **Large Library sections now render as flattened lazy headers, rows, and separators** so a 250+ show directory does not build an entire oversized letter section as one SwiftUI child.
 
 ### Fixed — onboarding, import, and sync UI honesty
 - **Large OPML and onboarding bootstrap imports now use shorter feed request timeouts** so dead feeds release bounded import slots faster while normal subscribed-feed sync keeps its more patient timeout.
