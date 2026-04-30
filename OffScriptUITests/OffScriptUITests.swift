@@ -95,6 +95,57 @@ final class OffScriptUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Z Channel 026"].waitForExistence(timeout: 8))
     }
 
+    @MainActor
+    func testLargeLibraryDirectoryControlsStayResponsive() throws {
+        let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 258, debugEpisodesPerShow: 3, debugLaunchTab: 1)
+        app.launch()
+
+        XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts["SHOWS · DIRECTORY"].waitForExistence(timeout: 8))
+
+        tapWhenReady(app.buttons["ATTN"].firstMatch, in: app, name: "ATTN sort")
+        XCTAssertTrue(app.staticTexts["● 1 IN PROGRESS"].waitForExistence(timeout: 10))
+
+        tapWhenReady(app.buttons["UNPLAYED"].firstMatch, in: app, name: "UNPLAYED scope")
+        XCTAssertTrue(app.staticTexts["A Channel 001"].waitForExistence(timeout: 10))
+
+        let filter = app.textFields.firstMatch
+        XCTAssertTrue(filter.waitForExistence(timeout: 8), "Library filter did not appear. Hierarchy:\n\(app.debugDescription)")
+        filter.tap()
+        filter.typeText("Z Channel")
+        XCTAssertTrue(app.staticTexts["Z Channel 026"].waitForExistence(timeout: 10))
+
+        app.buttons["Clear library filter"].tap()
+        XCTAssertTrue(app.staticTexts["A Channel 001"].waitForExistence(timeout: 10))
+        dismissKeyboard(in: app)
+    }
+
+    private func tapWhenReady(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        name: String,
+        maxSwipes: Int = 4,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertTrue(element.waitForExistence(timeout: 8), "\(name) did not appear. Hierarchy:\n\(app.debugDescription)", file: file, line: line)
+        for _ in 0..<maxSwipes where !element.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(element.isHittable, "\(name) was not hittable. Hierarchy:\n\(app.debugDescription)", file: file, line: line)
+        element.tap()
+    }
+
+    private func dismissKeyboard(in app: XCUIApplication) {
+        guard app.keyboards.firstMatch.exists else { return }
+        let search = app.keyboards.buttons["Search"].firstMatch
+        if search.exists {
+            search.tap()
+        } else {
+            app.tap()
+        }
+    }
+
     private func makeApp(
         hasSeenOnboarding: Bool,
         debugLibrarySize: Int = 0,
