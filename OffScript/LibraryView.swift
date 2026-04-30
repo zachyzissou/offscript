@@ -52,10 +52,27 @@ nonisolated enum LibraryDirectoryDensity: String, CaseIterable, Identifiable {
     }
 }
 
+nonisolated struct LibraryDirectoryRow: Identifiable {
+    var id: UUID { podcast.id }
+    let podcast: Podcast
+    let channelNumber: Int
+    let unplayedCount: Int
+    let inProgressCount: Int
+    let isLastInSection: Bool
+}
+
 nonisolated struct LibraryDirectorySection: Identifiable {
     let id: String
     let title: String
     let podcasts: [Podcast]
+    let rows: [LibraryDirectoryRow]
+
+    init(id: String, title: String, podcasts: [Podcast], rows: [LibraryDirectoryRow] = []) {
+        self.id = id
+        self.title = title
+        self.podcasts = podcasts
+        self.rows = rows
+    }
 }
 
 nonisolated struct LibraryDirectorySnapshot {
@@ -111,10 +128,16 @@ nonisolated enum LibraryDirectoryOrganizer {
             unplayedCounts: unplayedCounts,
             inProgressCounts: inProgressCounts
         )
+        let numbersByPodcastID = Dictionary(uniqueKeysWithValues: filtered.enumerated().map { ($0.element.id, $0.offset + 1) })
         return LibraryDirectorySnapshot(
             podcasts: filtered,
-            sections: sections(for: filtered),
-            numbersByPodcastID: Dictionary(uniqueKeysWithValues: filtered.enumerated().map { ($0.element.id, $0.offset + 1) })
+            sections: sections(
+                for: filtered,
+                numbersByPodcastID: numbersByPodcastID,
+                unplayedCounts: unplayedCounts,
+                inProgressCounts: inProgressCounts
+            ),
+            numbersByPodcastID: numbersByPodcastID
         )
     }
 
@@ -171,15 +194,34 @@ nonisolated enum LibraryDirectoryOrganizer {
     }
 
     static func sections(for podcasts: [Podcast]) -> [LibraryDirectorySection] {
+        sections(for: podcasts, numbersByPodcastID: [:], unplayedCounts: [:], inProgressCounts: [:])
+    }
+
+    static func sections(
+        for podcasts: [Podcast],
+        numbersByPodcastID: [UUID: Int],
+        unplayedCounts: [UUID: Int],
+        inProgressCounts: [UUID: Int]
+    ) -> [LibraryDirectorySection] {
         let grouped = Dictionary(grouping: podcasts) { podcast in
             sectionTitle(for: podcast.title)
         }
 
         return grouped.keys.sorted(by: sectionSort).map { title in
-            LibraryDirectorySection(
+            let podcasts = grouped[title] ?? []
+            return LibraryDirectorySection(
                 id: "library-section-\(title)",
                 title: title,
-                podcasts: grouped[title] ?? []
+                podcasts: podcasts,
+                rows: podcasts.enumerated().map { index, podcast in
+                    LibraryDirectoryRow(
+                        podcast: podcast,
+                        channelNumber: numbersByPodcastID[podcast.id] ?? (index + 1),
+                        unplayedCount: unplayedCounts[podcast.id] ?? 0,
+                        inProgressCount: inProgressCounts[podcast.id] ?? 0,
+                        isLastInSection: index == podcasts.count - 1
+                    )
+                }
             )
         }
     }
@@ -529,21 +571,21 @@ struct LibraryView: View {
                             .padding(.bottom, 6)
                             .id(section.id)
 
-                            ForEach(Array(section.podcasts.enumerated()), id: \.element.id) { idx, podcast in
+                            ForEach(section.rows) { row in
                                 Button {
-                                    selectedPodcast = podcast
+                                    selectedPodcast = row.podcast
                                 } label: {
                                     PodcastShelfRow(
-                                        podcast: podcast,
-                                        channelNumber: snapshot.numbersByPodcastID[podcast.id] ?? (idx + 1),
-                                        unplayedCount: directoryUnplayedCountsByPodcastID[podcast.id] ?? 0,
-                                        inProgressCount: directoryInProgressCountsByPodcastID[podcast.id] ?? 0,
+                                        podcast: row.podcast,
+                                        channelNumber: row.channelNumber,
+                                        unplayedCount: row.unplayedCount,
+                                        inProgressCount: row.inProgressCount,
                                         isCompact: isCompactDirectory
                                     )
                                 }
                                 .buttonStyle(.plain)
 
-                                if idx < section.podcasts.count - 1 {
+                                if !row.isLastInSection {
                                     Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                                 }
                             }

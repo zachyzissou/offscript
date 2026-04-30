@@ -1132,6 +1132,33 @@ struct OffScriptTests {
     }
 
     @Test
+    @MainActor
+    func libraryDirectorySnapshotBuildsRowsWithCountsAndNumbers() {
+        let alpha = Podcast(title: "Audio Craft", feedURL: URL(string: "https://example.com/audio-row.xml")!)
+        let beta = Podcast(title: "Beta Feed", feedURL: URL(string: "https://example.com/beta-row.xml")!)
+
+        let snapshot = LibraryDirectoryOrganizer.snapshot(
+            for: [beta, alpha],
+            query: "",
+            scope: .all,
+            sort: .title,
+            unplayedCounts: [alpha.id: 3, beta.id: 1],
+            inProgressCounts: [beta.id: 1]
+        )
+        let rows = snapshot.sections.flatMap(\.rows)
+
+        #expect(rows.map { $0.podcast.title } == ["Audio Craft", "Beta Feed"])
+        #expect(rows.map(\.channelNumber) == [1, 2])
+        #expect(rows.first?.unplayedCount == 3)
+        #expect(rows.last?.inProgressCount == 1)
+        #expect(rows.map(\.isLastInSection) == [true, true])
+
+        let adjacent = Podcast(title: "Another Audio", feedURL: URL(string: "https://example.com/another-row.xml")!)
+        let sectionsWithoutExplicitNumbers = LibraryDirectoryOrganizer.sections(for: [alpha, adjacent])
+        #expect(sectionsWithoutExplicitNumbers.flatMap(\.rows).map(\.channelNumber) == [1, 2])
+    }
+
+    @Test
     func libraryDirectoryOrganizerLoadsPerShowCountsOnlyForCountDrivenModes() {
         #expect(!LibraryDirectoryOrganizer.needsPerShowUnplayedCounts(scope: .all, sort: .title))
         #expect(!LibraryDirectoryOrganizer.needsPerShowUnplayedCounts(scope: .needsSync, sort: .latest))
