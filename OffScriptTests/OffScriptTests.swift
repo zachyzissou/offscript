@@ -1415,6 +1415,84 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func feedSyncStagesSearchSubscriptionBeforeNetworkWork() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let result = PodcastSearchResult(
+            title: "Starter Show",
+            author: "Starter Author",
+            feedURL: URL(string: "https://example.com/starter.xml")!,
+            artworkURL: URL(string: "https://example.com/starter.jpg")!,
+            websiteURL: URL(string: "https://example.com")!,
+            summary: "A starter show selected during onboarding."
+        )
+
+        let podcast = try FeedSyncService().stagePodcastSubscription(from: result, into: context)
+
+        let podcasts = try context.fetch(FetchDescriptor<Podcast>())
+        #expect(podcasts.count == 1)
+        #expect(podcast.isSubscribed)
+        #expect(podcast.title == "Starter Show")
+        #expect(podcast.author == "Starter Author")
+        #expect(podcast.artworkURL == result.artworkURL)
+        #expect(podcast.websiteURL == result.websiteURL)
+        #expect(podcast.summary == result.summary)
+        #expect(podcast.subscribedAt != nil)
+        #expect(podcast.syncStatus == "idle")
+        #expect(podcast.lastSyncAttemptAt != nil)
+        #expect(podcast.syncErrorMessage == nil)
+    }
+
+    @Test
+    @MainActor
+    func feedSyncOnboardingBootstrapCapsEpisodesAndSkipsExpensiveEnrichment() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let result = PodcastSearchResult(
+            title: "Onboarding Show",
+            author: "Onboarding Author",
+            feedURL: URL(string: "https://example.com/onboarding.xml")!,
+            artworkURL: nil,
+            websiteURL: nil,
+            summary: nil
+        )
+        let parsed = ParsedFeed(
+            title: "Onboarding Show",
+            author: "Onboarding Author",
+            summary: nil,
+            websiteURL: nil,
+            artworkURL: nil,
+            categories: ["Technology"],
+            items: (1...10).map { index in
+                ParsedFeedItem(
+                    guid: "onboarding-\(index)",
+                    title: "Onboarding Episode \(index)",
+                    summary: "Episode imported during onboarding bootstrap.",
+                    pubDate: Date().addingTimeInterval(TimeInterval(-index)),
+                    duration: 1_800,
+                    audioURL: URL(string: "https://example.com/onboarding-\(index).mp3")!,
+                    externalChapterURL: URL(string: "https://example.com/onboarding-\(index)-chapters.json")!
+                )
+            }
+        )
+
+        let podcast = try await FeedSyncService().importPodcast(
+            from: result,
+            parsedFeed: parsed,
+            into: context,
+            options: .onboardingBootstrap()
+        )
+
+        let episodes = try context.fetch(FetchDescriptor<Episode>())
+        let profiles = try context.fetch(FetchDescriptor<EpisodeProfile>())
+        #expect(episodes.count == 3)
+        #expect(episodes.allSatisfy { $0.chapters.isEmpty })
+        #expect(profiles.isEmpty)
+        #expect(podcast.syncStatus == "idle")
+    }
+
+    @Test
+    @MainActor
     func episodeResolvedChaptersPreferPersistedMetadata() throws {
         let container = try makeContainer()
         let context = container.mainContext

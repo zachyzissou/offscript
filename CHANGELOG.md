@@ -21,6 +21,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ### Fixed — onboarding, import, and sync UI honesty
 - **Onboarding Sign in with Apple now presents from the actual button window when available** and no longer uses the old crash-prone missing-scene path for the normal sign-in flow.
+- **Onboarding starter subscriptions now commit immediately and hydrate in the background** using the same lightweight bootstrap profile as large imports, so picking three podcasts no longer waits on serial feed parsing, full episode enrichment, or external chapter lookups before entering the app.
 - **Onboarding import no longer auto-completes through failed feeds.** Failed starter channels stay visible with retry and continue actions.
 - **Bulk OPML import cancellation now marks pending/importing rows as cancelled** instead of leaving them stuck mid-import.
 - **Settings no longer claims iCloud sync is active unless the launch actually opened a CloudKit-backed SwiftData container.**
