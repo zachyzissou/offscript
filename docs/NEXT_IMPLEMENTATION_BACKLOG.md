@@ -5,6 +5,27 @@ source of truth even when the GitHub Project roadmap view is not accessible
 from automation. Priorities reflect the current release state as of
 2026-04-30.
 
+## Agent Readiness
+
+This backlog is safe for a senior autonomous agent that can inspect code,
+verify assumptions, and push PRs through Copilot review. It is not meant to be
+executed title-only.
+
+For low-thinking implementation runs, start from
+[`docs/AGENT_EXECUTION_RUNBOOK.md`](AGENT_EXECUTION_RUNBOOK.md), pick one
+`Ready` issue, and require the agent to include:
+
+1. the issue number and lane;
+2. the exact files it expects to touch;
+3. the verification command it will run;
+4. the PR title/body it will use;
+5. whether the change needs an `Unreleased` changelog entry or is already
+   covered by an existing one.
+
+If an issue does not have enough context to identify files, acceptance
+criteria, verification, and non-goals, upgrade the issue first instead of
+starting implementation.
+
 ## Immediate Release Lane
 
 ### Objective
@@ -12,7 +33,6 @@ Get current `main` into TestFlight and make the release surface impossible to
 misread again.
 
 ### Issues
-- #103 Unblock next TestFlight build for current main
 - #120 Diagnose Xcode Cloud PrepareBuildForAppStoreConnect failures
 - #104 Fix release/build visibility source of truth
 - #121 Handle uploaded but unassigned TestFlight builds
@@ -34,7 +54,6 @@ Make large-library use feel fast with real 250+ show libraries.
 - #105 Speed up large OPML import for real libraries
 - #106 Reduce onboarding subscription latency
 - #107 Make Library performant with 250+ subscribed shows
-- #122 Add performance instrumentation for tab switches and Library workloads
 
 ### Acceptance
 1. Large OPML import avoids serial bottlenecks where safe and shows accurate
@@ -43,8 +62,9 @@ Make large-library use feel fast with real 250+ show libraries.
    background.
 3. Library scroll, filter, sort, and tab switching remain responsive with 250+
    subscribed shows.
-4. Debug/perf signposts cover tab switches, Home recommendations, Library load,
-   count loading, and OPML stages.
+4. Existing debug/perf signposts are used to compare before/after behavior for
+   tab switches, Home recommendations, Library load, count loading, and OPML
+   stages.
 
 ## Recommendation Lane
 
@@ -157,7 +177,6 @@ Give humans and agents a repeatable way to verify the app end to end.
 
 ## Current Open Issue Index
 
-- #103 Unblock next TestFlight build for current main
 - #104 Fix release/build visibility source of truth
 - #105 Speed up large OPML import for real libraries
 - #106 Reduce onboarding subscription latency
@@ -176,7 +195,6 @@ Give humans and agents a repeatable way to verify the app end to end.
 - #119 Add Library power-user features for large collections
 - #120 Diagnose Xcode Cloud PrepareBuildForAppStoreConnect failures
 - #121 Handle uploaded but unassigned TestFlight builds
-- #122 Add performance instrumentation for tab switches and Library workloads
 - #123 Improve Search and discovery subscribe flow
 - #124 Expand Player feature polish and reliability
 - #125 Harden downloads and offline playback
