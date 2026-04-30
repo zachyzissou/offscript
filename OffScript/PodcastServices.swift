@@ -205,6 +205,7 @@ enum EpisodeEnrichmentMode {
 
 struct FeedSyncOptions {
     let episodeLimit: Int?
+    let feedParseItemLimit: Int?
     let enrichmentMode: EpisodeEnrichmentMode
     let resolveExternalChapters: Bool
     let feedRequestTimeout: TimeInterval
@@ -212,6 +213,7 @@ struct FeedSyncOptions {
     static func standard(episodeLimit: Int? = nil) -> FeedSyncOptions {
         FeedSyncOptions(
             episodeLimit: episodeLimit,
+            feedParseItemLimit: nil,
             enrichmentMode: .full,
             resolveExternalChapters: true,
             feedRequestTimeout: 20
@@ -221,6 +223,7 @@ struct FeedSyncOptions {
     static func fastBatchImport(episodeLimit: Int? = nil) -> FeedSyncOptions {
         FeedSyncOptions(
             episodeLimit: episodeLimit,
+            feedParseItemLimit: nil,
             enrichmentMode: .heuristic,
             resolveExternalChapters: false,
             feedRequestTimeout: 12
@@ -230,6 +233,7 @@ struct FeedSyncOptions {
     static func opmlBootstrap(episodeLimit: Int? = 3) -> FeedSyncOptions {
         FeedSyncOptions(
             episodeLimit: episodeLimit,
+            feedParseItemLimit: episodeLimit.map { max($0 * 3, 10) },
             enrichmentMode: .skip,
             resolveExternalChapters: false,
             feedRequestTimeout: 8
@@ -263,6 +267,11 @@ final class FeedSyncService {
         }
     }
 
+    struct ParsedFeedFetch: Sendable {
+        let parsed: ParsedFeed
+        let httpResponse: HTTPURLResponse
+    }
+
     private struct FeedSyncRequest: Sendable {
         let feedURL: URL
         let eTag: String?
@@ -294,13 +303,27 @@ final class FeedSyncService {
 
     @MainActor
     func importPodcast(from opmlEntry: OPMLFeedEntry, into context: ModelContext, options: FeedSyncOptions) async throws -> Podcast {
-        let fetched = try await Self.fetchParsedFeed(
-            feedURL: opmlEntry.feedURL,
-            timeout: options.feedRequestTimeout
+        let fetched = try await Self.fetchParsedOPMLFeed(
+            for: opmlEntry,
+            options: options
         )
-        guard case let .feed(parsed, httpResponse) = fetched else {
-            throw PodcastImportError.feedParseFailed
-        }
+        return try await importPodcast(
+            from: opmlEntry,
+            parsedFeed: fetched.parsed,
+            httpResponse: fetched.httpResponse,
+            into: context,
+            options: options
+        )
+    }
+
+    @MainActor
+    func importPodcast(
+        from opmlEntry: OPMLFeedEntry,
+        parsedFeed parsed: ParsedFeed,
+        httpResponse: HTTPURLResponse? = nil,
+        into context: ModelContext,
+        options: FeedSyncOptions
+    ) async throws -> Podcast {
         let result = try PodcastImportService.searchResult(opmlEntry: opmlEntry, parsedFeed: parsed)
         let podcast = try upsertPodcast(from: result, into: context)
         podcast.syncStatus = "syncing"
@@ -308,6 +331,18 @@ final class FeedSyncService {
         podcast.syncErrorMessage = nil
         try await apply(parsed: parsed, httpResponse: httpResponse, to: podcast, in: context, options: options)
         return podcast
+    }
+
+    static func fetchParsedOPMLFeed(for entry: OPMLFeedEntry, options: FeedSyncOptions) async throws -> ParsedFeedFetch {
+        let fetched = try await Self.fetchParsedFeed(
+            feedURL: entry.feedURL,
+            timeout: options.feedRequestTimeout,
+            itemLimit: options.feedParseItemLimit
+        )
+        guard case let .feed(parsed, httpResponse) = fetched else {
+            throw PodcastImportError.feedParseFailed
+        }
+        return ParsedFeedFetch(parsed: parsed, httpResponse: httpResponse)
     }
 
     @MainActor
@@ -434,7 +469,8 @@ final class FeedSyncService {
                 feedURL: podcast.feedURL,
                 eTag: podcast.feedETag,
                 lastModified: podcast.feedLastModified,
-                timeout: options.feedRequestTimeout
+                timeout: options.feedRequestTimeout,
+                itemLimit: options.feedParseItemLimit
             )
             switch fetched {
             case .notModified:
@@ -489,7 +525,8 @@ final class FeedSyncService {
                             feedURL: request.feedURL,
                             eTag: request.eTag,
                             lastModified: request.lastModified,
-                            timeout: options.feedRequestTimeout
+                            timeout: options.feedRequestTimeout,
+                            itemLimit: options.feedParseItemLimit
                         )
                         return FeedSyncFetchOutcome(feedURL: request.feedURL, result: .success(fetched))
                     } catch {
@@ -735,7 +772,8 @@ final class FeedSyncService {
         feedURL: URL,
         eTag: String? = nil,
         lastModified: String? = nil,
-        timeout: TimeInterval = 20
+        timeout: TimeInterval = 20,
+        itemLimit: Int? = nil
     ) async throws -> FeedFetchResult {
         var request = URLRequest(url: feedURL)
         request.timeoutInterval = timeout
@@ -766,7 +804,7 @@ final class FeedSyncService {
             throw PodcastImportError.feedParseFailed
         }
 
-        let parsed = try RSSFeedParser().parse(data: data)
+        let parsed = try RSSFeedParser().parse(data: data, itemLimit: itemLimit)
         return .feed(parsed, httpResponse)
     }
 
@@ -961,17 +999,24 @@ final class RSSFeedParser: NSObject, XMLParserDelegate {
     private var currentElement = ""
     private var currentText = ""
     private var insideItem = false
+    private var itemLimit: Int?
+    private var reachedItemLimit = false
 
-    func parse(data: Data) throws -> ParsedFeed {
+    func parse(data: Data, itemLimit: Int? = nil) throws -> ParsedFeed {
         feed = ParsedFeed()
         currentItem = nil
         currentElement = ""
         currentText = ""
         insideItem = false
+        self.itemLimit = itemLimit
+        reachedItemLimit = false
 
         let parser = XMLParser(data: data)
         parser.delegate = self
         guard parser.parse() else {
+            if reachedItemLimit {
+                return feed
+            }
             throw parser.parserError ?? URLError(.cannotParseResponse)
         }
         return feed
@@ -1073,6 +1118,10 @@ final class RSSFeedParser: NSObject, XMLParserDelegate {
                 insideItem = false
                 if let item = currentItem, item.title.isEmpty == false, item.audioURL.absoluteString.contains("unset") == false {
                     feed.items.append(item)
+                    if let itemLimit, feed.items.count >= itemLimit {
+                        reachedItemLimit = true
+                        parser.abortParsing()
+                    }
                 }
                 currentItem = nil
             default:

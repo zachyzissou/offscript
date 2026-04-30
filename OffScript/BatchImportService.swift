@@ -57,6 +57,11 @@ final class BatchImportService: ObservableObject {
     private var task: Task<Void, Never>?
     private var activeModelContext: ModelContext?
 
+    private struct FetchOutcome: Sendable {
+        let entry: OPMLFeedEntry
+        let result: Result<FeedSyncService.ParsedFeedFetch, Error>
+    }
+
     private init() {}
 
     /// Kick off a batch import and return immediately. Caller is free to
@@ -122,37 +127,29 @@ final class BatchImportService: ObservableObject {
     // MARK: - Internals
 
     private func runBatch(entries: [OPMLFeedEntry], modelContext: ModelContext) async {
-        // Bounded parallelism — 6 in flight is enough to overlap the
-        // slow rows without tripping rate limits or hammering the device.
+        // Bounded parallelism overlaps slow feed hosts, but completed feeds
+        // are applied back into SwiftData serially on the main actor.
         let concurrency = 6
-        await withTaskGroup(of: (URL, ImportRowStatus).self) { group in
+        await withTaskGroup(of: FetchOutcome.self) { group in
             var iterator = entries.makeIterator()
             var inFlight = 0
 
             while !Task.isCancelled, inFlight < concurrency, let entry = iterator.next() {
                 progress[entry.feedURL] = .importing
                 inFlight += 1
-                group.addTask { [syncService] in
-                    await Self.runOne(entry: entry,
-                                      syncService: syncService,
-                                      modelContext: modelContext)
-                }
+                Self.addFetchTask(for: entry, to: &group)
             }
 
-            while let (feedURL, status) = await group.next() {
+            while let outcome = await group.next() {
                 if Task.isCancelled {
                     group.cancelAll()
                     markUnfinishedRowsCancelled()
                     break
                 }
-                progress[feedURL] = status
+                progress[outcome.entry.feedURL] = await apply(outcome: outcome, modelContext: modelContext)
                 if !Task.isCancelled, let nextEntry = iterator.next() {
                     progress[nextEntry.feedURL] = .importing
-                    group.addTask { [syncService] in
-                        await Self.runOne(entry: nextEntry,
-                                          syncService: syncService,
-                                          modelContext: modelContext)
-                    }
+                    Self.addFetchTask(for: nextEntry, to: &group)
                 }
             }
         }
@@ -167,31 +164,59 @@ final class BatchImportService: ObservableObject {
         activeModelContext = nil
     }
 
+    private static func addFetchTask(for entry: OPMLFeedEntry, to group: inout TaskGroup<FetchOutcome>) {
+        group.addTask {
+            do {
+                try Task.checkCancellation()
+                let fetched = try await FeedSyncService.fetchParsedOPMLFeed(
+                    for: entry,
+                    options: .opmlBootstrap()
+                )
+                return FetchOutcome(entry: entry, result: .success(fetched))
+            } catch {
+                return FetchOutcome(entry: entry, result: .failure(error))
+            }
+        }
+    }
+
+    private func apply(outcome: FetchOutcome, modelContext: ModelContext) async -> ImportRowStatus {
+        switch outcome.result {
+        case let .success(fetched):
+            do {
+                try Task.checkCancellation()
+                _ = try await syncService.importPodcast(
+                    from: outcome.entry,
+                    parsedFeed: fetched.parsed,
+                    httpResponse: fetched.httpResponse,
+                    into: modelContext,
+                    options: .opmlBootstrap()
+                )
+                try Task.checkCancellation()
+                return .added
+            } catch is CancellationError {
+                Self.markStagedSubscriptionCancelled(entry: outcome.entry, in: modelContext)
+                return .cancelled
+            } catch {
+                Self.markStagedSubscriptionFailed(entry: outcome.entry, error: error, in: modelContext)
+                batchImportLogger.error("OPML row apply failed for \(outcome.entry.feedURL.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                return .failed
+            }
+        case let .failure(error):
+            if error is CancellationError {
+                Self.markStagedSubscriptionCancelled(entry: outcome.entry, in: modelContext)
+                return .cancelled
+            }
+            Self.markStagedSubscriptionFailed(entry: outcome.entry, error: error, in: modelContext)
+            batchImportLogger.error("OPML row fetch failed for \(outcome.entry.feedURL.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return .failed
+        }
+    }
+
     private func markUnfinishedRowsCancelled() {
         for (feedURL, status) in progress {
             if status == .pending || status == .importing {
                 progress[feedURL] = .cancelled
             }
-        }
-    }
-
-    private static func runOne(entry: OPMLFeedEntry,
-                               syncService: FeedSyncService,
-                               modelContext: ModelContext) async -> (URL, ImportRowStatus) {
-        do {
-            try Task.checkCancellation()
-            _ = try await syncService.importPodcast(from: entry,
-                                                    into: modelContext,
-                                                    options: .opmlBootstrap())
-            try Task.checkCancellation()
-            return (entry.feedURL, .added)
-        } catch is CancellationError {
-            markStagedSubscriptionCancelled(entry: entry, in: modelContext)
-            return (entry.feedURL, .cancelled)
-        } catch {
-            markStagedSubscriptionFailed(entry: entry, error: error, in: modelContext)
-            batchImportLogger.error("OPML row failed for \(entry.feedURL.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            return (entry.feedURL, .failed)
         }
     }
 
