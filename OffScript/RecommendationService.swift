@@ -233,10 +233,6 @@ final class RecommendationService {
                 SortDescriptor(\QueueItem.createdAt)
             ]
         ))
-        let inProgressEpisodes = try context.fetch(Self.inProgressCandidateDescriptor(limit: 120))
-            .filter { $0.podcast.isSubscribed }
-        let recentEpisodes = try context.fetch(Self.recentCandidateDescriptor(limit: 360))
-        let episodes = Self.uniqueEpisodes(queueItems.map(\.episode) + inProgressEpisodes + recentEpisodes)
 
         // Only fetch preference signals from the last 90 days to avoid loading stale history
         let signalCutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? .distantPast
@@ -246,6 +242,14 @@ final class RecommendationService {
         let playbackEvents = try context.fetch(FetchDescriptor<PlaybackEvent>(
             predicate: #Predicate<PlaybackEvent> { $0.date >= signalCutoff }
         ))
+        let inProgressEpisodes = try context.fetch(Self.inProgressCandidateDescriptor(limit: 120))
+            .filter { $0.podcast.isSubscribed }
+        let recentEpisodes = try context.fetch(Self.recentCandidateDescriptor(limit: 360))
+        let evidenceEpisodes = try context.fetch(Self.evidencePodcastCandidateDescriptor(
+            podcastIDs: Self.evidencePodcastIDs(preferences: preferences, playbackEvents: playbackEvents),
+            limit: 240
+        ))
+        let episodes = Self.uniqueEpisodes(queueItems.map(\.episode) + inProgressEpisodes + evidenceEpisodes + recentEpisodes)
         var profileEpisodeIDs = Set(episodes.map(\.id))
         profileEpisodeIDs.formUnion(preferences.map { $0.episode.id })
         profileEpisodeIDs.formUnion(playbackEvents.compactMap { $0.episode?.id })
@@ -938,10 +942,57 @@ final class RecommendationService {
         ))
     }
 
+    private static func evidencePodcastIDs(
+        preferences: [PreferenceSignal],
+        playbackEvents: [PlaybackEvent]
+    ) -> [UUID] {
+        var seen = Set<UUID>()
+        var ids: [UUID] = []
+
+        func append(_ id: UUID) {
+            guard !seen.contains(id) else { return }
+            seen.insert(id)
+            ids.append(id)
+        }
+
+        for preference in preferences
+        where (preference.action == .like || preference.action == .moreLikeThis)
+            && preference.episode.podcast.isSubscribed {
+            append(preference.episode.podcast.id)
+        }
+        for event in playbackEvents where event.kind == .completed {
+            guard let episode = event.episode, episode.podcast.isSubscribed else { continue }
+            append(episode.podcast.id)
+        }
+
+        return ids
+    }
+
     private static func recentCandidateDescriptor(limit: Int) -> FetchDescriptor<Episode> {
         var descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> {
                 $0.podcast.isSubscribed == true && $0.isPlayed == false
+            },
+            sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
+        )
+        descriptor.fetchLimit = limit
+        return descriptor
+    }
+
+    private static func evidencePodcastCandidateDescriptor(podcastIDs: [UUID], limit: Int) -> FetchDescriptor<Episode> {
+        guard !podcastIDs.isEmpty else {
+            var descriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { _ in false }
+            )
+            descriptor.fetchLimit = 0
+            return descriptor
+        }
+
+        var descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> {
+                podcastIDs.contains($0.podcast.id)
+                    && $0.podcast.isSubscribed == true
+                    && $0.isPlayed == false
             },
             sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
         )

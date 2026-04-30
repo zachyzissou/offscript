@@ -31,6 +31,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Podcast and episode detail pushes now use inline Tuner back keys** so Library and Home drill-down flows no longer fall back to native iOS back-button chrome.
 
 ### Changed — recommendation quality
+- **Home recommendations now fetch targeted candidates from explicitly liked and completed shows outside the global recency window**, so large high-volume libraries cannot bury older high-signal follow-ups before scoring.
 - **Home recommendations now compose multiple local evidence signals instead of stopping at the first matching rule**, so explicit topic feedback and “more from this show” reinforce one authored recommendation rather than competing as generic ranking buckets.
 - **Recommendation reason copy now has deterministic rail-length clipping for combined evidence**, keeping long show/topic explanations inside Tuner cards.
 - **Explicit “more like this” and like signals now carry substantially more weight than passive completions** so recommendations follow intentional user feedback instead of feeling like generic completion-based ranking.
