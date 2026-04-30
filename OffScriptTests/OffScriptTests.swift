@@ -259,7 +259,7 @@ struct OffScriptTests {
 
     @Test
     @MainActor
-    func opmlBatchStagingResubscribesNormalizedFeedsWithoutFullTableMatch() throws {
+    func opmlBatchStagingResubscribesNormalizedFeedWithoutExactURLEquality() throws {
         let container = try makeContainer()
         let context = container.mainContext
         let existing = Podcast(

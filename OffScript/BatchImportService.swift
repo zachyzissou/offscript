@@ -14,6 +14,7 @@ private let batchImportLogger = Logger(subsystem: "com.offscript", category: "Ba
 @MainActor
 final class BatchImportService: ObservableObject {
     static let shared = BatchImportService()
+    private static let feedURLLookupChunkSize = 96
 
     enum Phase: Equatable {
         case idle
@@ -385,10 +386,15 @@ final class BatchImportService: ObservableObject {
 
         var podcasts: [Podcast] = []
         var seenIDs = Set<UUID>()
-        let chunkSize = 96
         var startIndex = lookupURLs.startIndex
         while startIndex < lookupURLs.endIndex {
-            let endIndex = lookupURLs.index(startIndex, offsetBy: chunkSize, limitedBy: lookupURLs.endIndex) ?? lookupURLs.endIndex
+            // Keep each SwiftData `contains` predicate well below SQLite's
+            // parameter ceiling after URL variant expansion.
+            let endIndex = lookupURLs.index(
+                startIndex,
+                offsetBy: feedURLLookupChunkSize,
+                limitedBy: lookupURLs.endIndex
+            ) ?? lookupURLs.endIndex
             let chunk = Array(lookupURLs[startIndex..<endIndex])
             let matches = try modelContext.fetch(FetchDescriptor<Podcast>(
                 predicate: #Predicate<Podcast> { chunk.contains($0.feedURL) }
@@ -403,7 +409,7 @@ final class BatchImportService: ObservableObject {
         let requestedFeedKeys = Set(entries.map { $0.feedURL.normalizedFeedKey })
         let matchedFeedKeys = Set(podcasts.map { $0.feedURL.normalizedFeedKey })
         let missingFeedKeys = requestedFeedKeys.subtracting(matchedFeedKeys)
-        if !missingFeedKeys.isEmpty, entries.count <= 32 {
+        if !missingFeedKeys.isEmpty, entries.count == 1 {
             let fallbackMatches = try modelContext.fetch(FetchDescriptor<Podcast>())
                 .filter { missingFeedKeys.contains($0.feedURL.normalizedFeedKey) }
             for podcast in fallbackMatches where !seenIDs.contains(podcast.id) {
