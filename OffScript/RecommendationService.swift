@@ -81,8 +81,8 @@ final class RecommendationService {
         let explicitPositiveShowCounts: [String: Int]
         let queuedPositionByEpisodeID: [UUID: Int]
         let preferredGenres: Set<String>
-        let dislikedTags: Set<String>
-        let penalizedShows: Set<String>
+        let negativeTagWeights: [String: Double]
+        let negativeShowWeights: [String: Double]
     }
 
     static func headlineCandidate(from sections: [HomeFeedSection]) -> ScoredEpisode? {
@@ -180,7 +180,7 @@ final class RecommendationService {
         let profiles = try Self.profiles(for: profileEpisodeIDs, context: context)
         let profileByEpisodeID = Self.profileMap(from: profiles)
         let tasteProfile = try? TasteProfileService.loadOrCreate(in: context)
-        let dislikedEpisodeIDs: Set<UUID> = Set(preferences.filter { $0.action == .notInterested || $0.action == .lessLikeThis }.compactMap { (signal: PreferenceSignal) -> UUID? in signal.episode.id })
+        let dislikedEpisodeIDs: Set<UUID> = Set(preferences.filter { $0.action == .notInterested }.compactMap { (signal: PreferenceSignal) -> UUID? in signal.episode.id })
         let negativePreferences = preferences.filter { $0.action == .notInterested || $0.action == .lessLikeThis }
         let negativePlaybackEvents = playbackEvents.filter { $0.kind == .skippedQuickly || $0.kind == .abandoned }
         let likedTags = Self.normalizedTags(preferences.lazy
@@ -202,17 +202,14 @@ final class RecommendationService {
         let completedShowCounts = Dictionary(completedShows.map { ($0, 1) }, uniquingKeysWith: +)
         let explicitPositiveShows = explicitPositivePreferences.map { $0.episode.podcast.title }
         let explicitPositiveShowCounts = Dictionary(explicitPositiveShows.map { ($0, 1) }, uniquingKeysWith: +)
-        let dislikedTags = Self.normalizedTags(
-            negativePreferences.lazy.flatMap { profileByEpisodeID[$0.episode.id]?.tags ?? $0.episode.profile?.tags ?? [] }
-        ).union(Self.normalizedTags(
-            negativePlaybackEvents.lazy.flatMap { event -> [String] in
-                guard let episode = event.episode else { return [] }
-                return profileByEpisodeID[episode.id]?.tags ?? episode.profile?.tags ?? []
-            }
-        ))
-        let penalizedShows = Set(
-            negativePreferences.map { $0.episode.podcast.title }
-                + negativePlaybackEvents.compactMap { $0.episode?.podcast.title }
+        let negativeTagWeights = Self.negativeTagWeights(
+            preferences: negativePreferences,
+            playbackEvents: negativePlaybackEvents,
+            profileByEpisodeID: profileByEpisodeID
+        )
+        let negativeShowWeights = Self.negativeShowWeights(
+            preferences: negativePreferences,
+            playbackEvents: negativePlaybackEvents
         )
         let queuedPositionByEpisodeID = Dictionary(uniqueKeysWithValues: queueItems.map { ($0.episode.id, $0.position) })
         let scoringContext = ScoringContext(
@@ -227,8 +224,8 @@ final class RecommendationService {
             explicitPositiveShowCounts: explicitPositiveShowCounts,
             queuedPositionByEpisodeID: queuedPositionByEpisodeID,
             preferredGenres: Set((tasteProfile?.preferredGenres ?? AppSettings.preferredGenres.map(\.title)).map { $0.lowercased() }),
-            dislikedTags: dislikedTags,
-            penalizedShows: penalizedShows
+            negativeTagWeights: negativeTagWeights,
+            negativeShowWeights: negativeShowWeights
         )
 
         let scoredEpisodes = episodes
@@ -354,14 +351,16 @@ final class RecommendationService {
             )
         }
 
-        if Self.isSuppressedByNegativeSignal(episode, profileTags: profileTags, context: context) {
+        let negativeEvidence = Self.negativeEvidence(for: episode, profileTags: profileTags, context: context)
+        if negativeEvidence.shouldSuppress {
             return nil
         }
+        let negativePenalty = negativeEvidence.scorePenalty
 
         if !matchingExplicitTags.isEmpty {
             let sample = matchingExplicitTags.sorted().prefix(2).joined(separator: ", ")
             return (
-                360 + Double(min(matchingExplicitTags.count, 4)) * 22 + freshnessTieBreak + qualityTieBreak,
+                360 + Double(min(matchingExplicitTags.count, 4)) * 22 + freshnessTieBreak + qualityTieBreak - negativePenalty,
                 "Matches what you asked for: \(sample)",
                 [
                     RecommendationSignal(label: "source", value: "explicit signal"),
@@ -373,7 +372,7 @@ final class RecommendationService {
         let explicitShowCount = context.explicitPositiveShowCounts[episode.podcast.title, default: 0]
         if explicitShowCount > 0 {
             return (
-                380 + Double(min(explicitShowCount, 4)) * 20 + freshnessTieBreak + qualityTieBreak,
+                380 + Double(min(explicitShowCount, 4)) * 20 + freshnessTieBreak + qualityTieBreak - negativePenalty,
                 "You asked for more from \(episode.podcast.title)",
                 [
                     RecommendationSignal(label: "source", value: "show intent"),
@@ -387,7 +386,7 @@ final class RecommendationService {
         if completedShowCount > 0 || context.showAffinity.contains(episode.podcast.title) {
             let showSignal = max(completedShowCount, 1)
             return (
-                320 + Double(min(showSignal, 5)) * 18 + freshnessTieBreak + qualityTieBreak,
+                320 + Double(min(showSignal, 5)) * 18 + freshnessTieBreak + qualityTieBreak - negativePenalty,
                 "You keep finishing \(episode.podcast.title)",
                 [
                     RecommendationSignal(label: "source", value: "completion"),
@@ -400,7 +399,7 @@ final class RecommendationService {
         if !matchingTags.isEmpty {
             let sample = matchingTags.sorted().prefix(2).joined(separator: ", ")
             return (
-                260 + Double(min(matchingTags.count, 4)) * 16 + freshnessTieBreak + qualityTieBreak,
+                260 + Double(min(matchingTags.count, 4)) * 16 + freshnessTieBreak + qualityTieBreak - negativePenalty,
                 "Matches your saved signal: \(sample)",
                 [
                     RecommendationSignal(label: "source", value: "tag match"),
@@ -413,7 +412,7 @@ final class RecommendationService {
         if !genreMatches.isEmpty {
             let genre = genreMatches.sorted().first ?? "saved genre"
             return (
-                210 + freshnessTieBreak + durationTieBreak,
+                210 + freshnessTieBreak + durationTieBreak - negativePenalty,
                 "Matches your selected \(genre) lane",
                 [
                     RecommendationSignal(label: "source", value: "genre"),
@@ -424,7 +423,7 @@ final class RecommendationService {
 
         if AppSettings.preferShortEpisodes, minutes <= 35 {
             return (
-                190 + durationTieBreak + qualityTieBreak,
+                190 + durationTieBreak + qualityTieBreak - negativePenalty,
                 "Fits your short-listen setting",
                 [
                     RecommendationSignal(label: "source", value: "duration"),
@@ -462,6 +461,8 @@ final class RecommendationService {
         if AppSettings.preferShortEpisodes, minutes <= 35 {
             value += 0.08
         }
+        let negativeEvidence = Self.negativeEvidence(for: episode, profileTags: profileTags, context: context)
+        value -= negativeEvidence.normalizedPenalty
 
         if let tasteProfile = context.tasteProfile {
             value += RecommendationScorer.genreBoost(
@@ -586,17 +587,14 @@ final class RecommendationService {
         let profiles = try Self.profiles(for: profileEpisodeIDs, context: context)
         let profileByEpisodeID = Self.profileMap(from: profiles)
         let likedTags = Self.normalizedTags(likedEpisodeIDs.flatMap { profileByEpisodeID[$0]?.tags ?? [] })
-        let dislikedTags = Self.normalizedTags(
-            negativePreferences.lazy.flatMap { profileByEpisodeID[$0.episode.id]?.tags ?? $0.episode.profile?.tags ?? [] }
-        ).union(Self.normalizedTags(
-            negativePlaybackEvents.lazy.flatMap { event -> [String] in
-                guard let episode = event.episode else { return [] }
-                return profileByEpisodeID[episode.id]?.tags ?? episode.profile?.tags ?? []
-            }
-        ))
-        let penalizedShows = Set(
-            negativePreferences.map { $0.episode.podcast.title }
-                + negativePlaybackEvents.compactMap { $0.episode?.podcast.title }
+        let negativeTagWeights = Self.negativeTagWeights(
+            preferences: negativePreferences,
+            playbackEvents: negativePlaybackEvents,
+            profileByEpisodeID: profileByEpisodeID
+        )
+        let negativeShowWeights = Self.negativeShowWeights(
+            preferences: negativePreferences,
+            playbackEvents: negativePlaybackEvents
         )
         let scoringContext = ScoringContext(
             profileByEpisodeID: profileByEpisodeID,
@@ -610,8 +608,8 @@ final class RecommendationService {
             explicitPositiveShowCounts: [:],
             queuedPositionByEpisodeID: [:],
             preferredGenres: Set((tasteProfile?.preferredGenres ?? AppSettings.preferredGenres.map(\.title)).map { $0.lowercased() }),
-            dislikedTags: dislikedTags,
-            penalizedShows: penalizedShows
+            negativeTagWeights: negativeTagWeights,
+            negativeShowWeights: negativeShowWeights
         )
 
         // Also boost episodes from the same podcast
@@ -622,7 +620,8 @@ final class RecommendationService {
         return episodes
             .filter { episode in
                 let episodeTags = Self.normalizedTags(profileByEpisodeID[episode.id]?.tags ?? [])
-                return !Self.isSuppressedByNegativeSignal(episode, profileTags: episodeTags, context: scoringContext)
+                let negativeEvidence = Self.negativeEvidence(for: episode, profileTags: episodeTags, context: scoringContext)
+                return !negativeEvidence.shouldSuppress && negativeEvidence.scorePenalty == 0
             }
             .map { episode -> ScoredEpisode in
                 var result = scoreWithExplanation(
@@ -633,15 +632,22 @@ final class RecommendationService {
 
                 // Boost same podcast
                 if episode.podcast.id == currentPodcastID {
-                    score += 0.15
-                    result = (
-                        score,
-                        "More from \(episode.podcast.title)",
-                        [
-                            RecommendationSignal(label: "source", value: "same show"),
-                            RecommendationSignal(label: "show", value: episode.podcast.title)
-                        ]
-                    )
+                    let episodeProfile = profileByEpisodeID[episode.id]
+                    let episodeTags = Self.normalizedTags(episodeProfile?.tags ?? [])
+                    let currentOverlap = episodeTags.intersection(currentTags)
+                    let hasEvidence = !currentOverlap.isEmpty
+                        || scoringContext.showAffinity.contains(episode.podcast.title)
+                    score += hasEvidence ? 0.15 : 0.04
+                    if hasEvidence {
+                        result = (
+                            score,
+                            "More from \(episode.podcast.title)",
+                            [
+                                RecommendationSignal(label: "source", value: "same show"),
+                                RecommendationSignal(label: "show", value: episode.podcast.title)
+                            ]
+                        )
+                    }
                 }
 
                 // Boost episodes with overlapping tags to current episode
@@ -712,8 +718,81 @@ final class RecommendationService {
         profileTags: Set<String>,
         context: ScoringContext
     ) -> Bool {
-        context.penalizedShows.contains(episode.podcast.title)
-            || !profileTags.intersection(context.dislikedTags).isEmpty
+        negativeEvidence(for: episode, profileTags: profileTags, context: context).shouldSuppress
+    }
+
+    private static func negativeEvidence(
+        for episode: Episode,
+        profileTags: Set<String>,
+        context: ScoringContext
+    ) -> (scorePenalty: Double, normalizedPenalty: Double, shouldSuppress: Bool) {
+        let showWeight = context.negativeShowWeights[episode.podcast.title, default: 0]
+        let tagWeight = profileTags.reduce(0) { total, tag in
+            total + context.negativeTagWeights[tag, default: 0]
+        }
+        let totalWeight = showWeight + tagWeight
+        let shouldSuppress = showWeight <= -7 || tagWeight <= -7 || totalWeight <= -10
+        let magnitude = abs(min(totalWeight, 0))
+        return (
+            scorePenalty: magnitude * 18,
+            normalizedPenalty: magnitude * 0.08,
+            shouldSuppress: shouldSuppress
+        )
+    }
+
+    private static func negativeTagWeights(
+        preferences: [PreferenceSignal],
+        playbackEvents: [PlaybackEvent],
+        profileByEpisodeID: [UUID: EpisodeProfile]
+    ) -> [String: Double] {
+        var weights: [String: Double] = [:]
+        for preference in preferences {
+            let weight = preferenceNegativeWeight(preference.action)
+            let tags = profileByEpisodeID[preference.episode.id]?.tags ?? preference.episode.profile?.tags ?? []
+            for tag in normalizedTags(tags) {
+                weights[tag, default: 0] += weight
+            }
+        }
+        for event in playbackEvents {
+            guard let episode = event.episode else { continue }
+            let weight = playbackNegativeWeight(event.kind)
+            let tags = profileByEpisodeID[episode.id]?.tags ?? episode.profile?.tags ?? []
+            for tag in normalizedTags(tags) {
+                weights[tag, default: 0] += weight
+            }
+        }
+        return weights
+    }
+
+    private static func negativeShowWeights(
+        preferences: [PreferenceSignal],
+        playbackEvents: [PlaybackEvent]
+    ) -> [String: Double] {
+        var weights: [String: Double] = [:]
+        for preference in preferences {
+            weights[preference.episode.podcast.title, default: 0] += preferenceNegativeWeight(preference.action)
+        }
+        for event in playbackEvents {
+            guard let episode = event.episode else { continue }
+            weights[episode.podcast.title, default: 0] += playbackNegativeWeight(event.kind)
+        }
+        return weights
+    }
+
+    private static func preferenceNegativeWeight(_ action: PreferenceSignal.Action) -> Double {
+        switch action {
+        case .lessLikeThis: -3.5
+        case .notInterested: -5.0
+        case .like, .moreLikeThis: 0
+        }
+    }
+
+    private static func playbackNegativeWeight(_ kind: PlaybackEvent.Kind) -> Double {
+        switch kind {
+        case .skippedQuickly: -1.4
+        case .abandoned: -0.8
+        case .completed, .advancedFromQueue, .resumed, .started, .seekedForward, .seekedBackward: 0
+        }
     }
 
     private func episodeHasTopicOverlap(_ episode: Episode, context: ScoringContext) -> Bool {
