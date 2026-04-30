@@ -55,6 +55,7 @@ Useful checks:
 
 ```bash
 scripts/app_store_connect.py doctor
+scripts/app_store_connect.py signing-preflight --profile-type IOS_APP_STORE
 scripts/app_store_connect.py status --limit 8
 scripts/app_store_connect.py sync-latest
 scripts/app_store_connect.py wait-build --build 2026042501 --require-valid
@@ -62,6 +63,24 @@ scripts/app_store_connect.py set-beta-notes --build 2026042501 --notes-file buil
 ```
 
 `sync-latest` is dry-run by default. Use `scripts/app_store_connect.py sync-latest --apply` only when the latest eligible build is missing beta-group access and should be made available to all beta groups.
+
+`signing-preflight` decodes every active matching App Store provisioning profile from App Store Connect and verifies each profile contains the CloudKit container passed via `--cloudkit-container`, or the default `iCloud.<bundle-id>` when that flag is omitted. Run it before any manual TestFlight upload and after changing iCloud/App ID settings.
+
+## CloudKit Signing Repair
+
+If `signing-preflight` reports that the active `IOS_APP_STORE` profile is missing `iCloud.com.offscript.app`, fix the App ID/profile in Apple Developer before rerunning Xcode Cloud:
+
+1. Open Apple Developer → Certificates, Identifiers & Profiles → Identifiers → App IDs → `com.offscript.app`.
+2. Enable iCloud, select CloudKit support, and attach the `iCloud.com.offscript.app` iCloud container.
+3. Regenerate the App Store Connect provisioning profile for `com.offscript.app`.
+4. Rerun `scripts/app_store_connect.py signing-preflight --profile-type IOS_APP_STORE`.
+5. Rerun the Xcode Cloud build only after the preflight prints `OK`.
+
+Apple documents that iCloud requires at least one iCloud container, that creating/managing iCloud containers requires Account Holder or Admin access, and that changing App ID capabilities requires provisioning profile updates:
+
+- https://developer.apple.com/help/account/identifiers/create-an-icloud-container/
+- https://developer.apple.com/help/account/identifiers/enable-app-capabilities/
+- https://developer.apple.com/help/account/provisioning-profiles/edit-download-or-delete-profiles/
 
 ## Current App Store Connect Convention
 

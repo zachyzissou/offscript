@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
+import plistlib
 import re
 import subprocess
 import sys
@@ -145,6 +147,22 @@ def find_app(client: ASCClient, bundle_id: str) -> dict[str, Any]:
     return apps[0]
 
 
+def find_bundle_id(client: ASCClient, bundle_id: str) -> dict[str, Any]:
+    response = client.request(
+        "GET",
+        "/v1/bundleIds",
+        params={
+            "filter[identifier]": bundle_id,
+            "fields[bundleIds]": "identifier,name,platform,seedId",
+            "limit": 1,
+        },
+    )
+    bundle_ids = response.get("data", [])
+    if not bundle_ids:
+        raise ASCError(f"No Developer Portal bundle ID found for {bundle_id}")
+    return bundle_ids[0]
+
+
 def app_builds(client: ASCClient, app_id: str, limit: int) -> list[dict[str, Any]]:
     response = client.request(
         "GET",
@@ -204,6 +222,58 @@ def beta_group_assignment_map(client: ASCClient, groups: list[dict[str, Any]]) -
         for build in beta_group_builds(client, group["id"]):
             assignments.setdefault(build["id"], []).append(label)
     return assignments
+
+
+def bundle_capabilities(client: ASCClient, bundle_resource_id: str) -> list[dict[str, Any]]:
+    response = client.request(
+        "GET",
+        f"/v1/bundleIds/{bundle_resource_id}/bundleIdCapabilities",
+        params={
+            "fields[bundleIdCapabilities]": "capabilityType,settings",
+        },
+    )
+    return response.get("data", [])
+
+
+def bundle_profiles(client: ASCClient, bundle_resource_id: str) -> list[dict[str, Any]]:
+    response = client.request(
+        "GET",
+        f"/v1/bundleIds/{bundle_resource_id}/profiles",
+        params={
+            "fields[profiles]": "name,profileType,profileState,expirationDate,profileContent",
+            "limit": 200,
+        },
+    )
+    return response.get("data", [])
+
+
+def mobileprovision_plist(profile_content_base64: str) -> dict[str, Any]:
+    decoded = base64.b64decode(profile_content_base64)
+    start = decoded.find(b"<?xml")
+    end = decoded.find(b"</plist>")
+    if start == -1 or end == -1:
+        raise ASCError("Could not locate plist payload in provisioning profile content")
+    return plistlib.loads(decoded[start:end + len(b"</plist>")])
+
+
+def list_value(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return [str(value)]
+
+
+def cloudkit_profile_failures(profile_name: str, entitlements: dict[str, Any], required_container: str) -> list[str]:
+    containers = list_value(entitlements.get("com.apple.developer.icloud-container-identifiers"))
+    services = list_value(entitlements.get("com.apple.developer.icloud-services"))
+
+    failures = []
+    if "CloudKit" not in services and "*" not in services:
+        failures.append(f"{profile_name} does not include CloudKit service entitlement.")
+    if required_container not in containers:
+        failures.append(f"{profile_name} does not include {required_container}.")
+    return failures
 
 
 def build_beta_detail(client: ASCClient, build_id: str) -> dict[str, Any] | None:
@@ -447,6 +517,76 @@ def command_doctor(args: argparse.Namespace) -> None:
         print("OK: latest build is assigned to both internal and external groups.")
     else:
         print("WARNING: latest build is not assigned to both internal and external groups.")
+
+
+def command_signing_preflight(args: argparse.Namespace) -> None:
+    client = ASCClient()
+    bundle_id = args.bundle_id or required_env("ASC_BUNDLE_ID")
+    required_container = args.cloudkit_container or f"iCloud.{bundle_id}"
+    profile_type = args.profile_type
+
+    bundle = find_bundle_id(client, bundle_id)
+    capabilities = bundle_capabilities(client, bundle["id"])
+    capability_types = {attrs(capability).get("capabilityType") for capability in capabilities}
+
+    print(f"Bundle ID: {bundle_id} id={bundle['id']}")
+    print(f"Required CloudKit container: {required_container}")
+    print(f"Required profile type: {profile_type}")
+    print(f"Capabilities: {', '.join(sorted(str(item) for item in capability_types if item)) or 'none'}")
+
+    failures: list[str] = []
+    if "ICLOUD" not in capability_types:
+        failures.append("Developer Portal bundle ID does not have the ICLOUD capability enabled.")
+
+    matching_profiles = []
+    for profile in bundle_profiles(client, bundle["id"]):
+        profile_attrs = attrs(profile)
+        if profile_attrs.get("profileType") == profile_type and profile_attrs.get("profileState") == "ACTIVE":
+            matching_profiles.append(profile)
+
+    if not matching_profiles:
+        failures.append(f"No ACTIVE {profile_type} provisioning profile exists for {bundle_id}.")
+
+    for profile in matching_profiles:
+        profile_attrs = attrs(profile)
+        profile_name = profile_attrs.get("name")
+        profile_label = f"{profile_name} ({profile['id']})"
+        print()
+        print(f"Profile: {profile_name} id={profile['id']}")
+        print(f"  state={profile_attrs.get('profileState')} expires={profile_attrs.get('expirationDate')}")
+
+        profile_content = profile_attrs.get("profileContent")
+        if not profile_content:
+            failures.append(f"{profile_name} does not expose profileContent through the API.")
+            continue
+
+        profile_plist = mobileprovision_plist(profile_content)
+        entitlements = profile_plist.get("Entitlements") or {}
+        containers = list_value(entitlements.get("com.apple.developer.icloud-container-identifiers"))
+        services = list_value(entitlements.get("com.apple.developer.icloud-services"))
+
+        print(f"  application={entitlements.get('application-identifier')}")
+        print(f"  app-groups={list_value(entitlements.get('com.apple.security.application-groups'))}")
+        print(f"  iCloud-services={services}")
+        print(f"  iCloud-containers={containers}")
+
+        failures.extend(cloudkit_profile_failures(profile_label, entitlements, required_container))
+
+    if failures:
+        print()
+        print("Signing preflight failed:")
+        for failure in failures:
+            print(f"- {failure}")
+        print()
+        print("Fix in Apple Developer Certificates, Identifiers & Profiles:")
+        print(f"1. Open App ID {bundle_id}.")
+        print("2. Enable iCloud with CloudKit support.")
+        print(f"3. Attach the {required_container} iCloud container to the App ID.")
+        print(f"4. Regenerate the {profile_type} profile, then rerun this preflight.")
+        raise ASCError("CloudKit signing profile is not ready")
+
+    print()
+    print("OK: every active matching CloudKit signing profile includes the required container.")
 
 
 def command_sync_latest(args: argparse.Namespace) -> None:
@@ -923,6 +1063,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor_parser = subparsers.add_parser("doctor", help="Check release pipeline health before uploading.")
     doctor_parser.set_defaults(func=command_doctor)
+
+    signing_parser = subparsers.add_parser("signing-preflight", help="Verify Developer Portal signing profiles match app entitlements.")
+    signing_parser.add_argument("--cloudkit-container")
+    signing_parser.add_argument("--profile-type", default="IOS_APP_STORE", choices=["IOS_APP_STORE", "IOS_APP_ADHOC", "IOS_APP_DEVELOPMENT"])
+    signing_parser.set_defaults(func=command_signing_preflight)
 
     sync_parser = subparsers.add_parser("sync-latest", help="Ensure the latest eligible build has beta group access.")
     sync_parser.add_argument("--apply", action="store_true", help="Actually add missing beta group access.")

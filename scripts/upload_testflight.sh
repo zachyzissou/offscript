@@ -78,7 +78,19 @@ check_build_number_available() {
 		[[ -z "$BUILD_NUMBER" ]] || args+=(--build "$BUILD_NUMBER")
 		"$ASC_SCRIPT" "${args[@]}"
 	else
-		echo "warning: skipping App Store Connect duplicate-build preflight; no local ASC env file found" >&2
+		echo "warning: skipping App Store Connect duplicate-build preflight; ASC_KEY_PATH is not set" >&2
+	fi
+}
+
+check_cloudkit_signing_ready() {
+	if ! "$PLIST_BUDDY" -c "Print :com.apple.developer.icloud-container-identifiers:0" "$ROOT_DIR/OffScript/OffScript.entitlements" >/dev/null 2>&1; then
+		return
+	fi
+
+	if [[ -n "${ASC_KEY_PATH:-}" ]]; then
+		"$ASC_SCRIPT" signing-preflight --profile-type IOS_APP_STORE
+	else
+		echo "warning: skipping CloudKit signing preflight; ASC_KEY_PATH is not set" >&2
 	fi
 }
 
@@ -116,6 +128,7 @@ if [[ "$VALIDATE_ONLY" == "true" ]]; then
 fi
 
 check_build_number_available
+check_cloudkit_signing_ready
 
 rm -rf "$ARCHIVE_PATH" "$EXPORT_PATH"
 
