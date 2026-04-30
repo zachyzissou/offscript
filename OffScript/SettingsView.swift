@@ -54,7 +54,7 @@ struct SettingsView: View {
                     aboutSection
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
-                .padding(.top, 8)
+                .padding(.top, OffScriptTheme.modalContentTopPadding)
                 .padding(.bottom, 32)
                 .frame(maxWidth: 720, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -94,8 +94,9 @@ struct SettingsView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("Settings")
                     .font(.system(size: 32, weight: .bold))
-                    .tracking(-0.5)
                     .foregroundStyle(Color.offscriptPaperWhite)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                 Spacer()
                 // DONE key inline — replaces the toolbar Done button which
                 // iOS 26 wrapped in glass chrome. Same Tuner vocabulary as
@@ -143,7 +144,11 @@ struct SettingsView: View {
                 .font(.system(size: 22, weight: .bold, design: .monospaced))
                 .foregroundStyle(Color.offscriptPaperWhite)
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
             TunerLabel(text: label, color: .offscriptSoftPaper, size: 8)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

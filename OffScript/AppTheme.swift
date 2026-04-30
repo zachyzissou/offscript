@@ -81,6 +81,8 @@ struct IdentifiableURL: Identifiable {
 enum OffScriptTheme {
     static let pagePadding: CGFloat = 16        // Tuner is tighter than the editorial direction
     static let rootContentTopPadding: CGFloat = 2
+    static let modalContentTopPadding: CGFloat = 8
+    static let detailContentTopPadding: CGFloat = 18
     static let spaciousPadding: CGFloat = 20
     static let sectionSpacing: CGFloat = 24
     static let itemSpacing: CGFloat = 12

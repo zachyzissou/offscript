@@ -1020,8 +1020,9 @@ private struct LibraryTunerHeader: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("Library")
                     .font(.system(size: 32, weight: .bold))
-                    .tracking(-0.5)
                     .foregroundStyle(Color.offscriptPaperWhite)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                 Spacer()
                 // Import key — paste URL or import OPML. The most-asked-for
                 // missing feature in podcast apps; lives next to settings
@@ -1503,7 +1504,7 @@ private struct LibraryDirectoryMissingShowView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, OffScriptTheme.pagePadding)
-        .padding(.top, OffScriptTheme.rootContentTopPadding + 16)
+        .padding(.top, OffScriptTheme.detailContentTopPadding)
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
     }
 }

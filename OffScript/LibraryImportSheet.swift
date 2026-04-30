@@ -67,7 +67,7 @@ struct LibraryImportSheet: View {
                         }
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
-                    .padding(.top, 12)
+                    .padding(.top, OffScriptTheme.modalContentTopPadding)
                     .padding(.bottom, 90)
                 }
             }
@@ -109,8 +109,9 @@ struct LibraryImportSheet: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("Import")
                     .font(.system(size: 32, weight: .bold))
-                    .tracking(-0.5)
                     .foregroundStyle(Color.offscriptPaperWhite)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                 Spacer()
                 // DONE inline — same reason every other sheet moved off
                 // .toolbar ToolbarItem in 2.3.x.
@@ -342,15 +343,20 @@ struct LibraryImportSheet: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.offscriptPaperWhite)
                     .lineLimit(1)
+                    .truncationMode(.tail)
                 Text(entry.feedURL.absoluteString)
                     .font(.system(size: 9, weight: .regular, design: .monospaced))
                     .foregroundStyle(Color.offscriptSoftPaper)
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
+            .layoutPriority(1)
 
             Spacer()
 
             TunerLabel(text: status.label, color: status.color, size: 8)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.vertical, 10)
     }
