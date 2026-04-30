@@ -81,6 +81,72 @@ struct OffScriptTests {
     }
 
     @Test
+    func rssParserStopsAfterItemLimitButKeepsChannelMetadata() throws {
+        let items = (1...12).map { index in
+            """
+            <item>
+              <title>Episode \(index)</title>
+              <guid>episode-\(index)</guid>
+              <enclosure url="https://example.com/episode-\(index).mp3" type="audio/mpeg" />
+            </item>
+            """
+        }.joined(separator: "\n")
+        let xml = """
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+          <channel>
+            <title>Large Back Catalog</title>
+            <itunes:author>OffScript Studio</itunes:author>
+            <description>Hundreds of episodes, capped during bootstrap.</description>
+            <itunes:image href="https://example.com/show.jpg" />
+            \(items)
+          </channel>
+        </rss>
+        """
+
+        let parsed = try RSSFeedParser().parse(data: Data(xml.utf8), itemLimit: 3)
+
+        #expect(parsed.title == "Large Back Catalog")
+        #expect(parsed.author == "OffScript Studio")
+        #expect(parsed.artworkURL?.absoluteString == "https://example.com/show.jpg")
+        #expect(parsed.items.map(\.guid) == ["episode-1", "episode-2", "episode-3"])
+    }
+
+    @Test
+    func rssParserUnlimitedModeStillParsesAllItems() throws {
+        let items = (1...12).map { index in
+            """
+            <item>
+              <title>Episode \(index)</title>
+              <guid>episode-\(index)</guid>
+              <enclosure url="https://example.com/episode-\(index).mp3" type="audio/mpeg" />
+            </item>
+            """
+        }.joined(separator: "\n")
+        let xml = """
+        <rss version="2.0">
+          <channel>
+            <title>Full Sync Feed</title>
+            \(items)
+          </channel>
+        </rss>
+        """
+
+        let parsed = try RSSFeedParser().parse(data: Data(xml.utf8))
+
+        #expect(parsed.items.count == 12)
+        #expect(parsed.items.last?.guid == "episode-12")
+    }
+
+    @Test
+    func opmlBootstrapConfigCapsFeedParseItems() {
+        #expect(FeedSyncOptions.standard().feedParseItemLimit == nil)
+        #expect(FeedSyncOptions.fastBatchImport().feedParseItemLimit == nil)
+        #expect(FeedSyncOptions.opmlBootstrap().feedParseItemLimit == 10)
+        #expect(FeedSyncOptions.onboardingBootstrap().feedParseItemLimit == 10)
+        #expect(FeedSyncOptions.opmlBootstrap(episodeLimit: 12).feedParseItemLimit == 36)
+    }
+
+    @Test
     func opmlImportDedupesFeedsPreservingFirstSeenOrder() throws {
         let opml = """
         <?xml version="1.0" encoding="UTF-8"?>
