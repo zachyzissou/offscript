@@ -799,8 +799,16 @@ struct LibraryView: View {
 
     @MainActor
     private func rebuildDirectorySnapshot() {
+        let interval = OffScriptPerformanceLog.begin(
+            "library.snapshot",
+            metadata: "podcasts=\(directoryPodcasts.count) scope=\(directoryScope.rawValue) sort=\(directorySort.rawValue)"
+        )
         cachedDirectorySnapshot = makeDirectorySnapshot()
         didBuildDirectorySnapshot = true
+        OffScriptPerformanceLog.end(
+            interval,
+            metadata: "podcasts=\(directoryPodcasts.count) visible=\(cachedDirectorySnapshot.visibleCount) scope=\(directoryScope.rawValue) sort=\(directorySort.rawValue)"
+        )
     }
 
     private func makeDirectorySnapshot() -> LibraryDirectorySnapshot {
@@ -925,15 +933,27 @@ struct LibraryView: View {
     @MainActor
     private func loadDirectoryPodcasts(force: Bool = false) {
         guard force || !didLoadDirectoryPodcasts else { return }
+        let interval = OffScriptPerformanceLog.begin(
+            "library.directory.fetch",
+            metadata: "force=\(force)"
+        )
         do {
             directoryPodcasts = try LibraryDirectorySnapshotLoader.subscribedPodcasts(in: modelContext)
             didLoadDirectoryPodcasts = true
             rebuildDirectorySnapshot()
+            OffScriptPerformanceLog.end(
+                interval,
+                metadata: "podcasts=\(directoryPodcasts.count) force=\(force)"
+            )
         } catch {
             directoryPodcasts = []
             didLoadDirectoryPodcasts = true
             cachedDirectorySnapshot = .empty
             didBuildDirectorySnapshot = true
+            OffScriptPerformanceLog.end(
+                interval,
+                metadata: "podcasts=0 force=\(force) failed=true"
+            )
             libraryLogger.error("Library directory snapshot load failed: \(error.localizedDescription, privacy: .public)")
         }
     }
@@ -1035,6 +1055,10 @@ struct LibraryView: View {
 
     @MainActor
     private func refreshLibraryEpisodeSummary(podcastIDs: [UUID]) async {
+        let interval = OffScriptPerformanceLog.begin(
+            "library.summary",
+            metadata: "podcasts=\(podcastIDs.count)"
+        )
         do {
             let countDescriptor = FetchDescriptor<Episode>(
                 predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed }
@@ -1066,6 +1090,10 @@ struct LibraryView: View {
                     needsInProgress: directoryNeedsFullInProgressCounts
                 )
             }
+            OffScriptPerformanceLog.end(
+                interval,
+                metadata: "podcasts=\(podcastIDs.count) unplayed=\(unplayedEpisodeCount) inProgress=\(inProgressEpisodeCount)"
+            )
         } catch {
             freshEpisodes = []
             inProgressEpisodes = []
@@ -1077,6 +1105,10 @@ struct LibraryView: View {
             fullInProgressCountsByPodcastID = [:]
             didLoadFullUnplayedCounts = false
             didLoadFullInProgressCounts = false
+            OffScriptPerformanceLog.end(
+                interval,
+                metadata: "podcasts=\(podcastIDs.count) failed=true"
+            )
             libraryLogger.error("Library summary load failed: \(error.localizedDescription, privacy: .public)")
         }
     }
@@ -1123,9 +1155,17 @@ struct LibraryView: View {
         needsUnplayed: Bool,
         needsInProgress: Bool
     ) async {
+        let interval = OffScriptPerformanceLog.begin(
+            "library.fullCounts",
+            metadata: "podcasts=\(podcastIDs.count) unplayed=\(needsUnplayed) inProgress=\(needsInProgress)"
+        )
         do {
             guard !Task.isCancelled else {
                 isLoadingFullDirectoryCounts = false
+                OffScriptPerformanceLog.end(
+                    interval,
+                    metadata: "podcasts=\(podcastIDs.count) unplayed=\(needsUnplayed) inProgress=\(needsInProgress) cancelled=true"
+                )
                 return
             }
             let counts = try await LibraryDirectoryCountLoader.countsByPodcastID(
@@ -1137,6 +1177,10 @@ struct LibraryView: View {
 
             guard !Task.isCancelled else {
                 isLoadingFullDirectoryCounts = false
+                OffScriptPerformanceLog.end(
+                    interval,
+                    metadata: "podcasts=\(podcastIDs.count) unplayed=\(needsUnplayed) inProgress=\(needsInProgress) cancelled=true"
+                )
                 return
             }
             if needsUnplayed {
@@ -1148,6 +1192,10 @@ struct LibraryView: View {
                 didLoadFullInProgressCounts = true
             }
             isLoadingFullDirectoryCounts = false
+            OffScriptPerformanceLog.end(
+                interval,
+                metadata: "podcasts=\(podcastIDs.count) unplayed=\(needsUnplayed) inProgress=\(needsInProgress)"
+            )
         } catch {
             if needsUnplayed {
                 fullUnplayedCountsByPodcastID = [:]
@@ -1158,6 +1206,10 @@ struct LibraryView: View {
                 didLoadFullInProgressCounts = false
             }
             isLoadingFullDirectoryCounts = false
+            OffScriptPerformanceLog.end(
+                interval,
+                metadata: "podcasts=\(podcastIDs.count) failed=true"
+            )
             libraryLogger.error("Library per-show directory count load failed: \(error.localizedDescription, privacy: .public)")
         }
     }

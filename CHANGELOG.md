@@ -79,6 +79,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ### Changed — Library performance
 - **Inactive Home and Library tabs now stop rendering their heavy page bodies** while preserving tab state, so switching from a 250+ show Library back to Home no longer keeps the hidden directory tree in the transition path.
 - **Count-driven Library directory modes now derive unplayed and in-progress per-show counts from one scoped fetch** instead of scanning overlapping episode sets twice for `ATTN` views.
+- **Home/Library tab changes, recommendation loads, directory snapshots, summary fetches, and per-show count fetches now emit performance timings** so 250+ show lag can be measured from device logs instead of guessed from simulator feel.
 - **OPML staging, retry, and cancellation now use scoped feed-URL variant lookups instead of full podcast-table scans for large batches**, while preserving normalized resubscribe behavior for small single-feed edge cases.
 - **Large OPML imports now stage subscribed shows before network sync finishes**, so 250+ show libraries appear in Library immediately while feed hydration continues in the background.
 - **Single-show adds from Home, Search, and pasted feed URLs now save the subscription before feed hydration**, then use a capped bootstrap sync in the background instead of blocking the UI on a full catalog import.

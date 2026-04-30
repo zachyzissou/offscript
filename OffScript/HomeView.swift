@@ -165,7 +165,15 @@ struct HomeView: View {
         }
         do {
             let mode = AppSettings.recommendationMode
+            let loadInterval = OffScriptPerformanceLog.begin(
+                "home.sections.fetch",
+                metadata: "mode=\(mode.rawValue)"
+            )
             let loaded = try recommendationService.homeSections(context: modelContext, mode: mode)
+            OffScriptPerformanceLog.end(
+                loadInterval,
+                metadata: "mode=\(mode.rawValue) sections=\(loaded.count)"
+            )
             guard generation == loadGeneration else { return }
             withAnimation(.easeInOut(duration: 0.25)) {
                 sections = loaded
@@ -204,13 +212,26 @@ struct HomeView: View {
             }
         }
 
+        let discoveryInterval = OffScriptPerformanceLog.begin(
+            "home.discovery",
+            metadata: "mode=\(mode.rawValue)"
+        )
         if let discovery = await recommendationService.discoverySection(context: modelContext, mode: mode) {
+            OffScriptPerformanceLog.end(
+                discoveryInterval,
+                metadata: "mode=\(mode.rawValue) results=\(discovery.discoveryResults.count)"
+            )
             guard !Task.isCancelled,
                   AppSettings.recommendationMode == mode,
                   generation == loadGeneration else { return }
             withAnimation(.easeInOut(duration: 0.25)) {
                 sections = existingSections + [discovery]
             }
+        } else {
+            OffScriptPerformanceLog.end(
+                discoveryInterval,
+                metadata: "mode=\(mode.rawValue) results=0"
+            )
         }
     }
 
