@@ -513,6 +513,7 @@ struct LibraryView: View {
     @State private var directorySort: LibraryDirectorySort = .title
     @State private var directoryDensity: LibraryDirectoryDensity = .compact
     @State private var selectedDirectorySectionID: String?
+    @State private var selectedDirectoryKey: String?
     @State private var inProgressEpisodes: [Episode] = []
     @State private var inProgressEpisodeCount = 0
     @State private var freshInProgressCountsByPodcastID: [UUID: Int] = [:]
@@ -765,8 +766,10 @@ struct LibraryView: View {
 
                 LibraryAlphabetRail(
                     sections: snapshot.sections,
-                    selectedSectionID: selectedDirectorySectionID
-                ) { sectionID in
+                    selectedSectionID: selectedDirectorySectionID,
+                    selectedKey: selectedDirectoryKey
+                ) { key, sectionID in
+                    selectedDirectoryKey = key
                     selectedDirectorySectionID = sectionID
                     withAnimation(.easeInOut(duration: 0.2)) {
                         scrollProxy.scrollTo(sectionID, anchor: .top)
@@ -1299,7 +1302,8 @@ private struct LibraryDirectoryControls: View {
 private struct LibraryAlphabetRail: View {
     let sections: [LibraryDirectorySection]
     let selectedSectionID: String?
-    let onSelect: (String) -> Void
+    let selectedKey: String?
+    let onSelect: (String, String) -> Void
 
     private let keys = ["#"] + (UnicodeScalar("A").value...UnicodeScalar("Z").value).compactMap { value in
         UnicodeScalar(value).map { String($0) }
@@ -1316,22 +1320,23 @@ private struct LibraryAlphabetRail: View {
                     ForEach(keys, id: \.self) { key in
                         let section = sectionsByTitle[key]
                         let targetSectionID = LibraryDirectoryOrganizer.sectionIDForAlphabetKey(key, sections: sections)
-                        let isSelected = selectedSectionID == section?.id
+                        let isNearestJump = section == nil && targetSectionID != nil
+                        let isSelected = selectedKey == key || (selectedKey == nil && selectedSectionID == section?.id)
 
                         if let targetSectionID {
                             Button {
-                                onSelect(targetSectionID)
+                                onSelect(key, targetSectionID)
                             } label: {
-                                letterKey(key, isSelected: isSelected, isDisabled: section == nil)
+                                letterKey(key, isSelected: isSelected, isNearestJump: isNearestJump, isReachable: true)
                             }
                             .id(key)
                             .buttonStyle(.plain)
                             .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(section == nil ? "Jump near \(key)" : "Jump to \(key)")
+                            .accessibilityLabel(isNearestJump ? "Jump near \(key)" : "Jump to \(key)")
                             .accessibilityIdentifier("LibraryJumpLetter\(key)")
                             .accessibilityAddTraits(isSelected ? .isSelected : [])
                         } else {
-                            letterKey(key, isSelected: false, isDisabled: true)
+                            letterKey(key, isSelected: false, isNearestJump: false, isReachable: false)
                                 .id(key)
                                 .accessibilityLabel("No \(key) channels")
                                 .accessibilityIdentifier("LibraryJumpLetter\(key)")
@@ -1341,8 +1346,9 @@ private struct LibraryAlphabetRail: View {
                 }
                 .padding(.vertical, 4)
                 .onChange(of: selectedSectionID) { _, newValue in
-                    guard let newValue,
-                          let key = sectionsByTitle.first(where: { $0.value.id == newValue })?.key else { return }
+                    guard let key = selectedKey ?? newValue.flatMap({ selectedSectionID in
+                        sectionsByTitle.first(where: { $0.value.id == selectedSectionID })?.key
+                    }) else { return }
                     withAnimation(.easeInOut(duration: 0.18)) {
                         proxy.scrollTo(key, anchor: .center)
                     }
@@ -1352,22 +1358,37 @@ private struct LibraryAlphabetRail: View {
         }
     }
 
-    private func letterKey(_ key: String, isSelected: Bool, isDisabled: Bool) -> some View {
+    private func letterKey(
+        _ key: String,
+        isSelected: Bool,
+        isNearestJump: Bool,
+        isReachable: Bool
+    ) -> some View {
         Text(key)
             .font(.system(size: 10, weight: .semibold, design: .monospaced))
-            .foregroundStyle(isDisabled ? Color.offscriptTextMuted : Color.offscriptSignalYellow)
+            .foregroundStyle(letterColor(isSelected: isSelected, isNearestJump: isNearestJump, isReachable: isReachable))
             .frame(width: 30, height: 30)
-            .background(isSelected ? Color.offscriptSignalYellow.opacity(0.14) : Color.clear)
+            .background(isSelected ? Color.offscriptSignalYellow.opacity(0.16) : Color.clear)
             .overlay(
                 Rectangle()
                     .stroke(
-                        isSelected ? Color.offscriptSignalYellow : Color.offscriptHairline,
+                        isSelected ? Color.offscriptSignalYellow : (isNearestJump ? Color.offscriptSoftPaper.opacity(0.72) : Color.offscriptHairline),
                         lineWidth: isSelected ? 1.5 : 1
                     )
             )
             .frame(minWidth: 44, minHeight: 44)
             .contentShape(Rectangle())
-            .opacity(isDisabled ? 0.42 : 1)
+            .opacity(isReachable ? 1 : 0.42)
+    }
+
+    private func letterColor(
+        isSelected: Bool,
+        isNearestJump: Bool,
+        isReachable: Bool
+    ) -> Color {
+        guard isReachable else { return .offscriptTextMuted }
+        if isSelected { return .offscriptSignalYellow }
+        return isNearestJump ? .offscriptSoftPaper : .offscriptSignalYellow
     }
 }
 
