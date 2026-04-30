@@ -7,7 +7,7 @@ private let appLogger = Logger(subsystem: "com.offscript", category: "App")
 
 // MARK: - Tab identity (typed enum, not raw Int)
 
-private enum AppTab: Int, CaseIterable, Identifiable {
+private enum AppTab: Int, CaseIterable, Identifiable, Hashable {
     case home, library, queue, search
 
     var id: Int { rawValue }
@@ -18,6 +18,15 @@ private enum AppTab: Int, CaseIterable, Identifiable {
         case .library: return "LIBRARY"
         case .queue:   return "QUEUE"
         case .search:  return "SEARCH"
+        }
+    }
+
+    var deepLinkName: String {
+        switch self {
+        case .home:    return "home"
+        case .library: return "library"
+        case .queue:   return "queue"
+        case .search:  return "search"
         }
     }
 
@@ -48,6 +57,7 @@ struct ContentView: View {
     @ObservedObject private var player = PlaybackController.shared
     @AppStorage("offscript.hasSeenOnboarding") private var hasSeenOnboarding = false
     @State private var selectedTab: AppTab = .home
+    @State private var loadedTabs: Set<AppTab> = [.home]
     @State private var isSettingsPresented = false
     @Query private var queueItems: [QueueItem]
 
@@ -70,7 +80,7 @@ struct ContentView: View {
                     }
 
                     TunerTabBar(
-                        selection: $selectedTab,
+                        selection: tabSelection,
                         queueBadge: queueItems.count
                     )
                 }
@@ -128,10 +138,29 @@ struct ContentView: View {
             // which tab is selected, so the routing happens at this layer.
             guard let name = note.userInfo?["tab"] as? String,
                   let tab = AppTab.from(deepLinkName: name) else { return }
+            loadedTabs.insert(tab)
             withAnimation(.easeInOut(duration: 0.15)) {
                 selectedTab = tab
             }
         }
+        .onChange(of: selectedTab) { _, tab in
+            loadedTabs.insert(tab)
+            NotificationCenter.default.post(
+                name: .offscriptActiveTabChanged,
+                object: nil,
+                userInfo: ["tab": tab.deepLinkName]
+            )
+        }
+    }
+
+    private var tabSelection: Binding<AppTab> {
+        Binding(
+            get: { selectedTab },
+            set: { tab in
+                loadedTabs.insert(tab)
+                selectedTab = tab
+            }
+        )
     }
 
     /// Switch on the typed tab so the compiler enforces exhaustive routing.
@@ -139,24 +168,47 @@ struct ContentView: View {
     /// switches.
     @ViewBuilder
     private var activeTabContent: some View {
-        switch selectedTab {
-        case .home:
-            NavigationStack {
-                HomeView(onOpenSettings: { isSettingsPresented = true })
+        ZStack {
+            if loadedTabs.contains(.home) {
+                tabPane(.home) {
+                    NavigationStack {
+                        HomeView(onOpenSettings: { isSettingsPresented = true })
+                    }
+                }
             }
-        case .library:
-            NavigationStack {
-                LibraryView(onOpenSettings: { isSettingsPresented = true })
+
+            if loadedTabs.contains(.library) {
+                tabPane(.library) {
+                    NavigationStack {
+                        LibraryView(onOpenSettings: { isSettingsPresented = true })
+                    }
+                }
             }
-        case .queue:
-            NavigationStack {
-                QueueView()
+
+            if loadedTabs.contains(.queue) {
+                tabPane(.queue) {
+                    NavigationStack {
+                        QueueView()
+                    }
+                }
             }
-        case .search:
-            NavigationStack {
-                SearchView()
+
+            if loadedTabs.contains(.search) {
+                tabPane(.search) {
+                    NavigationStack {
+                        SearchView()
+                    }
+                }
             }
         }
+    }
+
+    private func tabPane<Content: View>(_ tab: AppTab, @ViewBuilder content: () -> Content) -> some View {
+        let isSelected = selectedTab == tab
+        return content()
+            .opacity(isSelected ? 1 : 0)
+            .allowsHitTesting(isSelected)
+            .accessibilityHidden(!isSelected)
     }
 }
 
@@ -336,10 +388,11 @@ private extension ContentView {
         guard let existingPodcasts = try? modelContext.fetch(podcastDescriptor) else {
             return true
         }
-        guard existingPodcasts.count == requestedLibrarySize, existingEpisodes == expectedEpisodes else {
+        let subscribedPodcasts = existingPodcasts.filter(\.isSubscribed)
+        guard subscribedPodcasts.count == requestedLibrarySize, existingEpisodes == expectedEpisodes else {
             return true
         }
-        return existingPodcasts.first?.title != "A Channel 001"
+        return subscribedPodcasts.first?.title != "A Channel 001"
     }
 
     private func resetDebugLibrary() {
