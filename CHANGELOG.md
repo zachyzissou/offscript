@@ -37,6 +37,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Large Library count-driven filters no longer fetch every matching episode just to compute per-show badges** and instead use cancellable per-show count queries for `UNPLAYED`, `IN PROGRESS`, and `ATTN`.
 - **Recommendation negative signals are now graded instead of binary** so one `Less Like This` no longer erases a whole show while repeated negative evidence still suppresses strongly matched candidates.
 - **Tuner chrome now uses shared modal/detail top insets and more resilient compact headers/import rows** so Settings, Import, and Library fallback surfaces keep the OLED instrument look at narrow widths and larger text sizes.
+- **Onboarding Sign in with Apple fallback anchoring no longer emits the iOS 26 `ASPresentationAnchor(frame:)` archive warning** when no foreground scene is available.
 - **Large OPML and onboarding bootstrap imports now use shorter feed request timeouts** so dead feeds release bounded import slots faster while normal subscribed-feed sync keeps its more patient timeout.
 - **Onboarding Sign in with Apple now presents from the actual button window when available** and no longer uses the old crash-prone missing-scene path for the normal sign-in flow.
 - **Onboarding starter subscriptions now commit immediately and hydrate in the background** using the same lightweight bootstrap profile as large imports, so picking three podcasts no longer waits on serial feed parsing, full episode enrichment, or external chapter lookups before entering the app.
