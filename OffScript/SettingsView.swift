@@ -21,6 +21,7 @@ struct SettingsView: View {
     @State private var cloudKitAvailability: CloudKitAccountAvailability = .couldNotDetermine
     @State private var showSignOutConfirmation = false
     @State private var signInMessage: String?
+    @State private var isDefaultRatePickerExpanded = false
 
     @State private var episodeCount: Int = 0
     @State private var unplayedCount: Int = 0
@@ -186,45 +187,62 @@ struct SettingsView: View {
     /// from the player win over this. Stored in
     /// `PodcastPlaybackPreferences.globalDefault`.
     private var defaultRateRow: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Default playback rate")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.offscriptPaperWhite)
-                Text("New podcasts inherit this rate. Per-podcast picks from the player override it.")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .lineSpacing(2)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Default playback rate")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.offscriptPaperWhite)
+                    Text("New podcasts inherit this rate. Per-podcast picks from the player override it.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(2)
+                }
+                Spacer(minLength: 12)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        isDefaultRatePickerExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        TunerLabel(
+                            text: String(format: "%.2g×", currentDefaultRate),
+                            color: .offscriptSignalYellow,
+                            size: 11
+                        )
+                        Image(systemName: isDefaultRatePickerExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Color.offscriptSignalYellow)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Default playback rate")
+                .accessibilityValue(String(format: "%.2g×", currentDefaultRate))
+                .accessibilityHint(isDefaultRatePickerExpanded ? "Double-tap to collapse rate options." : "Double-tap to expand rate options.")
             }
-            Spacer(minLength: 12)
-            Menu {
-                ForEach([Float(1.0), 1.1, 1.25, 1.5, 1.75, 2.0, 2.5], id: \.self) { rate in
-                    Button {
-                        PodcastPlaybackPreferences.setGlobalDefault(rate)
-                        defaultRateRefresh = UUID()  // force re-read of static
-                    } label: {
-                        HStack {
-                            Text(String(format: "%.2g×", rate))
-                            if abs(currentDefaultRate - rate) < 0.001 {
-                                Image(systemName: "checkmark")
-                            }
-                        }
+            .padding(.top, 10)
+            .padding(.bottom, isDefaultRatePickerExpanded ? 8 : 10)
+
+            if isDefaultRatePickerExpanded {
+                TunerRatePicker(
+                    rates: [Float(1.0), 1.1, 1.25, 1.5, 1.75, 2.0, 2.5],
+                    selectedRate: currentDefaultRate,
+                    accessibilityActionPrefix: "Set default playback rate to"
+                ) { rate in
+                    PodcastPlaybackPreferences.setGlobalDefault(rate)
+                    defaultRateRefresh = UUID()  // force re-read of static
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        isDefaultRatePickerExpanded = false
                     }
                 }
-            } label: {
-                TunerLabel(
-                    text: String(format: "%.2g×", currentDefaultRate),
-                    color: .offscriptSignalYellow,
-                    size: 11
-                )
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                .padding(.bottom, 10)
             }
-            .buttonStyle(.plain)
         }
-        .padding(.vertical, 10)
     }
 
     /// Wipe every per-podcast playback-rate override so all shows
