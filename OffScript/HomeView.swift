@@ -163,13 +163,21 @@ struct HomeView: View {
                 isRetuning = false
             }
         }
+        if !manual {
+            await Task.yield()
+            guard generation == loadGeneration, isActive else { return }
+        }
         do {
             let mode = AppSettings.recommendationMode
             let loadInterval = OffScriptPerformanceLog.begin(
                 "home.sections.fetch",
                 metadata: "mode=\(mode.rawValue)"
             )
-            let loaded = try recommendationService.homeSections(context: modelContext, mode: mode)
+            let loaded = try recommendationService.homeSections(
+                context: modelContext,
+                mode: mode,
+                refreshTasteProfile: manual
+            )
             OffScriptPerformanceLog.end(
                 loadInterval,
                 metadata: "mode=\(mode.rawValue) sections=\(loaded.count)"

@@ -818,6 +818,78 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func homeRecommendationsCanSkipTasteProfileRefreshOnActivation() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let profile = UserTasteProfile()
+        profile.topTags = ["stale"]
+        profile.showAffinity = ["Known Show"]
+        profile.lastUpdatedAt = Date(timeIntervalSince1970: 100)
+
+        let podcast = Podcast(title: "Fresh Activation Signal", feedURL: URL(string: "https://example.com/fresh-activation.xml")!)
+        let seed = Episode(
+            title: "Completed Activation Seed",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/fresh-activation-seed.mp3")!,
+            podcast: podcast
+        )
+        seed.isPlayed = true
+        let candidate = Episode(
+            title: "Activation Candidate",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/fresh-activation-candidate.mp3")!,
+            podcast: podcast
+        )
+        let seedProfile = EpisodeProfile(episodeID: seed.id)
+        seedProfile.tags = ["activation"]
+        let candidateProfile = EpisodeProfile(episodeID: candidate.id)
+        candidateProfile.tags = ["activation"]
+
+        context.insert(profile)
+        context.insert(podcast)
+        context.insert(seed)
+        context.insert(candidate)
+        context.insert(seedProfile)
+        context.insert(candidateProfile)
+        context.insert(PlaybackEvent(kind: .completed, position: 1_800, episode: seed))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(
+            context: context,
+            limit: 3,
+            refreshTasteProfile: false
+        )
+
+        #expect(sections.flatMap(\.episodes).contains { $0.id == candidate.id })
+        #expect(profile.topTags == ["stale"])
+        #expect(profile.lastUpdatedAt == Date(timeIntervalSince1970: 100))
+
+        _ = try RecommendationService().homeSections(
+            context: context,
+            limit: 3,
+            refreshTasteProfile: true
+        )
+
+        #expect(profile.topTags.contains("activation"))
+    }
+
+    @Test
+    @MainActor
+    func recommendationPreferredGenresFallbackToOnboardingSettingsWhenProfileIsEmpty() {
+        let originalGenres = AppSettings.preferredGenres
+        AppSettings.preferredGenres = [.technology, .newsAndPolitics]
+        defer { AppSettings.preferredGenres = originalGenres }
+
+        let emptyProfile = UserTasteProfile()
+
+        #expect(RecommendationService.effectivePreferredGenreTitles(for: emptyProfile) == ["Technology", "News & Politics"])
+    }
+
+    @Test
+    @MainActor
     func preferenceFeedbackServicePostsRetuneNotificationAfterSaving() throws {
         let container = try makeContainer()
         let context = container.mainContext
