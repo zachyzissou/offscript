@@ -278,16 +278,9 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
                     ?? active.windows.first
                     ?? UIWindow(windowScene: active)
             }
-            assertionFailure("Sign in with Apple requires an active window scene")
-            if #unavailable(iOS 26.0) {
-                return detachedFallbackAnchor()
-            }
-            preconditionFailure("Sign in with Apple requires an active window scene")
-        }
-
-        @available(iOS, deprecated: 26.0)
-        private func detachedFallbackAnchor() -> ASPresentationAnchor {
-            ASPresentationAnchor(frame: .zero)
+            let logger = Logger(subsystem: "com.offscript", category: "AppleSignin")
+            logger.error("Sign in with Apple requested without an active window scene; using detached fallback anchor")
+            return ASPresentationAnchor(frame: .zero)
         }
 
         func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
@@ -313,7 +306,11 @@ private struct SignInWithAppleButtonView: UIViewRepresentable {
                 }
             } catch {
                 let logger = Logger(subsystem: "com.offscript", category: "AppleSignin")
-                logger.error("Failed to persist Apple credential: \(error.localizedDescription, privacy: .public)")
+                if let keychainError = error as? UserProfileService.KeychainError {
+                    logger.error("Failed to persist Apple credential: \(keychainError.localizedDescription, privacy: .public), osStatus=\(keychainError.osStatus, privacy: .public)")
+                } else {
+                    logger.error("Failed to persist Apple credential: \(error.localizedDescription, privacy: .public)")
+                }
                 inFlightController = nil
                 onFailure("SIGN-IN COULD NOT BE SAVED. TRY AGAIN.")
             }
