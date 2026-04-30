@@ -762,6 +762,9 @@ private struct HeroTunerCard: View {
         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(displayReason)")
+        .onChange(of: episode.id) { _, _ in
+            showsFeedbackActions = false
+        }
         .onDisappear { feedbackClearTask?.cancel() }
     }
 
@@ -828,8 +831,9 @@ private struct HeroTunerCard: View {
             TunerLabel(text: title, color: color, size: 9)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .frame(minHeight: 34)
+                .frame(minHeight: 44)
                 .overlay(Rectangle().stroke(color.opacity(0.65), lineWidth: 1))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

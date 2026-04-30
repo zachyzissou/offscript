@@ -294,6 +294,11 @@ struct EpisodeCompactCard: View {
 
             if showsActions {
                 HStack(spacing: 8) {
+                    if rank != nil {
+                        Color.clear.frame(width: 28)
+                    }
+                    Color.clear.frame(width: 52)
+
                     tunerInlineAction(
                         title: episode.isQueued ? "✓ QUEUED" : "+ QUEUE",
                         color: episode.isQueued ? .offscriptSoftPaper : .offscriptPaperWhite,
@@ -311,8 +316,8 @@ struct EpisodeCompactCard: View {
                         togglePlayedState()
                         withAnimation(.easeInOut(duration: 0.16)) { showsActions = false }
                     }
+                    Spacer(minLength: 0)
                 }
-                .padding(.leading, rank == nil ? 64 : 92)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -356,8 +361,9 @@ struct EpisodeCompactCard: View {
             TunerLabel(text: title, color: color.opacity(disabled ? 0.55 : 1), size: 9)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .frame(minHeight: 34)
+                .frame(minHeight: 44)
                 .overlay(Rectangle().stroke(color.opacity(disabled ? 0.35 : 0.7), lineWidth: 1))
+                .contentShape(Rectangle())
         }
         .disabled(disabled)
         .buttonStyle(.plain)

@@ -350,7 +350,7 @@ private struct QueueItemRow: View {
                 .foregroundStyle(color.opacity(disabled ? 0.35 : 1))
                 .frame(width: 24, height: 28)
                 .overlay(Rectangle().stroke(Color.offscriptHairline.opacity(disabled ? 0.35 : 1), lineWidth: 1))
-                .frame(width: 36, height: 44)
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .disabled(disabled)
