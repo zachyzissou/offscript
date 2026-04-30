@@ -8,6 +8,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Large-library UI smoke coverage now seeds a deterministic 258-show library** and launches directly into Library, giving the 250+ show scrolling case a repeatable simulator test instead of a manual-only complaint.
 - **Debug large-library seeding now resets stale simulator data when an explicit library size is requested**, so visual audits and UI tests are not polluted by previous sample stores.
 - **Large-library UI coverage now verifies alphabet directory jumps** by tapping the `Z` key in a 258-show Library and asserting the list scrolls to the `Z` section.
+- **Home recommendations now have a dedicated “More From Shows You Chose” lane** so explicit like/more-like-this show intent is not mislabeled as passive completion affinity.
 
 ### Changed — Tuner UI conformance
 - **Shared Tuner labels, tags, and readouts now scale through Dynamic Type metrics** while preserving the mono instrument-panel vocabulary.
