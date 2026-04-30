@@ -31,6 +31,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ### Changed — recommendation quality
 - **Explicit “more like this” and like signals now carry substantially more weight than passive completions** so recommendations follow intentional user feedback instead of feeling like generic completion-based ranking.
+- **Episode Detail feedback now uses the same retune notification path as Home cards** so likes and `NOT FOR ME` taps refresh recommendations consistently across entry points.
 - **Discovery genre matches now stay low-confidence until backed by local evidence** such as latest-episode tag overlap, topic matches, show affinity, or feed freshness, and genre-only WHY copy no longer claims local evidence.
 
 ### Fixed — onboarding, import, and sync UI honesty

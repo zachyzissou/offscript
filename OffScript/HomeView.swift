@@ -832,17 +832,13 @@ private struct HeroTunerCard: View {
     }
 
     private func register(_ action: PreferenceSignal.Action) {
-        let signal = PreferenceSignal(action: action, episode: episode)
-        modelContext.insert(signal)
         do {
-            try modelContext.save()
+            try PreferenceFeedbackService.register(action, for: episode, in: modelContext)
             withAnimation(.easeInOut(duration: 0.18)) {
                 feedbackStatusMessage = statusMessage(for: action)
             }
             scheduleFeedbackStatusClear()
-            NotificationCenter.default.post(name: .offscriptRecommendationFeedbackChanged, object: nil)
         } catch {
-            modelContext.delete(signal)
             homeLogger.error("Failed to save preference: \(error.localizedDescription, privacy: .public)")
             withAnimation(.easeInOut(duration: 0.18)) {
                 feedbackStatusMessage = "COULDN'T SAVE SIGNAL"
