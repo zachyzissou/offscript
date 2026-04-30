@@ -227,6 +227,7 @@ struct OffScriptTests {
         #expect(podcasts.count == 12)
         #expect(podcasts.contains(where: { $0.syncStatus == "syncing" }) == false)
         #expect(podcasts.allSatisfy { $0.isSubscribed } == true)
+        #expect(podcasts.allSatisfy { $0.syncErrorMessage == nil } == true)
         #expect(podcasts.allSatisfy { $0.nextRetryAt == nil } == true)
     }
 

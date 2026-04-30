@@ -233,6 +233,16 @@ struct FeedSyncOptions {
     }
 }
 
+enum FeedSyncRetryPolicy {
+    static func delay(afterFailureCount failureCount: Int) -> TimeInterval {
+        min(pow(2.0, Double(failureCount)) * 60, 60 * 60 * 6)
+    }
+
+    static func nextRetryDate(afterFailureCount failureCount: Int, from date: Date = Date()) -> Date {
+        date.addingTimeInterval(delay(afterFailureCount: failureCount))
+    }
+}
+
 final class FeedSyncService {
     private let topicExtractionService = TopicExtractionService()
 

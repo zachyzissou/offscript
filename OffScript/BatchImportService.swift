@@ -186,10 +186,10 @@ final class BatchImportService: ObservableObject {
             try Task.checkCancellation()
             return (entry.feedURL, .added)
         } catch is CancellationError {
-            await markStagedSubscriptionCancelled(entry: entry, in: modelContext)
+            markStagedSubscriptionCancelled(entry: entry, in: modelContext)
             return (entry.feedURL, .cancelled)
         } catch {
-            await markStagedSubscriptionFailed(entry: entry, error: error, in: modelContext)
+            markStagedSubscriptionFailed(entry: entry, error: error, in: modelContext)
             batchImportLogger.error("OPML row failed for \(entry.feedURL.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return (entry.feedURL, .failed)
         }
@@ -291,7 +291,7 @@ final class BatchImportService: ObservableObject {
             podcast.syncStatus = "failed"
             podcast.syncFailureCount = failureCount
             podcast.syncErrorMessage = error.localizedDescription
-            podcast.nextRetryAt = Date().addingTimeInterval(min(pow(2.0, Double(failureCount)) * 60, 60 * 60 * 6))
+            podcast.nextRetryAt = FeedSyncRetryPolicy.nextRetryDate(afterFailureCount: failureCount)
             try modelContext.save()
         } catch {
             batchImportLogger.error("Failed to mark staged OPML row failed: \(error.localizedDescription, privacy: .public)")
@@ -305,7 +305,7 @@ final class BatchImportService: ObservableObject {
         do {
             guard let podcast = try stagedPodcast(for: entry, in: modelContext) else { return }
             podcast.syncStatus = "idle"
-            podcast.syncErrorMessage = "Import cancelled."
+            podcast.syncErrorMessage = nil
             podcast.nextRetryAt = nil
             try modelContext.save()
         } catch {
@@ -317,8 +317,19 @@ final class BatchImportService: ObservableObject {
         for entries: [OPMLFeedEntry],
         in modelContext: ModelContext
     ) {
-        for entry in entries {
-            markStagedSubscriptionCancelled(entry: entry, in: modelContext)
+        do {
+            let feedKeys = Set(entries.map { $0.feedURL.normalizedFeedKey })
+            guard !feedKeys.isEmpty else { return }
+            let podcasts = try modelContext.fetch(FetchDescriptor<Podcast>())
+                .filter { feedKeys.contains($0.feedURL.normalizedFeedKey) }
+            for podcast in podcasts {
+                podcast.syncStatus = "idle"
+                podcast.syncErrorMessage = nil
+                podcast.nextRetryAt = nil
+            }
+            try modelContext.save()
+        } catch {
+            batchImportLogger.error("Failed to mark staged OPML rows cancelled: \(error.localizedDescription, privacy: .public)")
         }
     }
 

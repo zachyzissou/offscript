@@ -65,8 +65,7 @@ enum BackgroundFeedRefresh {
                 let failureCount = podcast.syncFailureCount + 1
                 podcast.syncFailureCount = failureCount
                 podcast.syncErrorMessage = error.localizedDescription
-                let retryDelay = min(pow(2.0, Double(failureCount)) * 60, 60 * 60 * 6)
-                podcast.nextRetryAt = Date().addingTimeInterval(retryDelay)
+                podcast.nextRetryAt = FeedSyncRetryPolicy.nextRetryDate(afterFailureCount: failureCount)
                 context.saveOrLog("BackgroundFeedRefresh")
                 logger.warning("Background refresh: failed to sync \(podcast.title, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
