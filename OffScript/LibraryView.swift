@@ -1617,55 +1617,13 @@ struct PodcastDetailView: View {
         }
 
         do {
-            let podcastID = podcast.id
-            let downloadedRawValue = Episode.DownloadState.downloaded.rawValue
-            let baseSort = [SortDescriptor(\Episode.pubDate, order: .reverse)]
-            let descriptor: FetchDescriptor<Episode>
-
-            switch filter {
-            case .all:
-                descriptor = FetchDescriptor<Episode>(
-                    predicate: #Predicate<Episode> { $0.podcast.id == podcastID },
-                    sortBy: baseSort
-                )
-            case .unplayed:
-                descriptor = FetchDescriptor<Episode>(
-                    predicate: #Predicate<Episode> { $0.podcast.id == podcastID && $0.isPlayed == false },
-                    sortBy: baseSort
-                )
-            case .inProgress:
-                descriptor = FetchDescriptor<Episode>(
-                    predicate: #Predicate<Episode> { $0.podcast.id == podcastID && $0.playedPosition > 0 && $0.isPlayed == false },
-                    sortBy: baseSort
-                )
-            case .downloaded:
-                descriptor = FetchDescriptor<Episode>(
-                    predicate: #Predicate<Episode> { $0.podcast.id == podcastID && $0.downloadStateRawValue == downloadedRawValue },
-                    sortBy: baseSort
-                )
-            }
-
             let query = episodeSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-
-            if query.isEmpty {
-                matchingEpisodeCount = (try? modelContext.fetchCount(descriptor)) ?? 0
-                var pageDescriptor = descriptor
-                pageDescriptor.fetchLimit = visibleLimit + 1
-                let fetched = try modelContext.fetch(pageDescriptor)
-                episodes = Array(fetched.prefix(visibleLimit))
-                hasMoreEpisodes = fetched.count > visibleLimit
-            } else {
-                let searchResult = try searchEpisodes(
-                    descriptor: descriptor,
-                    query: query,
-                    targetMatchCount: visibleLimit + 1
-                )
-                episodes = Array(searchResult.matches.prefix(visibleLimit))
-                hasMoreEpisodes = searchResult.matches.count > visibleLimit || !searchResult.exhaustedResults
-                matchingEpisodeCount = searchResult.exhaustedResults
-                    ? searchResult.matches.count
-                    : max(searchResult.matches.count, visibleLimit + 1)
-            }
+            var descriptor = episodeFetchDescriptor(searchQuery: query)
+            matchingEpisodeCount = (try? modelContext.fetchCount(descriptor)) ?? 0
+            descriptor.fetchLimit = visibleLimit + 1
+            let fetched = try modelContext.fetch(descriptor)
+            episodes = Array(fetched.prefix(visibleLimit))
+            hasMoreEpisodes = fetched.count > visibleLimit
             loadError = nil
         } catch {
             episodes = []
@@ -1676,6 +1634,60 @@ struct PodcastDetailView: View {
         }
     }
 
+    private func episodeFetchDescriptor(searchQuery query: String) -> FetchDescriptor<Episode> {
+        let podcastID = podcast.id
+        let downloadedRawValue = Episode.DownloadState.downloaded.rawValue
+        let baseSort = [SortDescriptor(\Episode.pubDate, order: .reverse)]
+        let hasQuery = !query.isEmpty
+
+        switch filter {
+        case .all:
+            return FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> {
+                    $0.podcast.id == podcastID
+                        && (!hasQuery
+                            || $0.title.localizedStandardContains(query)
+                            || ($0.summary?.localizedStandardContains(query) ?? false))
+                },
+                sortBy: baseSort
+            )
+        case .unplayed:
+            return FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> {
+                    $0.podcast.id == podcastID
+                        && $0.isPlayed == false
+                        && (!hasQuery
+                            || $0.title.localizedStandardContains(query)
+                            || ($0.summary?.localizedStandardContains(query) ?? false))
+                },
+                sortBy: baseSort
+            )
+        case .inProgress:
+            return FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> {
+                    $0.podcast.id == podcastID
+                        && $0.playedPosition > 0
+                        && $0.isPlayed == false
+                        && (!hasQuery
+                            || $0.title.localizedStandardContains(query)
+                            || ($0.summary?.localizedStandardContains(query) ?? false))
+                },
+                sortBy: baseSort
+            )
+        case .downloaded:
+            return FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> {
+                    $0.podcast.id == podcastID
+                        && $0.downloadStateRawValue == downloadedRawValue
+                        && (!hasQuery
+                            || $0.title.localizedStandardContains(query)
+                            || ($0.summary?.localizedStandardContains(query) ?? false))
+                },
+                sortBy: baseSort
+            )
+        }
+    }
+
     private func scheduleEpisodeSearchLoad() {
         searchLoadTask?.cancel()
         searchLoadTask = Task { @MainActor in
@@ -1683,48 +1695,6 @@ struct PodcastDetailView: View {
             guard !Task.isCancelled else { return }
             loadEpisodes(resetLimit: true)
         }
-    }
-
-    private func searchEpisodes(
-        descriptor: FetchDescriptor<Episode>,
-        query: String,
-        targetMatchCount: Int
-    ) throws -> (matches: [Episode], exhaustedResults: Bool) {
-        let batchSize = max(targetMatchCount * 4, 200)
-        var offset = 0
-        var matches: [Episode] = []
-        var exhaustedResults = false
-
-        while matches.count < targetMatchCount {
-            var batchDescriptor = descriptor
-            batchDescriptor.fetchOffset = offset
-            batchDescriptor.fetchLimit = batchSize
-
-            let batch = try modelContext.fetch(batchDescriptor)
-            if batch.isEmpty {
-                exhaustedResults = true
-                break
-            }
-
-            for episode in batch {
-                if episode.title.lowercased().contains(query)
-                    || (episode.summary?.strippingHTML.lowercased().contains(query) ?? false) {
-                    matches.append(episode)
-                    if matches.count >= targetMatchCount {
-                        break
-                    }
-                }
-            }
-
-            if batch.count < batchSize {
-                exhaustedResults = true
-                break
-            }
-
-            offset += batch.count
-        }
-
-        return (matches, exhaustedResults)
     }
 
     private var tunerEpisodeSearchField: some View {
