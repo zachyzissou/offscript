@@ -1112,7 +1112,8 @@ private struct TunerLibraryCard: View {
                 HStack(alignment: .top, spacing: 10) {
                     OffScriptArtworkView(
                         url: episode.artworkURL ?? episode.podcast.artworkURL,
-                        cornerRadius: 3
+                        cornerRadius: 3,
+                        size: 64
                     )
                     .frame(width: 64, height: 64)
                     .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
@@ -1190,7 +1191,7 @@ private struct PodcastShelfRow: View {
                 .frame(width: 28, alignment: .leading)
 
             if !isCompact {
-                OffScriptArtworkView(url: podcast.artworkURL, cornerRadius: 3)
+                OffScriptArtworkView(url: podcast.artworkURL, cornerRadius: 3, size: 56)
                     .frame(width: 56, height: 56)
                     .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
             }
@@ -1502,7 +1503,7 @@ private struct PodcastDetailTunerHeader: View {
             }
 
             HStack(alignment: .top, spacing: 14) {
-                OffScriptArtworkView(url: podcast.artworkURL, cornerRadius: 3)
+                OffScriptArtworkView(url: podcast.artworkURL, cornerRadius: 3, size: 96)
                     .frame(width: 96, height: 96)
                     .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
 
