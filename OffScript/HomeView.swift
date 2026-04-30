@@ -23,6 +23,7 @@ struct HomeView: View {
     @State private var errorMessage: String?
     @State private var isLoading = true
     @State private var isLoadingDiscovery = false
+    @State private var isRetuning = false
     @State private var loadGeneration = 0
     @State private var feedbackRetuneTask: Task<Void, Never>?
     let onOpenSettings: () -> Void
@@ -32,7 +33,13 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                HomeTunerHeader(onOpenSettings: onOpenSettings)
+                HomeTunerHeader(
+                    isRetuning: isRetuning,
+                    onRetune: {
+                        Task { await loadSections(manual: true) }
+                    },
+                    onOpenSettings: onOpenSettings
+                )
 
                 if let errorMessage {
                     HomeErrorRow(message: errorMessage)
@@ -97,7 +104,6 @@ struct HomeView: View {
         // saw in the screenshot. The settings affordance is rendered inline
         // in HomeTunerHeader instead, where we have full control.
         .task(id: recommendationModeRaw) { await loadSections() }
-        .refreshable { await loadSections() }
         .onReceive(NotificationCenter.default.publisher(for: .offscriptRecommendationFeedbackChanged)) { _ in
             feedbackRetuneTask?.cancel()
             feedbackRetuneTask = Task {
@@ -114,10 +120,19 @@ struct HomeView: View {
     }
 
     @MainActor
-    private func loadSections() async {
+    private func loadSections(manual: Bool = false) async {
+        if manual {
+            guard !isRetuning else { return }
+            isRetuning = true
+        }
         loadGeneration += 1
         let generation = loadGeneration
         isLoadingDiscovery = false
+        defer {
+            if manual, generation == loadGeneration {
+                isRetuning = false
+            }
+        }
         do {
             let mode = AppSettings.recommendationMode
             let loaded = try recommendationService.homeSections(context: modelContext, mode: mode)
@@ -180,6 +195,8 @@ struct HomeView: View {
 // MARK: - Header
 
 private struct HomeTunerHeader: View {
+    let isRetuning: Bool
+    let onRetune: () -> Void
     let onOpenSettings: () -> Void
 
     private var dayString: String {
@@ -209,6 +226,19 @@ private struct HomeTunerHeader: View {
                     .foregroundStyle(Color.offscriptPaperWhite)
 
                 Spacer()
+
+                Button(action: onRetune) {
+                    Image(systemName: isRetuning ? "waveform.path" : "arrow.clockwise")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(isRetuning ? Color.offscriptFnInfo : Color.offscriptSignalYellow)
+                        .frame(width: 36, height: 30)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isRetuning)
+                .accessibilityLabel(isRetuning ? "Retuning recommendations" : "Retune recommendations")
 
                 // Tuner config button — sharp hairline rectangle, signal-yellow
                 // glyph. Replaces the toolbar gear which iOS 26 was wrapping in

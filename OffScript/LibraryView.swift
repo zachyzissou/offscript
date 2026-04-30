@@ -466,6 +466,7 @@ struct LibraryView: View {
     @State private var selectedPodcastID: UUID?
     @State private var cachedDirectorySnapshot = LibraryDirectorySnapshot.empty
     @State private var didBuildDirectorySnapshot = false
+    @State private var isSyncingLibrary = false
 
     private var subscribedPodcasts: [Podcast] {
         podcasts
@@ -525,6 +526,10 @@ struct LibraryView: View {
                         unplayedCount: unplayedEpisodeCount,
                         inProgressCount: inProgressEpisodeCount,
                         onOpenImport: { isImportPresented = true },
+                        isSyncing: isSyncingLibrary,
+                        onSync: {
+                            Task { await syncSubscriptions() }
+                        },
                         onOpenSettings: onOpenSettings
                     )
 
@@ -625,7 +630,6 @@ struct LibraryView: View {
             fullCountLoadTask?.cancel()
             directoryQueryTask?.cancel()
         }
-        .refreshable { await syncSubscriptions() }
         // Settings + Import buttons render inline in LibraryTunerHeader, not
         // as toolbar items — iOS 26 wraps toolbar buttons in glass chrome.
         .sheet(isPresented: $isImportPresented) {
@@ -950,6 +954,9 @@ struct LibraryView: View {
 
     @MainActor
     private func syncSubscriptions() async {
+        guard !isSyncingLibrary else { return }
+        isSyncingLibrary = true
+        defer { isSyncingLibrary = false }
         for podcast in subscribedPodcasts {
             do {
                 try await syncService.sync(podcast: podcast, in: modelContext)
@@ -969,6 +976,8 @@ private struct LibraryTunerHeader: View {
     let unplayedCount: Int
     let inProgressCount: Int
     let onOpenImport: () -> Void
+    let isSyncing: Bool
+    let onSync: () -> Void
     let onOpenSettings: () -> Void
 
     var body: some View {
@@ -1009,6 +1018,19 @@ private struct LibraryTunerHeader: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Import podcasts")
+
+                Button(action: onSync) {
+                    Image(systemName: isSyncing ? "waveform.path" : "arrow.clockwise")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(isSyncing ? Color.offscriptFnInfo : Color.offscriptSignalYellow)
+                        .frame(width: 36, height: 30)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isSyncing)
+                .accessibilityLabel(isSyncing ? "Syncing library" : "Sync library")
 
                 Button(action: onOpenSettings) {
                     Image(systemName: "slider.horizontal.3")

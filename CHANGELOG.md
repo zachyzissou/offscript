@@ -25,6 +25,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Root page headers sit tighter to the safe area** to reclaim top-of-app space while keeping the iOS status/Dynamic Island safe region intact.
 - **Large Library sections now render as flattened lazy headers, rows, and separators** so a 250+ show directory does not build an entire oversized letter section as one SwiftUI child.
 - **The Library directory now renders from value snapshots instead of live SwiftData podcast models** so 250+ show scrolling does less model work and only resolves a show when a row is opened.
+- **Home retune and Library sync now use explicit Tuner header keys instead of native pull-to-refresh chrome**, removing another app-controlled Liquid Glass surface while keeping refresh actions discoverable.
 
 ### Changed — recommendation quality
 - **Explicit “more like this” and like signals now carry substantially more weight than passive completions** so recommendations follow intentional user feedback instead of feeling like generic completion-based ranking.
