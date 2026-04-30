@@ -1737,6 +1737,49 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func libraryDirectoryCountLoaderCombinesUnplayedAndInProgressCounts() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let kept = Podcast(title: "Kept", feedURL: URL(string: "https://example.com/kept-combined.xml")!)
+        let second = Podcast(title: "Second", feedURL: URL(string: "https://example.com/second-combined.xml")!)
+        let unsubscribed = Podcast(title: "Ignored", feedURL: URL(string: "https://example.com/ignored-combined.xml")!)
+        unsubscribed.isSubscribed = false
+
+        context.insert(kept)
+        context.insert(second)
+        context.insert(unsubscribed)
+
+        let keptFresh = Episode(title: "Kept Fresh", pubDate: .now, audioURL: URL(string: "https://example.com/kept-combined-fresh.mp3")!, podcast: kept)
+        let keptStarted = Episode(title: "Kept Started", pubDate: .now, audioURL: URL(string: "https://example.com/kept-combined-started.mp3")!, podcast: kept)
+        keptStarted.playedPosition = 120
+        let keptPlayed = Episode(title: "Kept Played", pubDate: .now, audioURL: URL(string: "https://example.com/kept-combined-played.mp3")!, podcast: kept)
+        keptPlayed.isPlayed = true
+        let secondStarted = Episode(title: "Second Started", pubDate: .now, audioURL: URL(string: "https://example.com/second-combined-started.mp3")!, podcast: second)
+        secondStarted.playedPosition = 90
+        let ignoredStarted = Episode(title: "Ignored Started", pubDate: .now, audioURL: URL(string: "https://example.com/ignored-combined-started.mp3")!, podcast: unsubscribed)
+        ignoredStarted.playedPosition = 60
+
+        [keptFresh, keptStarted, keptPlayed, secondStarted, ignoredStarted].forEach(context.insert)
+        try context.save()
+
+        let counts = try await LibraryDirectoryCountLoader.countsByPodcastID(
+            podcastIDs: [kept.id, second.id, unsubscribed.id],
+            needsUnplayed: true,
+            needsInProgress: true,
+            context: context
+        )
+
+        #expect(counts.unplayedByPodcastID[kept.id] == 2)
+        #expect(counts.unplayedByPodcastID[second.id] == 1)
+        #expect(counts.unplayedByPodcastID[unsubscribed.id] == nil)
+        #expect(counts.inProgressByPodcastID[kept.id] == 1)
+        #expect(counts.inProgressByPodcastID[second.id] == 1)
+        #expect(counts.inProgressByPodcastID[unsubscribed.id] == nil)
+    }
+
+    @Test
+    @MainActor
     func libraryDirectoryCountLoaderReturnsEmptyCountsForEmptyPodcastIDs() async throws {
         let container = try makeContainer()
         let context = container.mainContext
@@ -1756,6 +1799,26 @@ struct OffScriptTests {
 
         #expect(unplayedCounts.isEmpty)
         #expect(inProgressCounts.isEmpty)
+    }
+
+    @Test
+    @MainActor
+    func libraryDirectoryCombinedCountLoaderReturnsEmptyCountsForEmptyPodcastIDs() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let podcast = Podcast(title: "Ignored", feedURL: URL(string: "https://example.com/ignored-combined-empty.xml")!)
+        context.insert(podcast)
+        context.insert(Episode(title: "Ignored Fresh", pubDate: .now, audioURL: URL(string: "https://example.com/ignored-combined-empty.mp3")!, podcast: podcast))
+        try context.save()
+
+        let counts = try await LibraryDirectoryCountLoader.countsByPodcastID(
+            podcastIDs: [],
+            needsUnplayed: true,
+            needsInProgress: true,
+            context: context
+        )
+
+        #expect(counts == .empty)
     }
 
     @Test
