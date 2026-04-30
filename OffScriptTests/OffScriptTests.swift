@@ -1297,6 +1297,23 @@ struct OffScriptTests {
     }
 
     @Test
+    @MainActor
+    func settingsCountServiceCountsSubscribedPodcastsWithoutFetchingRows() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let first = Podcast(title: "First", feedURL: URL(string: "https://example.com/first.xml")!)
+        let second = Podcast(title: "Second", feedURL: URL(string: "https://example.com/second.xml")!)
+        let ignored = Podcast(title: "Ignored", feedURL: URL(string: "https://example.com/ignored.xml")!)
+        ignored.isSubscribed = false
+        context.insert(first)
+        context.insert(second)
+        context.insert(ignored)
+        try context.save()
+
+        #expect(SettingsCountService.subscribedPodcastCount(in: context) == 2)
+    }
+
+    @Test
     func libraryDirectoryOrganizerFiltersAndSortsLargeLibraries() {
         let stale = LibraryDirectoryPodcast(
             id: UUID(),
