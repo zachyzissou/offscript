@@ -197,14 +197,11 @@ nonisolated enum LibraryDirectoryOrganizer {
     }
 
     static func countsByPodcastID(for episodes: [Episode], limitedTo podcastIDs: Set<UUID>) -> [UUID: Int] {
-        Dictionary(
-            episodes.compactMap { episode in
-                let podcastID = episode.podcast.id
-                guard podcastIDs.contains(podcastID) else { return nil }
-                return (podcastID, 1)
-            },
-            uniquingKeysWith: +
-        )
+        episodes.reduce(into: [UUID: Int]()) { counts, episode in
+            let podcastID = episode.podcast.id
+            guard podcastIDs.contains(podcastID) else { return }
+            counts[podcastID, default: 0] += 1
+        }
     }
 
     private static func titleSort(_ lhs: Podcast, _ rhs: Podcast) -> Bool {
@@ -629,10 +626,12 @@ struct LibraryView: View {
                     }
                 )
                 let unplayedEpisodes = try modelContext.fetch(unplayedDescriptor)
+                await Task.yield()
                 unplayedCounts = LibraryDirectoryOrganizer.countsByPodcastID(
                     for: unplayedEpisodes,
                     limitedTo: podcastIDSet
                 )
+                await Task.yield()
             }
 
             guard !Task.isCancelled else {
@@ -647,10 +646,12 @@ struct LibraryView: View {
                     }
                 )
                 let inProgressEpisodes = try modelContext.fetch(inProgressDescriptor)
+                await Task.yield()
                 inProgressCounts = LibraryDirectoryOrganizer.countsByPodcastID(
                     for: inProgressEpisodes,
                     limitedTo: podcastIDSet
                 )
+                await Task.yield()
             }
 
             guard !Task.isCancelled else {
