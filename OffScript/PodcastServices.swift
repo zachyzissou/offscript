@@ -250,6 +250,31 @@ enum FeedSyncRetryPolicy {
 final class FeedSyncService {
     private let topicExtractionService = TopicExtractionService()
 
+    struct PodcastSyncResult {
+        let podcast: Podcast
+        let error: Error?
+
+        var isSuccess: Bool {
+            error == nil
+        }
+    }
+
+    private struct FeedSyncRequest: Sendable {
+        let feedURL: URL
+        let eTag: String?
+        let lastModified: String?
+    }
+
+    private struct FeedSyncFetchOutcome: Sendable {
+        let feedURL: URL
+        let result: FeedSyncFetchResult
+    }
+
+    private enum FeedSyncFetchResult: Sendable {
+        case success(FeedFetchResult)
+        case failure(String)
+    }
+
     @MainActor
     func importPodcast(from result: PodcastSearchResult, into context: ModelContext, episodeLimit: Int? = nil) async throws -> Podcast {
         let podcast = try upsertPodcast(from: result, into: context)
@@ -420,6 +445,100 @@ final class FeedSyncService {
             try? context.save()
             throw error
         }
+    }
+
+    @MainActor
+    func sync(podcasts: [Podcast], in context: ModelContext, options: FeedSyncOptions) async -> [PodcastSyncResult] {
+        guard !podcasts.isEmpty else { return [] }
+
+        let podcastByFeedURL = Dictionary(
+            podcasts.map { ($0.feedURL, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let requests = podcasts.map {
+            $0.syncStatus = "syncing"
+            $0.lastSyncAttemptAt = .now
+            $0.syncErrorMessage = nil
+            return FeedSyncRequest(
+                feedURL: $0.feedURL,
+                eTag: $0.feedETag,
+                lastModified: $0.feedLastModified
+            )
+        }
+        context.saveOrLog("FeedSyncService.batchSyncStarted")
+
+        var syncResults: [PodcastSyncResult] = []
+        await withTaskGroup(of: FeedSyncFetchOutcome.self) { group in
+            let maxConcurrentFetches = 3
+            var iterator = requests.makeIterator()
+            var inFlight = 0
+
+            func addFetch(_ request: FeedSyncRequest) {
+                inFlight += 1
+                group.addTask {
+                    do {
+                        let fetched = try await Self.fetchParsedFeed(
+                            feedURL: request.feedURL,
+                            eTag: request.eTag,
+                            lastModified: request.lastModified
+                        )
+                        return FeedSyncFetchOutcome(feedURL: request.feedURL, result: .success(fetched))
+                    } catch {
+                        return FeedSyncFetchOutcome(feedURL: request.feedURL, result: .failure(error.localizedDescription))
+                    }
+                }
+            }
+
+            while inFlight < maxConcurrentFetches, let request = iterator.next() {
+                addFetch(request)
+            }
+
+            while let outcome = await group.next() {
+                inFlight -= 1
+                guard let podcast = podcastByFeedURL[outcome.feedURL] else { continue }
+                switch outcome.result {
+                case .success(.notModified):
+                    podcast.lastSyncAt = Date()
+                    podcast.syncStatus = "idle"
+                    podcast.syncFailureCount = 0
+                    podcast.nextRetryAt = nil
+                    do {
+                        try context.save()
+                        syncResults.append(PodcastSyncResult(podcast: podcast, error: nil))
+                    } catch {
+                        context.rollback()
+                        podcast.syncStatus = "failed"
+                        podcast.syncErrorMessage = error.localizedDescription
+                        context.saveOrLog("FeedSyncService.batchNotModifiedSaveFailure")
+                        syncResults.append(PodcastSyncResult(podcast: podcast, error: error))
+                    }
+                case let .success(.feed(parsed, httpResponse)):
+                    do {
+                        try await apply(parsed: parsed, httpResponse: httpResponse, to: podcast, in: context, options: options)
+                        syncResults.append(PodcastSyncResult(podcast: podcast, error: nil))
+                    } catch {
+                        podcast.syncStatus = "failed"
+                        podcast.syncErrorMessage = error.localizedDescription
+                        context.saveOrLog("FeedSyncService.batchApplyFailure")
+                        syncResults.append(PodcastSyncResult(podcast: podcast, error: error))
+                    }
+                case let .failure(errorMessage):
+                    podcast.syncStatus = "failed"
+                    podcast.syncErrorMessage = errorMessage
+                    context.saveOrLog("FeedSyncService.batchFetchFailure")
+                    syncResults.append(PodcastSyncResult(
+                        podcast: podcast,
+                        error: PodcastImportError.feedFetchFailed(errorMessage)
+                    ))
+                }
+
+                if let nextRequest = iterator.next() {
+                    addFetch(nextRequest)
+                }
+            }
+        }
+
+        return syncResults
     }
 
     @MainActor
@@ -598,7 +717,7 @@ final class FeedSyncService {
         ))
     }
 
-    private enum FeedFetchResult {
+    private enum FeedFetchResult: Sendable {
         case notModified(HTTPURLResponse)
         case feed(ParsedFeed, HTTPURLResponse)
     }
@@ -797,7 +916,7 @@ nonisolated private struct ItunesPodcast: Decodable {
     }
 }
 
-struct ParsedFeed {
+struct ParsedFeed: Sendable {
     var title: String?
     var author: String?
     var summary: String?
@@ -807,7 +926,7 @@ struct ParsedFeed {
     var items: [ParsedFeedItem] = []
 }
 
-struct ParsedFeedItem {
+struct ParsedFeedItem: Sendable {
     var guid: String?
     var title: String
     var summary: String?
