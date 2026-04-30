@@ -172,7 +172,10 @@ struct ContentView: View {
             if loadedTabs.contains(.home) {
                 tabPane(.home) {
                     NavigationStack {
-                        HomeView(onOpenSettings: { isSettingsPresented = true })
+                        HomeView(
+                            isActive: selectedTab == .home,
+                            onOpenSettings: { isSettingsPresented = true }
+                        )
                     }
                 }
             }
@@ -180,7 +183,10 @@ struct ContentView: View {
             if loadedTabs.contains(.library) {
                 tabPane(.library) {
                     NavigationStack {
-                        LibraryView(onOpenSettings: { isSettingsPresented = true })
+                        LibraryView(
+                            isActive: selectedTab == .library,
+                            onOpenSettings: { isSettingsPresented = true }
+                        )
                     }
                 }
             }

@@ -81,6 +81,18 @@ final class OffScriptUITests: XCTestCase {
     }
 
     @MainActor
+    func testLargeLibrarySwitchesFromLibraryToHomeQuickly() throws {
+        let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 258, debugEpisodesPerShow: 3, debugLaunchTab: 1)
+        app.launch()
+
+        XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts["SHOWS · DIRECTORY"].waitForExistence(timeout: 8))
+
+        app.buttons["Home"].tap()
+        XCTAssertTrue(app.screen("HomeScreen").waitForExistence(timeout: 4), "Home did not become visible quickly after leaving a 258-show Library. Hierarchy:\n\(app.debugDescription)")
+    }
+
+    @MainActor
     func testLargeLibraryAlphabetRailJumpsToSelectedLetter() throws {
         let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 258, debugEpisodesPerShow: 1, debugLaunchTab: 1)
         app.launch()

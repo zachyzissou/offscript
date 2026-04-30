@@ -26,73 +26,83 @@ struct HomeView: View {
     @State private var isRetuning = false
     @State private var loadGeneration = 0
     @State private var feedbackRetuneTask: Task<Void, Never>?
+    @State private var loadedRecommendationModeRaw: String?
+    let isActive: Bool
     let onOpenSettings: () -> Void
 
     private let recommendationService = RecommendationService()
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HomeTunerHeader(
-                    isRetuning: isRetuning,
-                    onRetune: {
-                        Task { await loadSections(manual: true) }
-                    },
-                    onOpenSettings: onOpenSettings
-                )
-
-                if let errorMessage {
-                    HomeErrorRow(message: errorMessage)
-                }
-
-                if isLoading {
-                    HomeSkeletonStack()
-                } else if sections.isEmpty {
-                    // Cold start — show curated starter picks instead of a
-                    // dead-end "go search" empty state. Once the user has
-                    // three subscriptions and recommendations have any data
-                    // to work with, `sections` populates and this hides.
-                    HomeStarterRail()
-                } else {
-                    let episodeSections = sections.filter { !$0.isDiscoverySection }
-                    let discoverySections = sections.filter(\.isDiscoverySection)
-                    let leadScoredEpisode = RecommendationService.headlineCandidate(from: episodeSections)
-
-                    if let leadScoredEpisode {
-                        HeroTunerCard(
-                            episode: leadScoredEpisode.episode,
-                            reason: leadScoredEpisode.explanation,
-                            signals: leadScoredEpisode.signalTrace
+        Group {
+            if isActive {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        HomeTunerHeader(
+                            isRetuning: isRetuning,
+                            onRetune: {
+                                Task { await loadSections(manual: true) }
+                            },
+                            onOpenSettings: onOpenSettings
                         )
-                        .padding(.horizontal, OffScriptTheme.pagePadding)
-                        .padding(.bottom, 6)
-                    }
 
-                    let railSections = Self.sections(episodeSections, excluding: leadScoredEpisode?.episode.id)
-                    ForEach(Array(railSections.enumerated()), id: \.element.id) { _, section in
-                        TunerRail(
-                            title: section.title.uppercased(),
-                            episodes: section.episodes,
-                            reasonProvider: { section.explanation(for: $0) },
-                            signalProvider: { section.signalTrace(for: $0) }
-                        )
-                    }
+                        if let errorMessage {
+                            HomeErrorRow(message: errorMessage)
+                        }
 
-                    ForEach(discoverySections) { section in
-                        TunerDiscoveryRail(section: section)
-                    }
+                        if isLoading {
+                            HomeSkeletonStack()
+                        } else if sections.isEmpty {
+                            // Cold start — show curated starter picks instead of a
+                            // dead-end "go search" empty state. Once the user has
+                            // three subscriptions and recommendations have any data
+                            // to work with, `sections` populates and this hides.
+                            HomeStarterRail()
+                        } else {
+                            let episodeSections = sections.filter { !$0.isDiscoverySection }
+                            let discoverySections = sections.filter(\.isDiscoverySection)
+                            let leadScoredEpisode = RecommendationService.headlineCandidate(from: episodeSections)
 
-                    if isLoadingDiscovery {
-                        HomeDiscoveryLoadingStrip()
-                            .padding(.horizontal, OffScriptTheme.pagePadding)
+                            if let leadScoredEpisode {
+                                HeroTunerCard(
+                                    episode: leadScoredEpisode.episode,
+                                    reason: leadScoredEpisode.explanation,
+                                    signals: leadScoredEpisode.signalTrace
+                                )
+                                .padding(.horizontal, OffScriptTheme.pagePadding)
+                                .padding(.bottom, 6)
+                            }
+
+                            let railSections = Self.sections(episodeSections, excluding: leadScoredEpisode?.episode.id)
+                            ForEach(Array(railSections.enumerated()), id: \.element.id) { _, section in
+                                TunerRail(
+                                    title: section.title.uppercased(),
+                                    episodes: section.episodes,
+                                    reasonProvider: { section.explanation(for: $0) },
+                                    signalProvider: { section.signalTrace(for: $0) }
+                                )
+                            }
+
+                            ForEach(discoverySections) { section in
+                                TunerDiscoveryRail(section: section)
+                            }
+
+                            if isLoadingDiscovery {
+                                HomeDiscoveryLoadingStrip()
+                                    .padding(.horizontal, OffScriptTheme.pagePadding)
+                            }
+                        }
                     }
+                    .padding(.top, OffScriptTheme.rootContentTopPadding)
+                    .padding(.bottom, 28)
                 }
+                .accessibilityIdentifier("HomeScreen")
+            } else {
+                Color.offscriptStudioBlack
+                    .ignoresSafeArea()
+                    .accessibilityHidden(true)
             }
-            .padding(.top, OffScriptTheme.rootContentTopPadding)
-            .padding(.bottom, 28)
         }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
-        .accessibilityIdentifier("HomeScreen")
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
@@ -103,8 +113,19 @@ struct HomeView: View {
         // styling and our color tokens — that's the gray-circle chrome we
         // saw in the screenshot. The settings affordance is rendered inline
         // in HomeTunerHeader instead, where we have full control.
-        .task(id: recommendationModeRaw) { await loadSections() }
+        .task(id: "\(recommendationModeRaw)-\(isActive)") {
+            guard isActive else { return }
+            await loadSectionsIfNeeded()
+        }
+        .onChange(of: isActive) { _, active in
+            if active {
+                Task { await loadSectionsIfNeeded() }
+            } else {
+                feedbackRetuneTask?.cancel()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .offscriptRecommendationFeedbackChanged)) { _ in
+            guard isActive else { return }
             feedbackRetuneTask?.cancel()
             feedbackRetuneTask = Task {
                 do {
@@ -117,6 +138,12 @@ struct HomeView: View {
             }
         }
         .onDisappear { feedbackRetuneTask?.cancel() }
+    }
+
+    @MainActor
+    private func loadSectionsIfNeeded() async {
+        guard sections.isEmpty || errorMessage != nil || loadedRecommendationModeRaw != recommendationModeRaw else { return }
+        await loadSections()
     }
 
     @MainActor
@@ -142,6 +169,7 @@ struct HomeView: View {
                 errorMessage = nil
                 isLoading = false
                 isLoadingDiscovery = false
+                loadedRecommendationModeRaw = recommendationModeRaw
             }
             await loadDiscovery(mode: mode, existingSections: loaded, generation: generation)
         } catch {

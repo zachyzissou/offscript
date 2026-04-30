@@ -512,6 +512,7 @@ private extension BatchImportService.Phase {
 struct LibraryView: View {
     @Environment(\.modelContext) private var modelContext
 
+    let isActive: Bool
     let onOpenSettings: () -> Void
 
     private let syncService = FeedSyncService()
@@ -595,8 +596,81 @@ struct LibraryView: View {
     }
 
     var body: some View {
+        Group {
+            if isActive {
+                activeLibraryContent
+            } else {
+                Color.offscriptStudioBlack
+                    .ignoresSafeArea()
+                    .accessibilityHidden(true)
+            }
+        }
+        .background(Color.offscriptStudioBlack.ignoresSafeArea())
+        .accessibilityIdentifier("LibraryScreen")
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .navigationDestination(item: $selectedPodcastID) { podcastID in
+            if let podcast = podcast(withID: podcastID) {
+                PodcastDetailView(podcast: podcast)
+            } else {
+                LibraryDirectoryMissingShowView()
+            }
+        }
+        .task(id: isActive) {
+            guard isActive else { return }
+            activateLibraryTab()
+            loadDirectoryPodcastsIfNeeded()
+            loadLibraryEpisodeSummary()
+        }
+        .onAppear {
+            guard isActive else { return }
+            activateLibraryTab()
+        }
+        .onChange(of: isActive) { _, active in
+            if active {
+                activateLibraryTab()
+            } else {
+                isLibraryTabActive = false
+                cancelDeferredLibraryWork()
+            }
+        }
+        .onChange(of: subscribedPodcastIDs) { _, _ in scheduleLibraryEpisodeSummaryLoad() }
+        .onChange(of: directoryQuery) { _, newValue in scheduleDirectoryQuery(newValue) }
+        .onChange(of: directorySnapshotInputs) { _, _ in rebuildDirectorySnapshot() }
+        .onChange(of: selectedPodcastID) { _, _ in reloadDirectoryAfterSubscriptionChangeIfPossible() }
+        .onChange(of: directoryScope) { _, _ in
+            ensureFullDirectoryCountsIfNeeded()
+        }
+        .onChange(of: directorySort) { _, _ in
+            ensureFullDirectoryCountsIfNeeded()
+        }
+        .onDisappear {
+            isLibraryTabActive = false
+            cancelDeferredLibraryWork()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .offscriptLibrarySubscriptionsChanged)) { _ in
+            shouldReloadDirectoryOnAppear = true
+            if isActive {
+                reloadDirectoryAfterSubscriptionChangeIfPossible()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .offscriptActiveTabChanged)) { note in
+            handleActiveTabChanged(note)
+        }
+        // Settings + Import buttons render inline in LibraryTunerHeader, not
+        // as toolbar items — iOS 26 wraps toolbar buttons in glass chrome.
+        .sheet(isPresented: $isImportPresented) {
+            LibraryImportSheet()
+                .tunerModalSurface()
+        }
+    }
+
+    private var activeLibraryContent: some View {
         let snapshot = didBuildDirectorySnapshot ? cachedDirectorySnapshot : makeDirectorySnapshot()
-        ScrollViewReader { scrollProxy in
+        return ScrollViewReader { scrollProxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     LibraryTunerHeader(
@@ -665,60 +739,15 @@ struct LibraryView: View {
                 .padding(.bottom, 90)
             }
         }
-        .background(Color.offscriptStudioBlack.ignoresSafeArea())
-        .accessibilityIdentifier("LibraryScreen")
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .navigationDestination(item: $selectedPodcastID) { podcastID in
-            if let podcast = podcast(withID: podcastID) {
-                PodcastDetailView(podcast: podcast)
-            } else {
-                LibraryDirectoryMissingShowView()
-            }
-        }
-        .task {
+    }
+
+    @MainActor
+    private func activateLibraryTab() {
+        isLibraryTabActive = true
+        effectiveDirectoryQuery = directoryQuery
+        reloadDirectoryAfterSubscriptionChangeIfPossible()
+        if !shouldReloadDirectoryOnAppear {
             loadDirectoryPodcastsIfNeeded()
-            loadLibraryEpisodeSummary()
-        }
-        .onAppear {
-            isLibraryTabActive = true
-            effectiveDirectoryQuery = directoryQuery
-            reloadDirectoryAfterSubscriptionChangeIfPossible()
-            if !shouldReloadDirectoryOnAppear {
-                loadDirectoryPodcastsIfNeeded()
-            }
-        }
-        .onChange(of: subscribedPodcastIDs) { _, _ in scheduleLibraryEpisodeSummaryLoad() }
-        .onChange(of: directoryQuery) { _, newValue in scheduleDirectoryQuery(newValue) }
-        .onChange(of: directorySnapshotInputs) { _, _ in rebuildDirectorySnapshot() }
-        .onChange(of: selectedPodcastID) { _, _ in reloadDirectoryAfterSubscriptionChangeIfPossible() }
-        .onChange(of: directoryScope) { _, _ in
-            ensureFullDirectoryCountsIfNeeded()
-        }
-        .onChange(of: directorySort) { _, _ in
-            ensureFullDirectoryCountsIfNeeded()
-        }
-        .onDisappear {
-            isLibraryTabActive = false
-            summaryLoadTask?.cancel()
-            fullCountLoadTask?.cancel()
-            directoryQueryTask?.cancel()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .offscriptLibrarySubscriptionsChanged)) { _ in
-            shouldReloadDirectoryOnAppear = true
-            reloadDirectoryAfterSubscriptionChangeIfPossible()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .offscriptActiveTabChanged)) { note in
-            handleActiveTabChanged(note)
-        }
-        // Settings + Import buttons render inline in LibraryTunerHeader, not
-        // as toolbar items — iOS 26 wraps toolbar buttons in glass chrome.
-        .sheet(isPresented: $isImportPresented) {
-            LibraryImportSheet()
-                .tunerModalSurface()
         }
     }
 

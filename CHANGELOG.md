@@ -76,6 +76,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Settings and Library import sheets no longer sit inside empty native navigation hosts**, reducing stray iOS navigation chrome while keeping the authored Tuner headers and inline DONE keys.
 
 ### Changed — Library performance
+- **Inactive Home and Library tabs now stop rendering their heavy page bodies** while preserving tab state, so switching from a 250+ show Library back to Home no longer keeps the hidden directory tree in the transition path.
 - **OPML staging, retry, and cancellation now use scoped feed-URL variant lookups instead of full podcast-table scans for large batches**, while preserving normalized resubscribe behavior for small single-feed edge cases.
 - **Large OPML imports now stage subscribed shows before network sync finishes**, so 250+ show libraries appear in Library immediately while feed hydration continues in the background.
 - **Single-show adds from Home, Search, and pasted feed URLs now save the subscription before feed hydration**, then use a capped bootstrap sync in the background instead of blocking the UI on a full catalog import.
