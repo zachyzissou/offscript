@@ -2196,7 +2196,7 @@ struct PodcastDetailView: View {
     private func episodeFetchDescriptor(searchQuery query: String) -> FetchDescriptor<Episode> {
         let podcastID = podcast.id
         let downloadedRawValue = Episode.DownloadState.downloaded.rawValue
-        let baseSort = [SortDescriptor(\Episode.pubDate, order: .reverse)]
+        let baseSort = [SortDescriptor(\Episode.pubDate, order: .forward)]
         let hasQuery = !query.isEmpty
 
         switch filter {
