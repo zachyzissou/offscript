@@ -267,7 +267,12 @@ final class FeedSyncService {
 
     private struct FeedSyncFetchOutcome: Sendable {
         let feedURL: URL
-        let result: Result<FeedFetchResult, Error>
+        let result: FeedSyncFetchResult
+    }
+
+    private enum FeedSyncFetchResult: Sendable {
+        case success(FeedFetchResult)
+        case failure(String)
     }
 
     @MainActor
@@ -460,11 +465,16 @@ final class FeedSyncService {
                 lastModified: $0.feedLastModified
             )
         }
-        try? context.save()
+        context.saveOrLog("FeedSyncService.batchSyncStarted")
 
         var syncResults: [PodcastSyncResult] = []
         await withTaskGroup(of: FeedSyncFetchOutcome.self) { group in
-            for request in requests {
+            let maxConcurrentFetches = 3
+            var iterator = requests.makeIterator()
+            var inFlight = 0
+
+            func addFetch(_ request: FeedSyncRequest) {
+                inFlight += 1
                 group.addTask {
                     do {
                         let fetched = try await Self.fetchParsedFeed(
@@ -474,12 +484,17 @@ final class FeedSyncService {
                         )
                         return FeedSyncFetchOutcome(feedURL: request.feedURL, result: .success(fetched))
                     } catch {
-                        return FeedSyncFetchOutcome(feedURL: request.feedURL, result: .failure(error))
+                        return FeedSyncFetchOutcome(feedURL: request.feedURL, result: .failure(error.localizedDescription))
                     }
                 }
             }
 
+            while inFlight < maxConcurrentFetches, let request = iterator.next() {
+                addFetch(request)
+            }
+
             while let outcome = await group.next() {
+                inFlight -= 1
                 guard let podcast = podcastByFeedURL[outcome.feedURL] else { continue }
                 switch outcome.result {
                 case .success(.notModified):
@@ -491,6 +506,10 @@ final class FeedSyncService {
                         try context.save()
                         syncResults.append(PodcastSyncResult(podcast: podcast, error: nil))
                     } catch {
+                        context.rollback()
+                        podcast.syncStatus = "failed"
+                        podcast.syncErrorMessage = error.localizedDescription
+                        context.saveOrLog("FeedSyncService.batchNotModifiedSaveFailure")
                         syncResults.append(PodcastSyncResult(podcast: podcast, error: error))
                     }
                 case let .success(.feed(parsed, httpResponse)):
@@ -500,14 +519,21 @@ final class FeedSyncService {
                     } catch {
                         podcast.syncStatus = "failed"
                         podcast.syncErrorMessage = error.localizedDescription
-                        try? context.save()
+                        context.saveOrLog("FeedSyncService.batchApplyFailure")
                         syncResults.append(PodcastSyncResult(podcast: podcast, error: error))
                     }
-                case let .failure(error):
+                case let .failure(errorMessage):
                     podcast.syncStatus = "failed"
-                    podcast.syncErrorMessage = error.localizedDescription
-                    try? context.save()
-                    syncResults.append(PodcastSyncResult(podcast: podcast, error: error))
+                    podcast.syncErrorMessage = errorMessage
+                    context.saveOrLog("FeedSyncService.batchFetchFailure")
+                    syncResults.append(PodcastSyncResult(
+                        podcast: podcast,
+                        error: PodcastImportError.feedFetchFailed(errorMessage)
+                    ))
+                }
+
+                if let nextRequest = iterator.next() {
+                    addFetch(nextRequest)
                 }
             }
         }
@@ -890,7 +916,7 @@ nonisolated private struct ItunesPodcast: Decodable {
     }
 }
 
-struct ParsedFeed {
+struct ParsedFeed: Sendable {
     var title: String?
     var author: String?
     var summary: String?
@@ -900,7 +926,7 @@ struct ParsedFeed {
     var items: [ParsedFeedItem] = []
 }
 
-struct ParsedFeedItem {
+struct ParsedFeedItem: Sendable {
     var guid: String?
     var title: String
     var summary: String?

@@ -449,7 +449,7 @@ final class TelemetryEvent {
     }
 }
 
-struct EpisodeChapter: Identifiable, Hashable, Codable {
+struct EpisodeChapter: Identifiable, Hashable, Codable, Sendable {
     let title: String
     let startTime: TimeInterval
 
@@ -463,7 +463,7 @@ struct EpisodeChapter: Identifiable, Hashable, Codable {
     }
 }
 
-struct EpisodeTranscriptReference: Identifiable, Hashable, Codable {
+struct EpisodeTranscriptReference: Identifiable, Hashable, Codable, Sendable {
     let url: URL
     let mimeType: String?
     let language: String?
