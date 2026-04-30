@@ -12,6 +12,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home recommendations now have a dedicated “More From Shows You Chose” lane** so explicit like/more-like-this show intent is not mislabeled as passive completion affinity.
 
 ### Changed — Tuner UI conformance
+- **Root Home, Library, Queue, and Search tabs now hide native empty navigation bars** so the top-of-app spacing is governed by the iOS safe area plus the 2pt Tuner inset instead of an invisible reserved nav bar.
 - **Shared Tuner labels, tags, and readouts now scale through Dynamic Type metrics** while preserving the mono instrument-panel vocabulary.
 - **The custom Tuner tab shell now keeps visited tab stacks alive** so returning from Library to Home does not rebuild the Home recommendation feed on every tab switch.
 - **Compact Tuner keys now keep their visual size but expose 44pt hit targets** across Library, Player, Queue, Search, downloads, and episode detail actions.

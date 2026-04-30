@@ -76,6 +76,7 @@ struct SearchView: View {
         .accessibilityIdentifier("SearchScreen")
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
