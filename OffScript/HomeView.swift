@@ -105,6 +105,7 @@ struct HomeView: View {
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
@@ -519,7 +520,7 @@ private struct HomeEmptyState: View {
                 .lineSpacing(2)
 
             NavigationLink {
-                SearchView()
+                SearchView(hidesRootNavigationBar: false)
             } label: {
                 HStack {
                     TunerLabel(text: "→ BROWSE SEARCH", color: .offscriptSignalYellow, size: 11)

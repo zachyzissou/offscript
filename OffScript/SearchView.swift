@@ -9,6 +9,7 @@ private let searchLogger = Logger(subsystem: "com.offscript", category: "Search"
 struct SearchView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var podcasts: [Podcast]
+    let hidesRootNavigationBar: Bool
     @AppStorage("offscript.recentSearches") private var recentSearchesStorage = ""
     @State private var query = ""
     @State private var isSearchActive = false
@@ -21,6 +22,10 @@ struct SearchView: View {
     private let searchService = PodcastSearchService()
     private let syncService = FeedSyncService()
     private let starterTopics = ["Tech", "News", "Comedy", "Design", "Business", "Culture"]
+
+    init(hidesRootNavigationBar: Bool = true) {
+        self.hidesRootNavigationBar = hidesRootNavigationBar
+    }
 
     private var subscribedFeedURLs: Set<String> {
         Set(podcasts.filter(\.isSubscribed).map { $0.feedURL.absoluteString })
@@ -76,6 +81,7 @@ struct SearchView: View {
         .accessibilityIdentifier("SearchScreen")
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(hidesRootNavigationBar ? .hidden : .visible, for: .navigationBar)
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
