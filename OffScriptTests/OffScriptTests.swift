@@ -1976,6 +1976,67 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func libraryDirectoryCountStoreBuildsSummaryForSubscribedPodcasts() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let subscribed = Podcast(title: "Summary Actor", feedURL: URL(string: "https://example.com/summary-actor.xml")!)
+        let unsubscribed = Podcast(title: "Summary Ignored", feedURL: URL(string: "https://example.com/summary-ignored.xml")!)
+        unsubscribed.isSubscribed = false
+        context.insert(subscribed)
+        context.insert(unsubscribed)
+
+        let olderFresh = Episode(
+            title: "Older Fresh",
+            pubDate: Date(timeIntervalSince1970: 100),
+            audioURL: URL(string: "https://example.com/older-fresh.mp3")!,
+            podcast: subscribed
+        )
+        let newestFresh = Episode(
+            title: "Newest Fresh",
+            pubDate: Date(timeIntervalSince1970: 300),
+            audioURL: URL(string: "https://example.com/newest-fresh.mp3")!,
+            podcast: subscribed
+        )
+        let inProgress = Episode(
+            title: "In Progress",
+            pubDate: Date(timeIntervalSince1970: 200),
+            audioURL: URL(string: "https://example.com/in-progress.mp3")!,
+            podcast: subscribed
+        )
+        inProgress.playedPosition = 120
+        inProgress.lastPlayedAt = Date(timeIntervalSince1970: 500)
+        let played = Episode(
+            title: "Played",
+            pubDate: Date(timeIntervalSince1970: 400),
+            audioURL: URL(string: "https://example.com/played.mp3")!,
+            podcast: subscribed
+        )
+        played.isPlayed = true
+        let ignoredFresh = Episode(
+            title: "Ignored Fresh",
+            pubDate: Date(timeIntervalSince1970: 600),
+            audioURL: URL(string: "https://example.com/ignored-summary.mp3")!,
+            podcast: unsubscribed
+        )
+
+        [olderFresh, newestFresh, inProgress, played, ignoredFresh].forEach(context.insert)
+        try context.save()
+
+        let countStore = LibraryDirectoryCountStore(modelContainer: container)
+        let summary = try await countStore.episodeSummary()
+
+        #expect(summary.unplayedCount == 3)
+        #expect(summary.inProgressCount == 1)
+        #expect(summary.freshEpisodeIDs.prefix(3) == [newestFresh.id, inProgress.id, olderFresh.id])
+        #expect(summary.inProgressEpisodeIDs == [inProgress.id])
+        #expect(summary.freshUnplayedCountsByPodcastID[subscribed.id] == 3)
+        #expect(summary.freshUnplayedCountsByPodcastID[unsubscribed.id] == nil)
+        #expect(summary.freshInProgressCountsByPodcastID[subscribed.id] == 1)
+    }
+
+    @Test
+    @MainActor
     func libraryDirectoryCountLoaderReturnsEmptyCountsForEmptyPodcastIDs() async throws {
         let container = try makeContainer()
         let context = container.mainContext

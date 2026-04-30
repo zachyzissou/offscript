@@ -162,6 +162,24 @@ nonisolated struct LibraryDirectoryCounts: Equatable, Sendable {
     static let empty = LibraryDirectoryCounts(unplayedByPodcastID: [:], inProgressByPodcastID: [:])
 }
 
+nonisolated struct LibraryEpisodeSummary: Equatable, Sendable {
+    let unplayedCount: Int
+    let inProgressCount: Int
+    let freshEpisodeIDs: [UUID]
+    let inProgressEpisodeIDs: [UUID]
+    let freshUnplayedCountsByPodcastID: [UUID: Int]
+    let freshInProgressCountsByPodcastID: [UUID: Int]
+
+    static let empty = LibraryEpisodeSummary(
+        unplayedCount: 0,
+        inProgressCount: 0,
+        freshEpisodeIDs: [],
+        inProgressEpisodeIDs: [],
+        freshUnplayedCountsByPodcastID: [:],
+        freshInProgressCountsByPodcastID: [:]
+    )
+}
+
 private struct LibraryDirectorySnapshotInputs: Equatable, Sendable {
     let podcasts: [LibraryDirectoryPodcast]
     let query: String
@@ -549,6 +567,43 @@ enum LibraryDirectoryCountLoader {
 
 @ModelActor
 actor LibraryDirectoryCountStore {
+    func episodeSummary() throws -> LibraryEpisodeSummary {
+        let countDescriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed }
+        )
+        var freshDescriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed },
+            sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
+        )
+        freshDescriptor.fetchLimit = 10
+        let inProgressDescriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed && $0.playedPosition > 0 }
+        )
+        var inProgressPageDescriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed && $0.playedPosition > 0 },
+            sortBy: [SortDescriptor(\Episode.lastPlayedAt, order: .reverse)]
+        )
+        inProgressPageDescriptor.fetchLimit = 8
+
+        let unplayedCount = try modelContext.fetchCount(countDescriptor)
+        try Task.checkCancellation()
+        let freshEpisodes = try modelContext.fetch(freshDescriptor)
+        try Task.checkCancellation()
+        let inProgressCount = try modelContext.fetchCount(inProgressDescriptor)
+        try Task.checkCancellation()
+        let inProgressEpisodes = try modelContext.fetch(inProgressPageDescriptor)
+        try Task.checkCancellation()
+
+        return LibraryEpisodeSummary(
+            unplayedCount: unplayedCount,
+            inProgressCount: inProgressCount,
+            freshEpisodeIDs: freshEpisodes.map(\.id),
+            inProgressEpisodeIDs: inProgressEpisodes.map(\.id),
+            freshUnplayedCountsByPodcastID: Dictionary(freshEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +),
+            freshInProgressCountsByPodcastID: Dictionary(inProgressEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +)
+        )
+    }
+
     func countsByPodcastID(
         podcastIDs: [UUID],
         needsUnplayed: Bool,
@@ -1156,40 +1211,56 @@ struct LibraryView: View {
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
                 guard !Task.isCancelled, !BatchImportService.shared.isRunning else { return }
             }
-            await refreshLibraryEpisodeSummary(podcastIDs: podcastIDs)
+            await refreshLibraryEpisodeSummary(
+                podcastIDs: podcastIDs,
+                modelContainer: modelContext.container
+            )
         }
     }
 
     @MainActor
-    private func refreshLibraryEpisodeSummary(podcastIDs: [UUID]) async {
+    private func refreshLibraryEpisodeSummary(
+        podcastIDs: [UUID],
+        modelContainer: ModelContainer
+    ) async {
         let interval = OffScriptPerformanceLog.begin(
             "library.summary",
             metadata: "podcasts=\(podcastIDs.count)"
         )
         do {
-            let countDescriptor = FetchDescriptor<Episode>(
-                predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed }
-            )
-            var freshDescriptor = FetchDescriptor<Episode>(
-                predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed },
-                sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
-            )
-            freshDescriptor.fetchLimit = 10
-            let inProgressDescriptor = FetchDescriptor<Episode>(
-                predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed && $0.playedPosition > 0 }
-            )
-            var inProgressPageDescriptor = FetchDescriptor<Episode>(
-                predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed && $0.playedPosition > 0 },
-                sortBy: [SortDescriptor(\Episode.lastPlayedAt, order: .reverse)]
-            )
-            inProgressPageDescriptor.fetchLimit = 8
+            let countStore = LibraryDirectoryCountStore(modelContainer: modelContainer)
+            let summary = try await countStore.episodeSummary()
+            guard !Task.isCancelled else {
+                OffScriptPerformanceLog.end(
+                    interval,
+                    metadata: "podcasts=\(podcastIDs.count) cancelled=true"
+                )
+                return
+            }
 
-            unplayedEpisodeCount = try modelContext.fetchCount(countDescriptor)
-            freshEpisodes = try modelContext.fetch(freshDescriptor)
-            inProgressEpisodeCount = try modelContext.fetchCount(inProgressDescriptor)
-            inProgressEpisodes = try modelContext.fetch(inProgressPageDescriptor)
-            freshUnplayedCountsByPodcastID = Dictionary(freshEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +)
-            freshInProgressCountsByPodcastID = Dictionary(inProgressEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +)
+            var combinedEpisodeIDs = summary.freshEpisodeIDs
+            var seenEpisodeIDs = Set(combinedEpisodeIDs)
+            for episodeID in summary.inProgressEpisodeIDs where seenEpisodeIDs.insert(episodeID).inserted {
+                combinedEpisodeIDs.append(episodeID)
+            }
+            let hydratedEpisodes = try episodes(withIDs: combinedEpisodeIDs)
+            let episodesByID = Dictionary(uniqueKeysWithValues: hydratedEpisodes.map { ($0.id, $0) })
+            let hydratedFreshEpisodes = summary.freshEpisodeIDs.compactMap { episodesByID[$0] }
+            let hydratedInProgressEpisodes = summary.inProgressEpisodeIDs.compactMap { episodesByID[$0] }
+            guard !Task.isCancelled else {
+                OffScriptPerformanceLog.end(
+                    interval,
+                    metadata: "podcasts=\(podcastIDs.count) cancelled=true"
+                )
+                return
+            }
+
+            unplayedEpisodeCount = summary.unplayedCount
+            freshEpisodes = hydratedFreshEpisodes
+            inProgressEpisodeCount = summary.inProgressCount
+            inProgressEpisodes = hydratedInProgressEpisodes
+            freshUnplayedCountsByPodcastID = summary.freshUnplayedCountsByPodcastID
+            freshInProgressCountsByPodcastID = summary.freshInProgressCountsByPodcastID
             if directoryNeedsFullCounts {
                 startFullDirectoryCountLoad(
                     podcastIDs: podcastIDs,
@@ -1218,6 +1289,18 @@ struct LibraryView: View {
             )
             libraryLogger.error("Library summary load failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    @MainActor
+    private func episodes(withIDs ids: [UUID]) throws -> [Episode] {
+        guard !ids.isEmpty else { return [] }
+        let requestedIDs = Set(ids)
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { requestedIDs.contains($0.id) }
+        )
+        let episodes = try modelContext.fetch(descriptor)
+        let episodesByID = Dictionary(uniqueKeysWithValues: episodes.map { ($0.id, $0) })
+        return ids.compactMap { episodesByID[$0] }
     }
 
     @MainActor
