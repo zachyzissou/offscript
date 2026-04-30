@@ -165,6 +165,52 @@ final class OffScriptUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["SHOWS · DIRECTORY"].waitForExistence(timeout: 5))
     }
 
+    @MainActor
+    func testLibraryReloadsAfterDetailUnsubscribe() throws {
+        let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 4, debugEpisodesPerShow: 2, debugLaunchTab: 1)
+        app.launch()
+
+        XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts["4 VISIBLE"].waitForExistence(timeout: 8))
+        tapAfterScrolling(app.staticTexts["A Channel 001"], in: app, name: "A Channel 001 row", direction: .up)
+        XCTAssertTrue(app.screen("PodcastDetailScreen").waitForExistence(timeout: 10), "Podcast detail did not open. Hierarchy:\n\(app.debugDescription)")
+
+        tapWhenReady(app.buttons["PodcastDetailUnsubscribeButton"], in: app, name: "detail unsubscribe button", maxSwipes: 2)
+        tapWhenReady(app.buttons["PodcastDetailConfirmUnsubscribeButton"], in: app, name: "confirm unsubscribe button", maxSwipes: 1)
+
+        app.buttons["PodcastDetailBackButton"].tap()
+        XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 8), "Podcast back did not return to library. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertTrue(app.staticTexts["3 VISIBLE"].waitForExistence(timeout: 8), "Library did not refresh its directory count after unsubscribe. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertFalse(app.staticTexts["A Channel 001"].exists, "Unsubscribed show remained visible in the Library directory. Hierarchy:\n\(app.debugDescription)")
+    }
+
+    private enum ScrollDirection {
+        case up
+        case down
+    }
+
+    private func tapAfterScrolling(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        name: String,
+        direction: ScrollDirection,
+        maxSwipes: Int = 6,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        for _ in 0..<maxSwipes where !element.exists || !element.isHittable {
+            switch direction {
+            case .up:
+                app.swipeUp()
+            case .down:
+                app.swipeDown()
+            }
+        }
+        XCTAssertTrue(element.waitForExistence(timeout: 4), "\(name) did not appear. Hierarchy:\n\(app.debugDescription)", file: file, line: line)
+        XCTAssertTrue(element.isHittable, "\(name) was not hittable. Hierarchy:\n\(app.debugDescription)", file: file, line: line)
+        element.tap()
+    }
+
     private func tapWhenReady(
         _ element: XCUIElement,
         in app: XCUIApplication,

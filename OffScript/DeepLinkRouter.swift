@@ -10,6 +10,7 @@ private let deepLinkLogger = Logger(subsystem: "com.offscript", category: "DeepL
 extension Notification.Name {
     static let offscriptSwitchTab = Notification.Name("offscript.switchTab")
     static let offscriptRecommendationFeedbackChanged = Notification.Name("offscript.recommendationFeedbackChanged")
+    static let offscriptLibrarySubscriptionsChanged = Notification.Name("offscript.librarySubscriptionsChanged")
 }
 
 /// Centralized handler for `offscript://` URLs coming from:

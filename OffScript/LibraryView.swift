@@ -138,6 +138,15 @@ nonisolated struct LibraryDirectorySnapshot {
     var isEmpty: Bool { podcasts.isEmpty }
 }
 
+private struct LibraryDirectorySnapshotInputs: Equatable {
+    let podcasts: [LibraryDirectoryPodcast]
+    let query: String
+    let scope: LibraryDirectoryScope
+    let sort: LibraryDirectorySort
+    let unplayedCounts: [UUID: Int]
+    let inProgressCounts: [UUID: Int]
+}
+
 nonisolated enum LibraryDirectoryListItem: Identifiable {
     case sectionHeader(LibraryDirectorySection)
     case row(LibraryDirectoryRow)
@@ -534,6 +543,7 @@ struct LibraryView: View {
     @State private var cachedDirectorySnapshot = LibraryDirectorySnapshot.empty
     @State private var didBuildDirectorySnapshot = false
     @State private var isSyncingLibrary = false
+    @State private var shouldReloadDirectoryOnAppear = false
 
     private var directoryNeedsFullUnplayedCounts: Bool {
         LibraryDirectoryOrganizer.needsPerShowUnplayedCounts(scope: directoryScope, sort: directorySort)
@@ -572,6 +582,17 @@ struct LibraryView: View {
         directoryPodcasts.map(\.id)
     }
 
+    private var directorySnapshotInputs: LibraryDirectorySnapshotInputs {
+        LibraryDirectorySnapshotInputs(
+            podcasts: directoryPodcasts,
+            query: effectiveDirectoryQuery,
+            scope: directoryScope,
+            sort: directorySort,
+            unplayedCounts: directoryUnplayedCountsByPodcastID,
+            inProgressCounts: directoryInProgressCountsByPodcastID
+        )
+    }
+
     var body: some View {
         let snapshot = didBuildDirectorySnapshot ? cachedDirectorySnapshot : makeDirectorySnapshot()
         ScrollViewReader { scrollProxy in
@@ -594,7 +615,7 @@ struct LibraryView: View {
                     // batch importer is mid-flight or has just finished and
                     // hasn't been dismissed yet.
                     LibraryBatchImportStrip(onFinished: {
-                        loadDirectoryPodcasts()
+                        loadDirectoryPodcasts(force: true)
                         scheduleLibraryEpisodeSummaryLoad()
                     })
 
@@ -659,33 +680,35 @@ struct LibraryView: View {
             }
         }
         .task {
-            loadDirectoryPodcasts()
+            loadDirectoryPodcastsIfNeeded()
             loadLibraryEpisodeSummary()
         }
         .onAppear {
             effectiveDirectoryQuery = directoryQuery
-            loadDirectoryPodcasts()
-            rebuildDirectorySnapshot()
+            if shouldReloadDirectoryOnAppear {
+                shouldReloadDirectoryOnAppear = false
+                loadDirectoryPodcasts(force: true)
+                loadLibraryEpisodeSummary()
+            } else {
+                loadDirectoryPodcastsIfNeeded()
+            }
         }
         .onChange(of: subscribedPodcastIDs) { _, _ in scheduleLibraryEpisodeSummaryLoad() }
         .onChange(of: directoryQuery) { _, newValue in scheduleDirectoryQuery(newValue) }
-        .onChange(of: effectiveDirectoryQuery) { _, _ in rebuildDirectorySnapshot() }
+        .onChange(of: directorySnapshotInputs) { _, _ in rebuildDirectorySnapshot() }
         .onChange(of: directoryScope) { _, _ in
-            rebuildDirectorySnapshot()
             ensureFullDirectoryCountsIfNeeded()
         }
         .onChange(of: directorySort) { _, _ in
-            rebuildDirectorySnapshot()
             ensureFullDirectoryCountsIfNeeded()
         }
-        .onChange(of: freshUnplayedCountsByPodcastID) { _, _ in rebuildDirectorySnapshot() }
-        .onChange(of: freshInProgressCountsByPodcastID) { _, _ in rebuildDirectorySnapshot() }
-        .onChange(of: fullUnplayedCountsByPodcastID) { _, _ in rebuildDirectorySnapshot() }
-        .onChange(of: fullInProgressCountsByPodcastID) { _, _ in rebuildDirectorySnapshot() }
         .onDisappear {
             summaryLoadTask?.cancel()
             fullCountLoadTask?.cancel()
             directoryQueryTask?.cancel()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .offscriptLibrarySubscriptionsChanged)) { _ in
+            shouldReloadDirectoryOnAppear = true
         }
         // Settings + Import buttons render inline in LibraryTunerHeader, not
         // as toolbar items — iOS 26 wraps toolbar buttons in glass chrome.
@@ -815,7 +838,14 @@ struct LibraryView: View {
     }
 
     @MainActor
-    private func loadDirectoryPodcasts() {
+    private func loadDirectoryPodcastsIfNeeded() {
+        guard !didLoadDirectoryPodcasts else { return }
+        loadDirectoryPodcasts()
+    }
+
+    @MainActor
+    private func loadDirectoryPodcasts(force: Bool = false) {
+        guard force || !didLoadDirectoryPodcasts else { return }
         do {
             directoryPodcasts = try LibraryDirectorySnapshotLoader.subscribedPodcasts(in: modelContext)
             didLoadDirectoryPodcasts = true
@@ -1055,7 +1085,7 @@ struct LibraryView: View {
                 libraryLogger.error("Pull-to-refresh sync failed for '\(podcast.title, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             }
         }
-        loadDirectoryPodcasts()
+        loadDirectoryPodcasts(force: true)
         loadLibraryEpisodeSummary()
     }
 }
@@ -1883,6 +1913,8 @@ private struct PodcastDetailTunerHeader: View {
                             .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Unsubscribe from \(podcast.title)")
+                    .accessibilityIdentifier("PodcastDetailUnsubscribeButton")
                 }
 
                 if let url = podcast.websiteURL {
@@ -1947,6 +1979,8 @@ private struct PodcastDetailTunerHeader: View {
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Confirm unsubscribe")
+                .accessibilityIdentifier("PodcastDetailConfirmUnsubscribeButton")
             }
         }
         .padding(12)

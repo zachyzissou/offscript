@@ -25,6 +25,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Root page headers sit tighter to the safe area** to reclaim top-of-app space while keeping the iOS status/Dynamic Island safe region intact.
 - **Large Library sections now render as flattened lazy headers, rows, and separators** so a 250+ show directory does not build an entire oversized letter section as one SwiftUI child.
 - **The Library directory now renders from value snapshots instead of live SwiftData podcast models** so 250+ show scrolling does less model work and only resolves a show when a row is opened.
+- **Library launch now avoids duplicate directory loads and coalesces snapshot rebuilds** so large libraries do less repeated sort/filter work while counts and controls update.
 - **Home retune and Library sync now use explicit Tuner header keys instead of native pull-to-refresh chrome**, removing another app-controlled Liquid Glass surface while keeping refresh actions discoverable.
 - **Podcast and episode detail pushes now use inline Tuner back keys** so Library and Home drill-down flows no longer fall back to native iOS back-button chrome.
 
@@ -37,6 +38,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Onboarding Sign in with Apple no longer has an iOS 26 missing-window precondition crash path** and now logs Keychain OSStatus details when credential persistence fails.
 - **Large OPML bootstrap imports now fetch feeds concurrently but apply SwiftData changes serially** and cap bootstrap RSS parsing to the small starter window, reducing 250+ show import stalls without changing normal full-feed sync.
 - **Large Library count-driven filters no longer fetch every matching episode just to compute per-show badges** and instead use cancellable per-show count queries for `UNPLAYED`, `IN PROGRESS`, and `ATTN`.
+- **Library now refreshes its directory after unsubscribing from a show detail screen** so the removed channel and visible count do not stay stale when returning from detail.
 - **Recommendation negative signals are now graded instead of binary** so one `Less Like This` no longer erases a whole show while repeated negative evidence still suppresses strongly matched candidates.
 - **Tuner chrome now uses shared modal/detail top insets and more resilient compact headers/import rows** so Settings, Import, and Library fallback surfaces keep the OLED instrument look at narrow widths and larger text sizes.
 - **Onboarding Sign in with Apple fallback anchoring no longer emits the iOS 26 `ASPresentationAnchor(frame:)` archive warning** when no foreground scene is available.
