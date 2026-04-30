@@ -174,14 +174,16 @@ struct ImportProgressView: View {
             statuses[podcast.feedURL] = .importing
         }
 
-        var stagedPodcasts: [Podcast] = []
-        for podcast in selectedPodcasts {
-            do {
-                let staged = try syncService.stagePodcastSubscription(from: podcast, into: modelContext)
-                stagedPodcasts.append(staged)
+        let stagedPodcasts: [Podcast]
+        do {
+            stagedPodcasts = try syncService.stagePodcastSubscriptions(from: selectedPodcasts, into: modelContext)
+            for podcast in selectedPodcasts {
                 statuses[podcast.feedURL] = .done
-            } catch {
-                importLogger.error("Onboarding subscription staging failed for \(podcast.feedURL, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        } catch {
+            importLogger.error("Onboarding subscription staging failed: \(error.localizedDescription, privacy: .public)")
+            stagedPodcasts = []
+            for podcast in selectedPodcasts {
                 statuses[podcast.feedURL] = .failed
             }
         }
