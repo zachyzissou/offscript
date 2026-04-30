@@ -14,6 +14,7 @@ private let batchImportLogger = Logger(subsystem: "com.offscript", category: "Ba
 @MainActor
 final class BatchImportService: ObservableObject {
     static let shared = BatchImportService()
+    private static let feedURLLookupChunkSize = 96
 
     enum Phase: Equatable {
         case idle
@@ -258,7 +259,7 @@ final class BatchImportService: ObservableObject {
     ) throws -> Int {
         guard !entries.isEmpty else { return 0 }
 
-        let existingPodcasts = try modelContext.fetch(FetchDescriptor<Podcast>())
+        let existingPodcasts = try podcasts(matching: entries, in: modelContext)
         var podcastByFeedKey = Dictionary(
             existingPodcasts.map { ($0.feedURL.normalizedFeedKey, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -345,7 +346,7 @@ final class BatchImportService: ObservableObject {
         do {
             let feedKeys = Set(entries.map { $0.feedURL.normalizedFeedKey })
             guard !feedKeys.isEmpty else { return }
-            let podcasts = try modelContext.fetch(FetchDescriptor<Podcast>())
+            let podcasts = try podcasts(matching: entries, in: modelContext)
                 .filter { feedKeys.contains($0.feedURL.normalizedFeedKey) }
             for podcast in podcasts {
                 podcast.syncStatus = "idle"
@@ -372,8 +373,89 @@ final class BatchImportService: ObservableObject {
         }
 
         let feedKey = entry.feedURL.normalizedFeedKey
-        return try modelContext.fetch(FetchDescriptor<Podcast>())
+        return try podcasts(matching: [entry], in: modelContext)
             .first { $0.feedURL.normalizedFeedKey == feedKey }
+    }
+
+    private static func podcasts(
+        matching entries: [OPMLFeedEntry],
+        in modelContext: ModelContext
+    ) throws -> [Podcast] {
+        let lookupURLs = Array(Set(entries.flatMap { feedURLLookupVariants(for: $0.feedURL) }))
+        guard !lookupURLs.isEmpty else { return [] }
+
+        var podcasts: [Podcast] = []
+        var seenIDs = Set<UUID>()
+        var startIndex = lookupURLs.startIndex
+        while startIndex < lookupURLs.endIndex {
+            // Keep each SwiftData `contains` predicate well below SQLite's
+            // parameter ceiling after URL variant expansion.
+            let endIndex = lookupURLs.index(
+                startIndex,
+                offsetBy: feedURLLookupChunkSize,
+                limitedBy: lookupURLs.endIndex
+            ) ?? lookupURLs.endIndex
+            let chunk = Array(lookupURLs[startIndex..<endIndex])
+            let matches = try modelContext.fetch(FetchDescriptor<Podcast>(
+                predicate: #Predicate<Podcast> { chunk.contains($0.feedURL) }
+            ))
+            for podcast in matches where !seenIDs.contains(podcast.id) {
+                seenIDs.insert(podcast.id)
+                podcasts.append(podcast)
+            }
+            startIndex = endIndex
+        }
+
+        let requestedFeedKeys = Set(entries.map { $0.feedURL.normalizedFeedKey })
+        let matchedFeedKeys = Set(podcasts.map { $0.feedURL.normalizedFeedKey })
+        let missingFeedKeys = requestedFeedKeys.subtracting(matchedFeedKeys)
+        if !missingFeedKeys.isEmpty, entries.count == 1 {
+            let fallbackMatches = try modelContext.fetch(FetchDescriptor<Podcast>())
+                .filter { missingFeedKeys.contains($0.feedURL.normalizedFeedKey) }
+            for podcast in fallbackMatches where !seenIDs.contains(podcast.id) {
+                seenIDs.insert(podcast.id)
+                podcasts.append(podcast)
+            }
+        }
+        return podcasts
+    }
+
+    private static func feedURLLookupVariants(for feedURL: URL) -> Set<URL> {
+        guard var components = URLComponents(url: feedURL, resolvingAgainstBaseURL: false) else {
+            return [feedURL]
+        }
+
+        let originalScheme = components.scheme?.lowercased()
+        let normalized = URL(string: feedURL.normalizedFeedKey) ?? feedURL
+        let normalizedPath = URLComponents(url: normalized, resolvingAgainstBaseURL: false)?.path ?? components.path
+        let trimmedPath = normalizedPath.hasSuffix("/") && normalizedPath != "/"
+            ? String(normalizedPath.dropLast())
+            : normalizedPath
+        let slashPath = trimmedPath.isEmpty || trimmedPath == "/" ? "/" : "\(trimmedPath)/"
+        var schemes: Set<String> = ["https", "http", "feed"]
+        if let originalScheme {
+            schemes.insert(originalScheme)
+        }
+        let paths = Set([components.path, normalizedPath, trimmedPath, slashPath])
+
+        components.fragment = nil
+        components.host = components.host?.lowercased()
+        if components.port == 80 || components.port == 443 {
+            components.port = nil
+        }
+
+        var variants: Set<URL> = [feedURL, normalized]
+        for scheme in schemes {
+            for path in paths {
+                var variantComponents = components
+                variantComponents.scheme = scheme
+                variantComponents.path = path
+                if let url = variantComponents.url {
+                    variants.insert(url)
+                }
+            }
+        }
+        return variants
     }
 
     private static func trimmedNonEmpty(_ value: String) -> String? {
