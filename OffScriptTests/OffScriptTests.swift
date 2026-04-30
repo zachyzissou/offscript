@@ -143,6 +143,7 @@ struct OffScriptTests {
         #expect(FeedSyncOptions.fastBatchImport().feedParseItemLimit == nil)
         #expect(FeedSyncOptions.opmlBootstrap().feedParseItemLimit == 10)
         #expect(FeedSyncOptions.onboardingBootstrap().feedParseItemLimit == 10)
+        #expect(FeedSyncOptions.singleAddBootstrap().feedParseItemLimit == 36)
         #expect(FeedSyncOptions.opmlBootstrap(episodeLimit: 12).feedParseItemLimit == 36)
     }
 
@@ -224,6 +225,7 @@ struct OffScriptTests {
         #expect(FeedSyncOptions.fastBatchImport().feedRequestTimeout == 12)
         #expect(FeedSyncOptions.opmlBootstrap().feedRequestTimeout == 8)
         #expect(FeedSyncOptions.onboardingBootstrap().feedRequestTimeout == 8)
+        #expect(FeedSyncOptions.singleAddBootstrap().feedRequestTimeout == 8)
     }
 
     @Test
@@ -2067,6 +2069,34 @@ struct OffScriptTests {
         #expect(podcast.subscribedAt != nil)
         #expect(podcast.syncStatus == "idle")
         #expect(podcast.lastSyncAttemptAt != nil)
+        #expect(podcast.syncErrorMessage == nil)
+    }
+
+    @Test
+    @MainActor
+    func feedSyncSubscribeThenHydrateCanReturnBeforeNetworkWork() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let result = PodcastSearchResult(
+            title: "Instant Add",
+            author: "Fast Author",
+            feedURL: URL(string: "https://example.com/instant.xml")!,
+            artworkURL: URL(string: "https://example.com/instant.jpg")!,
+            websiteURL: URL(string: "https://example.com")!,
+            summary: "A show added from Search."
+        )
+
+        let podcast = try FeedSyncService().subscribeThenHydrate(
+            from: result,
+            into: context,
+            startHydration: false
+        )
+
+        let podcasts = try context.fetch(FetchDescriptor<Podcast>())
+        #expect(podcasts.count == 1)
+        #expect(podcast.isSubscribed)
+        #expect(podcast.title == "Instant Add")
+        #expect(podcast.syncStatus == "idle")
         #expect(podcast.syncErrorMessage == nil)
     }
 

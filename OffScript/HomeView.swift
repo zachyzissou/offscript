@@ -430,9 +430,11 @@ private struct HomeStarterRail: View {
 
         do {
             let result = StarterRailService.searchResult(for: pick)
-            _ = try await syncService.importPodcast(from: result,
-                                                    into: modelContext,
-                                                    episodeLimit: 25)
+            _ = try syncService.subscribeThenHydrate(
+                from: result,
+                into: modelContext,
+                episodeLimit: 25
+            )
             addedIDs.insert(pick.id)
         } catch {
             homeLogger.error("Starter add failed for \(pick.title, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -637,7 +639,7 @@ private struct TunerDiscoveryRail: View {
         errorMessage = nil
 
         do {
-            _ = try await syncService.importPodcast(from: result, into: modelContext, episodeLimit: 25)
+            _ = try syncService.subscribeThenHydrate(from: result, into: modelContext, episodeLimit: 25)
             addedIDs.insert(key)
         } catch {
             homeLogger.error("Discovery add failed for \(result.title, privacy: .public): \(error.localizedDescription, privacy: .public)")

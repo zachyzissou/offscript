@@ -235,7 +235,7 @@ struct SearchView: View {
         defer { importingID = nil }
 
         do {
-            _ = try await syncService.importPodcast(from: result, into: modelContext)
+            _ = try syncService.subscribeThenHydrate(from: result, into: modelContext)
             errorMessage = nil
             storeRecentSearch(result.title)
         } catch {
