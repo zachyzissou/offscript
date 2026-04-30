@@ -138,6 +138,13 @@ nonisolated struct LibraryDirectorySnapshot {
     var isEmpty: Bool { podcasts.isEmpty }
 }
 
+nonisolated struct LibraryDirectoryCounts: Equatable {
+    let unplayedByPodcastID: [UUID: Int]
+    let inProgressByPodcastID: [UUID: Int]
+
+    static let empty = LibraryDirectoryCounts(unplayedByPodcastID: [:], inProgressByPodcastID: [:])
+}
+
 private struct LibraryDirectorySnapshotInputs: Equatable {
     let podcasts: [LibraryDirectoryPodcast]
     let query: String
@@ -451,44 +458,69 @@ enum LibraryDirectorySnapshotLoader {
 
 @MainActor
 enum LibraryDirectoryCountLoader {
+    static func countsByPodcastID(
+        podcastIDs: [UUID],
+        needsUnplayed: Bool,
+        needsInProgress: Bool,
+        context: ModelContext
+    ) async throws -> LibraryDirectoryCounts {
+        let allowedPodcastIDs = Set(podcastIDs)
+        guard !allowedPodcastIDs.isEmpty, needsUnplayed || needsInProgress else { return .empty }
+        try Task.checkCancellation()
+
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> {
+                allowedPodcastIDs.contains($0.podcast.id)
+                    && $0.podcast.isSubscribed
+                    && !$0.isPlayed
+                    && (needsUnplayed || $0.playedPosition > 0)
+            }
+        )
+        let episodes = try context.fetch(descriptor)
+        await Task.yield()
+        try Task.checkCancellation()
+
+        var unplayedCounts: [UUID: Int] = [:]
+        var inProgressCounts: [UUID: Int] = [:]
+        for episode in episodes {
+            let podcastID = episode.podcast.id
+            guard allowedPodcastIDs.contains(podcastID) else { continue }
+            if needsUnplayed {
+                unplayedCounts[podcastID, default: 0] += 1
+            }
+            if needsInProgress, episode.playedPosition > 0 {
+                inProgressCounts[podcastID, default: 0] += 1
+            }
+        }
+
+        return LibraryDirectoryCounts(
+            unplayedByPodcastID: needsUnplayed ? unplayedCounts : [:],
+            inProgressByPodcastID: needsInProgress ? inProgressCounts : [:]
+        )
+    }
+
     static func unplayedCountsByPodcastID(
         podcastIDs: [UUID],
         context: ModelContext
     ) async throws -> [UUID: Int] {
-        try await countsByPodcastID(podcastIDs: podcastIDs, context: context) { allowedPodcastIDs in
-            FetchDescriptor<Episode>(
-                predicate: #Predicate<Episode> {
-                    allowedPodcastIDs.contains($0.podcast.id) && $0.podcast.isSubscribed && !$0.isPlayed
-                }
-            )
-        }
+        try await countsByPodcastID(
+            podcastIDs: podcastIDs,
+            needsUnplayed: true,
+            needsInProgress: false,
+            context: context
+        ).unplayedByPodcastID
     }
 
     static func inProgressCountsByPodcastID(
         podcastIDs: [UUID],
         context: ModelContext
     ) async throws -> [UUID: Int] {
-        try await countsByPodcastID(podcastIDs: podcastIDs, context: context) { allowedPodcastIDs in
-            FetchDescriptor<Episode>(
-                predicate: #Predicate<Episode> {
-                    allowedPodcastIDs.contains($0.podcast.id) && $0.podcast.isSubscribed && !$0.isPlayed && $0.playedPosition > 0
-                }
-            )
-        }
-    }
-
-    private static func countsByPodcastID(
-        podcastIDs: [UUID],
-        context: ModelContext,
-        descriptor: (Set<UUID>) -> FetchDescriptor<Episode>
-    ) async throws -> [UUID: Int] {
-        let allowedPodcastIDs = Set(podcastIDs)
-        guard !allowedPodcastIDs.isEmpty else { return [:] }
-        try Task.checkCancellation()
-        let episodes = try context.fetch(descriptor(allowedPodcastIDs))
-        await Task.yield()
-        try Task.checkCancellation()
-        return LibraryDirectoryOrganizer.countsByPodcastID(for: episodes, limitedTo: allowedPodcastIDs)
+        try await countsByPodcastID(
+            podcastIDs: podcastIDs,
+            needsUnplayed: false,
+            needsInProgress: true,
+            context: context
+        ).inProgressByPodcastID
     }
 }
 
@@ -1096,36 +1128,25 @@ struct LibraryView: View {
                 isLoadingFullDirectoryCounts = false
                 return
             }
-            var unplayedCounts = fullUnplayedCountsByPodcastID
-            var inProgressCounts = fullInProgressCountsByPodcastID
+            let counts = try await LibraryDirectoryCountLoader.countsByPodcastID(
+                podcastIDs: podcastIDs,
+                needsUnplayed: needsUnplayed,
+                needsInProgress: needsInProgress,
+                context: modelContext
+            )
 
+            guard !Task.isCancelled else {
+                isLoadingFullDirectoryCounts = false
+                return
+            }
             if needsUnplayed {
-                unplayedCounts = try await LibraryDirectoryCountLoader.unplayedCountsByPodcastID(
-                    podcastIDs: podcastIDs,
-                    context: modelContext
-                )
+                fullUnplayedCountsByPodcastID = counts.unplayedByPodcastID
                 didLoadFullUnplayedCounts = true
             }
-
-            guard !Task.isCancelled else {
-                isLoadingFullDirectoryCounts = false
-                return
-            }
-
             if needsInProgress {
-                inProgressCounts = try await LibraryDirectoryCountLoader.inProgressCountsByPodcastID(
-                    podcastIDs: podcastIDs,
-                    context: modelContext
-                )
+                fullInProgressCountsByPodcastID = counts.inProgressByPodcastID
                 didLoadFullInProgressCounts = true
             }
-
-            guard !Task.isCancelled else {
-                isLoadingFullDirectoryCounts = false
-                return
-            }
-            fullUnplayedCountsByPodcastID = unplayedCounts
-            fullInProgressCountsByPodcastID = inProgressCounts
             isLoadingFullDirectoryCounts = false
         } catch {
             if needsUnplayed {
