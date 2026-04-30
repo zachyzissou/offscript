@@ -129,6 +129,10 @@ def attrs(resource: dict[str, Any]) -> dict[str, Any]:
     return resource.get("attributes") or {}
 
 
+def is_xcode_cloud_deployment_config_error(exc: ASCError) -> bool:
+    return "Deployment configured for unknown action" in str(exc)
+
+
 def find_app(client: ASCClient, bundle_id: str) -> dict[str, Any]:
     response = client.request(
         "GET",
@@ -718,6 +722,11 @@ def command_xcode_cloud_inspect(args: argparse.Namespace) -> None:
     print(f"  actions: {len(actions)}")
     for action in actions:
         print(f"    - {json.dumps(action, indent=6)}")
+        if (
+            action.get("actionType") == "ARCHIVE"
+            and action.get("buildDistributionAudience") == "INTERNAL_ONLY"
+        ):
+            print("      WARNING: archive uses INTERNAL_ONLY; external TestFlight needs APP_STORE_ELIGIBLE.")
 
     print()
     print(f"Recent build runs (limit {args.limit}):")
@@ -740,15 +749,15 @@ def command_xcode_cloud_reconfigure(args: argparse.Namespace) -> None:
     """
     PATCH an existing Xcode Cloud workflow so it triggers on push to main
     (and optionally release tags vX.Y.Z), and so the Archive action
-    auto-publishes to TestFlight internal testers.
+    prepares archives for TestFlight and App Store distribution.
 
     Idempotent — safe to re-run. Only mutates fields specified by flags.
 
     The default behavior:
       - branchStartCondition pattern → 'main' (autoCancel on)
       - tagStartCondition pattern → 'v*' (catches v2.2.0, v2.3.0, etc.)
-      - actions[].buildDistributionAudience → INTERNAL_ONLY for any
-        ARCHIVE action that currently has it null
+      - actions[].buildDistributionAudience → APP_STORE_ELIGIBLE for any
+        ARCHIVE action that currently differs
     """
     client = ASCClient()
     workflow_id = args.workflow_id
@@ -781,20 +790,25 @@ def command_xcode_cloud_reconfigure(args: argparse.Namespace) -> None:
             "autoCancel": False,
         }
 
-    # Auto-publish to TestFlight by setting buildDistributionAudience on
-    # any ARCHIVE action that currently has it null. Preserves everything
-    # else about the action.
+    # Configure archive deployment preparation. Apple's API enum maps to:
+    #   INTERNAL_ONLY      -> TestFlight (Internal Testing Only)
+    #   APP_STORE_ELIGIBLE -> TestFlight and App Store
+    #
+    # Keep the whole action payload intact because PATCH replaces this array.
     if args.testflight:
         actions = a.get("actions") or []
         updated_actions = []
+        changed_actions = False
         for action in actions:
-            if action.get("actionType") == "ARCHIVE" and not action.get("buildDistributionAudience"):
+            if action.get("actionType") == "ARCHIVE" and action.get("buildDistributionAudience") != args.audience:
                 updated = dict(action)
                 updated["buildDistributionAudience"] = args.audience
                 updated_actions.append(updated)
+                changed_actions = True
             else:
                 updated_actions.append(action)
-        new_attributes["actions"] = updated_actions
+        if changed_actions:
+            new_attributes["actions"] = updated_actions
 
     if not new_attributes:
         print("Nothing to update.")
@@ -814,7 +828,24 @@ def command_xcode_cloud_reconfigure(args: argparse.Namespace) -> None:
         print("\nDry run. Re-run with --apply to actually PATCH.")
         return
 
-    response = client.request("PATCH", f"/v1/ciWorkflows/{workflow_id}", json=payload)
+    try:
+        response = client.request("PATCH", f"/v1/ciWorkflows/{workflow_id}", json=payload)
+    except ASCError as exc:
+        if is_xcode_cloud_deployment_config_error(exc):
+            print()
+            print("PATCH failed because App Store Connect rejected the action replacement:")
+            print("  Deployment configured for unknown action.")
+            print()
+            print("Apple's ciWorkflows PATCH endpoint replaces the actions array, and")
+            print("some existing workflows have a hidden deploymentConfig tied to the")
+            print("original archive action. Change Deployment Preparation for this")
+            print("workflow in App Store Connect or Xcode Cloud from")
+            print("  TestFlight (Internal Testing Only)")
+            print("to")
+            print("  TestFlight and App Store")
+            print("then re-run:")
+            print(f"  scripts/app_store_connect.py xcode-cloud inspect {workflow_id}")
+        raise
     print("\nPATCH succeeded.")
     new_attrs = attrs(response.get("data", {}))
     print(f"  branchStartCondition: {json.dumps(new_attrs.get('branchStartCondition'), indent=2)}")
@@ -969,7 +1000,7 @@ def build_parser() -> argparse.ArgumentParser:
     xcc_reconfig.add_argument("--tag-pattern", default="v*", help="Tag pattern to start on (default 'v*'). Set empty string to skip.")
     xcc_reconfig.add_argument("--skip-branch", action="store_true", help="Don't touch branchStartCondition.")
     xcc_reconfig.add_argument("--testflight", action="store_true", help="Set buildDistributionAudience on ARCHIVE actions.")
-    xcc_reconfig.add_argument("--audience", default="INTERNAL_ONLY", choices=["INTERNAL_ONLY", "APP_STORE_CONNECT_USERS"])
+    xcc_reconfig.add_argument("--audience", default="APP_STORE_ELIGIBLE", choices=["INTERNAL_ONLY", "APP_STORE_ELIGIBLE"])
     xcc_reconfig.add_argument("--apply", action="store_true", help="Actually PATCH. Without this flag, dry-run.")
     xcc_reconfig.set_defaults(func=command_xcode_cloud_reconfigure)
 

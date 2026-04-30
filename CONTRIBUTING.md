@@ -35,7 +35,8 @@ extension targets just works), and uploads to TestFlight as a built-in action.
 **Path 1 — Push to `main`** (fast, day-to-day):
 - Push (or merge a PR) to `main`
 - Xcode Cloud detects the push, archives, signs, uploads to TestFlight
-  Internal Testers automatically
+  with TestFlight and App Store deployment preparation so the same build can
+  be assigned to internal and external testers
 - No release notes are written; testers see the commit message
 
 **Path 2 — Cut a GitHub Release with `vX.Y.Z` tag** (curated):

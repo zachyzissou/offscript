@@ -54,6 +54,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Sentry TestFlight/App Store environment tagging now uses StoreKit 2 app transactions** instead of the deprecated receipt URL path, clearing the recurring iOS 18 `appStoreReceiptURL` archive warning.
 
 ### Fixed — Xcode Cloud signing
+- **Xcode Cloud diagnostics now flag `INTERNAL_ONLY` archive workflows and use Apple's current `APP_STORE_ELIGIBLE` API enum** for TestFlight/App Store deployment preparation, with an explicit failure path when App Store Connect rejects action-array replacement because of hidden deployment config state.
 - **Build number advanced to 41 after Xcode Cloud runs #40 and #41 failed exporting app build 40.**
 - **Build number advanced to 42 after Xcode Cloud run #63 failed during App Store Connect preparation** while the product line continued shipping performance builds on main.
 - **Build number advanced to 43 after App Store Connect reported `2.3.11 (42)` already uploaded** despite Cloud run #64 failing during preparation.

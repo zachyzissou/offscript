@@ -116,7 +116,7 @@ iOS 26 wraps SwiftUI-vended chrome in floating Liquid Glass / glass-capsule trea
 - Visual audits: `xcrun simctl io booted screenshot` is the reliable path; `xcrun simctl spawn DEVICE defaults write com.offscript.app offscript.debugLaunchTab -int N` swaps tabs without taps. `-offscript.debugSeedSampleData YES` populates 3 podcasts × 3 episodes for populated-state audits.
 
 ## CI
-- TestFlight ships through **Xcode Cloud** (`Default` workflow on App Store Connect, branch start condition `main`, tag `v*`, action `ARCHIVE` with `buildDistributionAudience = INTERNAL_ONLY`).
+- TestFlight ships through **Xcode Cloud** (`Default` workflow on App Store Connect, branch start condition `main`, tag `v*`, action `ARCHIVE` with `buildDistributionAudience = APP_STORE_ELIGIBLE` so the same build can go to internal and external TestFlight testers).
 - The legacy GH-Actions workflow lives at `.github/workflows/testflight.yml.disabled` for reference.
 - Operational tools: `scripts/app_store_connect.py xcode-cloud {probe,inspect,reconfigure,start-build,build-run}`. The `Xcode Cloud Probe` GH workflow runs them on demand without a local `.env`.
 - Sentry DSN injection: `ci_scripts/ci_post_clone.sh` materializes `Config/Secrets.xcconfig` from the `SENTRY_DSN` Xcode Cloud env var.
