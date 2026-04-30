@@ -906,6 +906,85 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func lessLikeThisSoftPenalizesSharedTagsButDoesNotEraseEntireShow() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let show = Podcast(title: "Mixed Signal Show", feedURL: URL(string: "https://example.com/mixed.xml")!)
+        let trustedShow = Podcast(title: "Trusted Topic", feedURL: URL(string: "https://example.com/trusted-topic.xml")!)
+        let disliked = Episode(title: "Too Much Hype", pubDate: .now, duration: 1_800, audioURL: URL(string: "https://example.com/hype.mp3")!, podcast: show)
+        let sameShowDifferentTopic = Episode(title: "Useful Field Notes", pubDate: .now, duration: 1_800, audioURL: URL(string: "https://example.com/useful.mp3")!, podcast: show)
+        let trusted = Episode(title: "Useful Signal Seed", pubDate: .now, duration: 1_800, audioURL: URL(string: "https://example.com/trusted-topic.mp3")!, podcast: trustedShow)
+
+        let dislikedProfile = EpisodeProfile(episodeID: disliked.id)
+        dislikedProfile.tags = ["hype"]
+        let survivorProfile = EpisodeProfile(episodeID: sameShowDifferentTopic.id)
+        survivorProfile.tags = ["field notes"]
+        let trustedProfile = EpisodeProfile(episodeID: trusted.id)
+        trustedProfile.tags = ["field notes"]
+
+        context.insert(show)
+        context.insert(trustedShow)
+        context.insert(disliked)
+        context.insert(sameShowDifferentTopic)
+        context.insert(trusted)
+        context.insert(dislikedProfile)
+        context.insert(survivorProfile)
+        context.insert(trustedProfile)
+        context.insert(PreferenceSignal(action: .lessLikeThis, episode: disliked))
+        context.insert(PreferenceSignal(action: .like, episode: trusted))
+        try context.save()
+
+        let episodes = try RecommendationService()
+            .homeSections(context: context, mode: .balanced, limit: 5)
+            .flatMap(\.episodes)
+
+        #expect(episodes.contains(where: { $0.id == sameShowDifferentTopic.id }))
+    }
+
+    @Test
+    @MainActor
+    func repeatedNegativeSignalsHardSuppressSharedTags() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let blockedShow = Podcast(title: "Repeated Block", feedURL: URL(string: "https://example.com/repeated-block.xml")!)
+        let trustedShow = Podcast(title: "Trusted Contrast", feedURL: URL(string: "https://example.com/trusted-contrast.xml")!)
+        let firstDisliked = Episode(title: "First Bad Fit", pubDate: .now, duration: 1_800, audioURL: URL(string: "https://example.com/bad-1.mp3")!, podcast: blockedShow)
+        let secondDisliked = Episode(title: "Second Bad Fit", pubDate: .now, duration: 1_800, audioURL: URL(string: "https://example.com/bad-2.mp3")!, podcast: blockedShow)
+        let similar = Episode(title: "Third Bad Fit", pubDate: .now, duration: 1_800, audioURL: URL(string: "https://example.com/bad-3.mp3")!, podcast: blockedShow)
+        let trusted = Episode(title: "Trusted Signal", pubDate: .now, duration: 1_800, audioURL: URL(string: "https://example.com/trusted-contrast.mp3")!, podcast: trustedShow)
+
+        for episode in [firstDisliked, secondDisliked, similar] {
+            let profile = EpisodeProfile(episodeID: episode.id)
+            profile.tags = ["overproduced"]
+            context.insert(profile)
+        }
+        let trustedProfile = EpisodeProfile(episodeID: trusted.id)
+        trustedProfile.tags = ["overproduced", "field notes"]
+
+        context.insert(blockedShow)
+        context.insert(trustedShow)
+        context.insert(firstDisliked)
+        context.insert(secondDisliked)
+        context.insert(similar)
+        context.insert(trusted)
+        context.insert(trustedProfile)
+        context.insert(PreferenceSignal(action: .lessLikeThis, episode: firstDisliked))
+        context.insert(PreferenceSignal(action: .lessLikeThis, episode: secondDisliked))
+        context.insert(PreferenceSignal(action: .like, episode: trusted))
+        try context.save()
+
+        let episodes = try RecommendationService()
+            .homeSections(context: context, mode: .balanced, limit: 5)
+            .flatMap(\.episodes)
+
+        #expect(episodes.contains(where: { $0.id == similar.id }) == false)
+        #expect(episodes.contains(where: { $0.id == trusted.id }) == false)
+    }
+
+    @Test
+    @MainActor
     func discoveryPreviewEvidenceBeatsGenreOnlyCatalogMatch() throws {
         let tasteProfile = UserTasteProfile()
         tasteProfile.topTags = ["audio craft"]
