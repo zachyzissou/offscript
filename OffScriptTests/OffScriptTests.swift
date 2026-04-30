@@ -1146,6 +1146,29 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func libraryDirectoryOrganizerBucketsEpisodeCountsInOnePass() {
+        let kept = Podcast(title: "Kept", feedURL: URL(string: "https://example.com/kept.xml")!)
+        let second = Podcast(title: "Second", feedURL: URL(string: "https://example.com/second.xml")!)
+        let ignored = Podcast(title: "Ignored", feedURL: URL(string: "https://example.com/ignored.xml")!)
+        let episodes = [
+            Episode(title: "A", pubDate: .now, audioURL: URL(string: "https://example.com/a.mp3")!, podcast: kept),
+            Episode(title: "B", pubDate: .now, audioURL: URL(string: "https://example.com/b.mp3")!, podcast: kept),
+            Episode(title: "C", pubDate: .now, audioURL: URL(string: "https://example.com/c.mp3")!, podcast: second),
+            Episode(title: "D", pubDate: .now, audioURL: URL(string: "https://example.com/d.mp3")!, podcast: ignored)
+        ]
+
+        let counts = LibraryDirectoryOrganizer.countsByPodcastID(
+            for: episodes,
+            limitedTo: [kept.id, second.id]
+        )
+
+        #expect(counts[kept.id] == 2)
+        #expect(counts[second.id] == 1)
+        #expect(counts[ignored.id] == nil)
+    }
+
+    @Test
+    @MainActor
     func tasteProfileRefreshAggregatesSignals() throws {
         let container = try makeContainer()
         let context = container.mainContext
