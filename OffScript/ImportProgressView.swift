@@ -213,9 +213,10 @@ struct ImportProgressView: View {
         )
         for result in results {
             if result.isSuccess {
-                if let newestEpisode = result.podcast.episodes
-                    .sorted(by: { $0.pubDate > $1.pubDate })
-                    .first {
+                if let newestEpisode = OnboardingPreferenceSignalService.newestEpisode(
+                    for: result.podcast,
+                    in: modelContext
+                ) {
                     modelContext.insert(PreferenceSignal(action: .like, episode: newestEpisode))
                     modelContext.saveOrLog("OnboardingPreferenceSignal")
                 }
@@ -229,6 +230,19 @@ struct ImportProgressView: View {
                 importLogger.error("Onboarding background sync failed for \(result.podcast.feedURL, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
+    }
+}
+
+enum OnboardingPreferenceSignalService {
+    @MainActor
+    static func newestEpisode(for podcast: Podcast, in context: ModelContext) -> Episode? {
+        let podcastID = podcast.id
+        var descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast.id == podcastID },
+            sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
     }
 }
 

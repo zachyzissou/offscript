@@ -2176,6 +2176,44 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func onboardingPreferenceSignalFetchesNewestEpisodeWithoutSortingRelationship() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let podcast = Podcast(title: "Onboarding Pick", feedURL: URL(string: "https://example.com/pick.xml")!)
+        let otherPodcast = Podcast(title: "Other Pick", feedURL: URL(string: "https://example.com/other.xml")!)
+        context.insert(podcast)
+        context.insert(otherPodcast)
+
+        let older = Episode(
+            title: "Older",
+            pubDate: Date(timeIntervalSince1970: 100),
+            audioURL: URL(string: "https://example.com/older.mp3")!,
+            podcast: podcast
+        )
+        let newest = Episode(
+            title: "Newest",
+            pubDate: Date(timeIntervalSince1970: 300),
+            audioURL: URL(string: "https://example.com/newest.mp3")!,
+            podcast: podcast
+        )
+        let otherNewest = Episode(
+            title: "Other Newest",
+            pubDate: Date(timeIntervalSince1970: 500),
+            audioURL: URL(string: "https://example.com/other-newest.mp3")!,
+            podcast: otherPodcast
+        )
+        context.insert(older)
+        context.insert(newest)
+        context.insert(otherNewest)
+        try context.save()
+
+        let selected = OnboardingPreferenceSignalService.newestEpisode(for: podcast, in: context)
+
+        #expect(selected?.id == newest.id)
+    }
+
+    @Test
+    @MainActor
     func feedSyncOnboardingBootstrapCapsEpisodesAndSkipsExpensiveEnrichment() async throws {
         let container = try makeContainer()
         let context = container.mainContext
