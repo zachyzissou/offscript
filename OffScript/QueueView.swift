@@ -113,6 +113,20 @@ struct QueueView: View {
                     QueueItemRow(
                         item: item,
                         rank: index + 1,
+                        canMoveUp: index > 0,
+                        canMoveDown: index < orderedItems.count - 1,
+                        onMoveUp: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                do { try QueueService.move(from: IndexSet(integer: index), to: index - 1, in: modelContext) }
+                                catch { queueLogger.error("Failed to move queue item: \(error.localizedDescription, privacy: .public)") }
+                            }
+                        },
+                        onMoveDown: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                do { try QueueService.move(from: IndexSet(integer: index), to: index + 2, in: modelContext) }
+                                catch { queueLogger.error("Failed to move queue item: \(error.localizedDescription, privacy: .public)") }
+                            }
+                        },
                         onRemove: {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 do { try QueueService.remove(item, in: modelContext) }
@@ -120,36 +134,6 @@ struct QueueView: View {
                             }
                         }
                     )
-                    .contextMenu {
-                        if index > 0 {
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    do { try QueueService.move(from: IndexSet(integer: index), to: index - 1, in: modelContext) }
-                                    catch { queueLogger.error("Failed to move queue item: \(error.localizedDescription, privacy: .public)") }
-                                }
-                            } label: {
-                                Label("Move Up", systemImage: "arrow.up")
-                            }
-                        }
-                        if index < orderedItems.count - 1 {
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    do { try QueueService.move(from: IndexSet(integer: index), to: index + 2, in: modelContext) }
-                                    catch { queueLogger.error("Failed to move queue item: \(error.localizedDescription, privacy: .public)") }
-                                }
-                            } label: {
-                                Label("Move Down", systemImage: "arrow.down")
-                            }
-                        }
-                        Button(role: .destructive) {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                do { try QueueService.remove(item, in: modelContext) }
-                                catch { queueLogger.error("Failed to remove queue item: \(error.localizedDescription, privacy: .public)") }
-                            }
-                        } label: {
-                            Label("Remove", systemImage: "trash")
-                        }
-                    }
                     if index < orderedItems.count - 1 {
                         Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                     }
@@ -281,6 +265,10 @@ private struct QueueItemRow: View {
 
     let item: QueueItem
     let rank: Int
+    var canMoveUp = false
+    var canMoveDown = false
+    var onMoveUp: (() -> Void)? = nil
+    var onMoveDown: (() -> Void)? = nil
     var onRemove: (() -> Void)? = nil
 
     var body: some View {
@@ -326,6 +314,11 @@ private struct QueueItemRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Play \(item.episode.title)")
 
+            queueIconButton(systemName: "chevron.up", color: .offscriptSoftPaper, disabled: !canMoveUp, action: onMoveUp)
+                .accessibilityLabel("Move up")
+            queueIconButton(systemName: "chevron.down", color: .offscriptSoftPaper, disabled: !canMoveDown, action: onMoveDown)
+                .accessibilityLabel("Move down")
+
             if let onRemove {
                 Button(action: onRemove) {
                     Image(systemName: "xmark")
@@ -341,5 +334,26 @@ private struct QueueItemRow: View {
             }
         }
         .padding(.vertical, 10)
+    }
+
+    private func queueIconButton(
+        systemName: String,
+        color: Color,
+        disabled: Bool,
+        action: (() -> Void)?
+    ) -> some View {
+        Button {
+            action?()
+        } label: {
+            Image(systemName: systemName)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(color.opacity(disabled ? 0.35 : 1))
+                .frame(width: 24, height: 28)
+                .overlay(Rectangle().stroke(Color.offscriptHairline.opacity(disabled ? 0.35 : 1), lineWidth: 1))
+                .frame(width: 36, height: 44)
+                .contentShape(Rectangle())
+        }
+        .disabled(disabled)
+        .buttonStyle(.plain)
     }
 }

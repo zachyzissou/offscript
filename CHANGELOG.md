@@ -15,6 +15,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Discovery/search copy now names Apple Podcasts Search explicitly** and avoids implying the app is running a generic opaque algorithmic feed.
 - **Remaining app-controlled Liquid Glass controls were replaced with Tuner surfaces**: Settings toggles, Player scrubber, sign-out/unsubscribe confirmations, and sheet presentation chrome now use flat OLED panels, hairlines, and signal-yellow keys.
 - **Player speed, sleep timer, settings default-rate, and episode download controls no longer invoke system `Menu` chrome.** They now use direct Tuner keys or inline sharp option grids, keeping daily playback controls inside the OLED instrument-panel language.
+- **Home feedback, compact episode-card actions, and Queue reorder controls now use inline Tuner keys** instead of default `Menu`/long-press context surfaces, removing the remaining system action chrome from core playback and queue flows.
 - **Long recommendation reason tags now wrap inside Tuner cards** instead of forcing fixed-width mono pills that could run off Home cards.
 - **Library import is now an explicit `IMPORT` Tuner key** with an icon-only fallback when width is constrained, so the OPML/paste entry point is visible without guessing the glyph.
 - **The bottom Tuner tab indicator now slides between Home, Library, Queue, and Search** with selection haptics instead of appearing abruptly in each cell.
