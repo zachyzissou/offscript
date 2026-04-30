@@ -264,6 +264,18 @@ def list_value(value: Any) -> list[str]:
     return [str(value)]
 
 
+def cloudkit_profile_failures(profile_name: str, entitlements: dict[str, Any], required_container: str) -> list[str]:
+    containers = list_value(entitlements.get("com.apple.developer.icloud-container-identifiers"))
+    services = list_value(entitlements.get("com.apple.developer.icloud-services"))
+
+    failures = []
+    if "CloudKit" not in services and "*" not in services:
+        failures.append(f"{profile_name} does not include CloudKit service entitlement.")
+    if required_container not in containers:
+        failures.append(f"{profile_name} does not include {required_container}.")
+    return failures
+
+
 def build_beta_detail(client: ASCClient, build_id: str) -> dict[str, Any] | None:
     try:
         response = client.request(
@@ -535,8 +547,6 @@ def command_signing_preflight(args: argparse.Namespace) -> None:
     if not matching_profiles:
         failures.append(f"No ACTIVE {profile_type} provisioning profile exists for {bundle_id}.")
 
-    found_container = False
-    found_cloudkit_service = False
     for profile in matching_profiles:
         profile_attrs = attrs(profile)
         profile_name = profile_attrs.get("name")
@@ -559,15 +569,7 @@ def command_signing_preflight(args: argparse.Namespace) -> None:
         print(f"  iCloud-services={services}")
         print(f"  iCloud-containers={containers}")
 
-        if required_container in containers:
-            found_container = True
-        if "CloudKit" in services or "*" in services:
-            found_cloudkit_service = True
-
-    if matching_profiles and not found_cloudkit_service:
-        failures.append(f"ACTIVE {profile_type} profile does not include CloudKit service entitlement.")
-    if matching_profiles and not found_container:
-        failures.append(f"ACTIVE {profile_type} profile does not include {required_container}.")
+        failures.extend(cloudkit_profile_failures(profile_name, entitlements, required_container))
 
     if failures:
         print()
@@ -583,7 +585,7 @@ def command_signing_preflight(args: argparse.Namespace) -> None:
         raise ASCError("CloudKit signing profile is not ready")
 
     print()
-    print("OK: CloudKit signing profile includes the required container.")
+    print("OK: every active matching CloudKit signing profile includes the required container.")
 
 
 def command_sync_latest(args: argparse.Namespace) -> None:

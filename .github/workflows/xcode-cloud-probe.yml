@@ -79,7 +79,7 @@ jobs:
               scripts/app_store_connect.py xcode-cloud inspect "$WF_ID"
               ;;
             signing-preflight)
-              scripts/app_store_connect.py signing-preflight --cloudkit-container iCloud.com.offscript.app --profile-type IOS_APP_STORE
+              scripts/app_store_connect.py signing-preflight --profile-type IOS_APP_STORE
               ;;
             reconfigure-dryrun)
               test -n "${WF_ID:-}" || { echo "workflow_id input required"; exit 1; }
