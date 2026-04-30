@@ -23,6 +23,8 @@ struct PlayerView: View {
     @Environment(\.modelContext) private var modelContext
     @ObservedObject private var player = PlaybackController.shared
     @Query private var queueItems: [QueueItem]
+    @State private var isSpeedPickerExpanded = false
+    @State private var isSleepPickerExpanded = false
 
     private var orderedQueueItems: [QueueItem] {
         queueItems.sorted { lhs, rhs in
@@ -392,89 +394,76 @@ struct PlayerView: View {
         VStack(alignment: .leading, spacing: 8) {
             TunerLabel(text: "CONTROLS · TRANSPORT", color: .offscriptSignalYellow)
 
-            HStack(spacing: 8) {
-                Menu {
-                    Section("Speed for \(episode.podcast.title)") {
-                        ForEach([("1.0×", Float(1.0)),
-                                 ("1.1×", Float(1.1)),
-                                 ("1.25×", Float(1.25)),
-                                 ("1.5×", Float(1.5)),
-                                 ("1.75×", Float(1.75)),
-                                 ("2.0×", Float(2.0)),
-                                 ("2.5×", Float(2.5))], id: \.0) { label, rate in
-                            Button {
-                                player.setPlaybackRate(rate)
-                            } label: {
-                                HStack {
-                                    Text(label)
-                                    if abs(player.playbackRate - rate) < 0.001 {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } label: {
-                    tunerControlLabel(text: "SPEED  \(String(format: "%.2g", player.playbackRate))×",
-                                      color: hasCustomRate(for: episode) ? .offscriptSignalYellow : .offscriptPaperWhite)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Playback speed")
-                .accessibilityHint("Pick a speed for this podcast")
-
-                if !episode.isQueued {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
                     Button {
-                        do { try QueueService.add(episode, in: modelContext) }
-                        catch { playerLogger.error("Queue add failed: \(error.localizedDescription, privacy: .public)") }
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            isSpeedPickerExpanded.toggle()
+                            if isSpeedPickerExpanded { isSleepPickerExpanded = false }
+                        }
                     } label: {
-                        tunerControlLabel(text: "+ QUEUE NEXT", color: .offscriptPaperWhite)
+                        tunerControlLabel(text: "SPEED  \(String(format: "%.2g", player.playbackRate))×",
+                                          color: hasCustomRate(for: episode) ? .offscriptSignalYellow : .offscriptPaperWhite)
                     }
                     .buttonStyle(.plain)
-                }
+                    .accessibilityLabel("Playback speed")
+                    .accessibilityHint("Pick a speed for this podcast")
 
-                Button {
-                    episode.isPlayed = true
-                    episode.playedPosition = player.duration
-                    do { try modelContext.save() }
-                    catch { playerLogger.error("Mark-played save failed: \(error.localizedDescription, privacy: .public)") }
-                } label: {
-                    tunerControlLabel(text: "✓ MARK PLAYED", color: .offscriptSignalYellow)
-                }
-                .buttonStyle(.plain)
-
-                // Sleep timer — Menu with the standard podcast app intervals.
-                // Active timer shows live countdown in mm:ss as the SLEEP key
-                // label; tapping reveals the menu so the user can extend or
-                // cancel without leaving the player.
-                Menu {
-                    if player.sleepTimerEndDate != nil {
-                        Button(role: .destructive) {
-                            player.cancelSleepTimer()
-                        } label: {
-                            Label("Cancel Timer", systemImage: "xmark")
-                        }
-                        Divider()
-                    }
-                    ForEach([5, 15, 30, 45, 60], id: \.self) { minutes in
+                    if !episode.isQueued {
                         Button {
-                            player.setSleepTimer(minutes: minutes)
+                            do { try QueueService.add(episode, in: modelContext) }
+                            catch { playerLogger.error("Queue add failed: \(error.localizedDescription, privacy: .public)") }
                         } label: {
-                            Text("\(minutes) min")
+                            tunerControlLabel(text: "+ QUEUE NEXT", color: .offscriptPaperWhite)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button {
+                        episode.isPlayed = true
+                        episode.playedPosition = player.duration
+                        do { try modelContext.save() }
+                        catch { playerLogger.error("Mark-played save failed: \(error.localizedDescription, privacy: .public)") }
+                    } label: {
+                        tunerControlLabel(text: "✓ MARK PLAYED", color: .offscriptSignalYellow)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            isSleepPickerExpanded.toggle()
+                            if isSleepPickerExpanded { isSpeedPickerExpanded = false }
+                        }
+                    } label: {
+                        tunerControlLabel(text: sleepTimerLabel,
+                                          color: player.sleepTimerEndDate != nil
+                                            ? .offscriptSignalYellow
+                                            : .offscriptPaperWhite)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Sleep timer")
+                    .accessibilityHint(player.sleepTimerEndDate != nil
+                        ? "Active. Pick a new duration or cancel."
+                        : "Pick a duration to pause playback.")
+
+                    Spacer()
+                }
+
+                if isSpeedPickerExpanded {
+                    tunerRatePicker(
+                        rates: [Float(1.0), 1.1, 1.25, 1.5, 1.75, 2.0, 2.5],
+                        selectedRate: player.playbackRate
+                    ) { rate in
+                        player.setPlaybackRate(rate)
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            isSpeedPickerExpanded = false
                         }
                     }
-                } label: {
-                    tunerControlLabel(text: sleepTimerLabel,
-                                      color: player.sleepTimerEndDate != nil
-                                        ? .offscriptSignalYellow
-                                        : .offscriptPaperWhite)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Sleep timer")
-                .accessibilityHint(player.sleepTimerEndDate != nil
-                    ? "Active. Pick a new duration or cancel."
-                    : "Pick a duration to pause playback.")
 
-                Spacer()
+                if isSleepPickerExpanded {
+                    tunerSleepPicker
+                }
             }
         }
         .padding(.vertical, 12)
@@ -493,6 +482,70 @@ struct PlayerView: View {
             .overlay(Rectangle().stroke(color.opacity(0.7), lineWidth: 1))
             .frame(minHeight: 44)
             .contentShape(Rectangle())
+    }
+
+    private func tunerRatePicker(
+        rates: [Float],
+        selectedRate: Float,
+        onSelect: @escaping (Float) -> Void
+    ) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 8)], spacing: 8) {
+            ForEach(rates, id: \.self) { rate in
+                let isSelected = abs(selectedRate - rate) < 0.001
+                Button {
+                    onSelect(rate)
+                } label: {
+                    HStack(spacing: 6) {
+                        TunerLabel(
+                            text: String(format: "%.2g×", rate),
+                            color: isSelected ? .offscriptStudioBlack : .offscriptPaperWhite,
+                            size: 10
+                        )
+                        if isSelected {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(Color.offscriptStudioBlack)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .background(isSelected ? Color.offscriptSignalYellow : Color.clear)
+                    .overlay(Rectangle().stroke(isSelected ? Color.offscriptSignalYellow : Color.offscriptHairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var tunerSleepPicker: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
+            if player.sleepTimerEndDate != nil {
+                Button {
+                    player.cancelSleepTimer()
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        isSleepPickerExpanded = false
+                    }
+                } label: {
+                    TunerLabel(text: "× CANCEL", color: .offscriptFnRecord, size: 10)
+                        .frame(maxWidth: .infinity, minHeight: 34)
+                        .overlay(Rectangle().stroke(Color.offscriptFnRecord.opacity(0.7), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+
+            ForEach([5, 15, 30, 45, 60], id: \.self) { minutes in
+                Button {
+                    player.setSleepTimer(minutes: minutes)
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        isSleepPickerExpanded = false
+                    }
+                } label: {
+                    TunerLabel(text: "\(minutes) MIN", color: .offscriptPaperWhite, size: 10)
+                        .frame(maxWidth: .infinity, minHeight: 34)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     // MARK: empty

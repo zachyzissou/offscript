@@ -8,21 +8,8 @@ struct DownloadButton: View {
         // Tuner-direction download key — sharp hairline rectangle with mono
         // status text. Function-coded color (signal yellow for actionable
         // states, mode-green when downloaded, record-red on failure).
-        Menu {
-            switch episode.downloadState {
-            case .notDownloaded, .failed:
-                Button("Download") {
-                    downloadService.startDownload(for: episode)
-                }
-            case .downloading, .queued:
-                Button("Cancel Download", role: .destructive) {
-                    downloadService.cancelDownload(for: episode)
-                }
-            case .downloaded:
-                Button("Remove Download", role: .destructive) {
-                    downloadService.deleteDownload(for: episode)
-                }
-            }
+        Button {
+            performPrimaryDownloadAction()
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: downloadIcon)
@@ -38,6 +25,17 @@ struct DownloadButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(downloadAccessibilityLabel)
+    }
+
+    private func performPrimaryDownloadAction() {
+        switch episode.downloadState {
+        case .notDownloaded, .failed:
+            downloadService.startDownload(for: episode)
+        case .downloading, .queued:
+            downloadService.cancelDownload(for: episode)
+        case .downloaded:
+            downloadService.deleteDownload(for: episode)
+        }
     }
 
     private var downloadColor: Color {
