@@ -564,6 +564,44 @@ struct TunerLabel: View {
     }
 }
 
+struct TunerRatePicker: View {
+    let rates: [Float]
+    let selectedRate: Float
+    var accessibilityActionPrefix = "Set playback rate to"
+    let onSelect: (Float) -> Void
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 8)], spacing: 8) {
+            ForEach(rates, id: \.self) { rate in
+                let isSelected = abs(selectedRate - rate) < 0.001
+                Button {
+                    onSelect(rate)
+                } label: {
+                    HStack(spacing: 6) {
+                        TunerLabel(
+                            text: String(format: "%.2g×", rate),
+                            color: isSelected ? .offscriptStudioBlack : .offscriptPaperWhite,
+                            size: 10
+                        )
+                        if isSelected {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(Color.offscriptStudioBlack)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .background(isSelected ? Color.offscriptSignalYellow : Color.clear)
+                    .overlay(Rectangle().stroke(isSelected ? Color.offscriptSignalYellow : Color.offscriptHairline, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(accessibilityActionPrefix) \(String(format: "%.2g×", rate))")
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+    }
+}
+
 /// Cassette/cartridge artwork tile — flat fill with a hairline border, corner
 // (TunerArtworkTile removed — placeholder cassette tile was never composed
 // into any view; OffScriptArtworkPlaceholder + OffScriptArtworkView fill

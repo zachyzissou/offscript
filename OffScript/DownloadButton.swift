@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DownloadButton: View {
     @ObservedObject private var downloadService = DownloadService.shared
+    @State private var isRemoveArmed = false
     let episode: Episode
 
     var body: some View {
@@ -25,16 +26,26 @@ struct DownloadButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(downloadAccessibilityLabel)
+        .accessibilityHint(downloadAccessibilityHint)
     }
 
     private func performPrimaryDownloadAction() {
         switch episode.downloadState {
         case .notDownloaded, .failed:
+            isRemoveArmed = false
             downloadService.startDownload(for: episode)
         case .downloading, .queued:
+            isRemoveArmed = false
             downloadService.cancelDownload(for: episode)
         case .downloaded:
-            downloadService.deleteDownload(for: episode)
+            if isRemoveArmed {
+                downloadService.deleteDownload(for: episode)
+                isRemoveArmed = false
+            } else {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isRemoveArmed = true
+                }
+            }
         }
     }
 
@@ -45,6 +56,7 @@ struct DownloadButton: View {
         case .queued, .downloading:
             return .offscriptSignalYellow
         case .downloaded:
+            if isRemoveArmed { return .offscriptFnRecord }
             return .offscriptFnMode
         case .failed:
             return .offscriptFnRecord
@@ -60,6 +72,7 @@ struct DownloadButton: View {
         case .downloading:
             return "\(Int((episode.downloadProgress * 100).rounded()))%"
         case .downloaded:
+            if isRemoveArmed { return "Remove?" }
             return "Offline"
         case .failed:
             return "Retry"
@@ -75,6 +88,7 @@ struct DownloadButton: View {
         case .downloading:
             return "arrow.down.circle.fill"
         case .downloaded:
+            if isRemoveArmed { return "trash" }
             return "checkmark.circle.fill"
         case .failed:
             return "exclamationmark.arrow.trianglehead.2.clockwise"
@@ -93,6 +107,23 @@ struct DownloadButton: View {
             return "\(episode.title) is downloaded"
         case .failed:
             return "Retry download for \(episode.title)"
+        }
+    }
+
+    private var downloadAccessibilityHint: String {
+        switch episode.downloadState {
+        case .notDownloaded:
+            return "Double-tap to download this episode."
+        case .queued:
+            return "Double-tap to cancel the queued download."
+        case .downloading:
+            return "Double-tap to cancel the download."
+        case .downloaded:
+            return isRemoveArmed
+                ? "Double-tap again to remove the downloaded file."
+                : "Double-tap to arm removal of the downloaded file."
+        case .failed:
+            return "Double-tap to retry the download."
         }
     }
 }

@@ -450,9 +450,10 @@ struct PlayerView: View {
                 }
 
                 if isSpeedPickerExpanded {
-                    tunerRatePicker(
+                    TunerRatePicker(
                         rates: [Float(1.0), 1.1, 1.25, 1.5, 1.75, 2.0, 2.5],
-                        selectedRate: player.playbackRate
+                        selectedRate: player.playbackRate,
+                        accessibilityActionPrefix: "Set playback speed to"
                     ) { rate in
                         player.setPlaybackRate(rate)
                         withAnimation(.easeInOut(duration: 0.16)) {
@@ -482,38 +483,6 @@ struct PlayerView: View {
             .overlay(Rectangle().stroke(color.opacity(0.7), lineWidth: 1))
             .frame(minHeight: 44)
             .contentShape(Rectangle())
-    }
-
-    private func tunerRatePicker(
-        rates: [Float],
-        selectedRate: Float,
-        onSelect: @escaping (Float) -> Void
-    ) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 8)], spacing: 8) {
-            ForEach(rates, id: \.self) { rate in
-                let isSelected = abs(selectedRate - rate) < 0.001
-                Button {
-                    onSelect(rate)
-                } label: {
-                    HStack(spacing: 6) {
-                        TunerLabel(
-                            text: String(format: "%.2g×", rate),
-                            color: isSelected ? .offscriptStudioBlack : .offscriptPaperWhite,
-                            size: 10
-                        )
-                        if isSelected {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(Color.offscriptStudioBlack)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 34)
-                    .background(isSelected ? Color.offscriptSignalYellow : Color.clear)
-                    .overlay(Rectangle().stroke(isSelected ? Color.offscriptSignalYellow : Color.offscriptHairline, lineWidth: 1))
-                }
-                .buttonStyle(.plain)
-            }
-        }
     }
 
     private var tunerSleepPicker: some View {

@@ -220,14 +220,19 @@ struct SettingsView: View {
                     .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Default playback rate")
+                .accessibilityValue(String(format: "%.2g×", currentDefaultRate))
+                .accessibilityHint(isDefaultRatePickerExpanded ? "Double-tap to collapse rate options." : "Double-tap to expand rate options.")
             }
             .padding(.top, 10)
             .padding(.bottom, isDefaultRatePickerExpanded ? 8 : 10)
 
             if isDefaultRatePickerExpanded {
-                tunerRatePicker(
+                TunerRatePicker(
                     rates: [Float(1.0), 1.1, 1.25, 1.5, 1.75, 2.0, 2.5],
-                    selectedRate: currentDefaultRate
+                    selectedRate: currentDefaultRate,
+                    accessibilityActionPrefix: "Set default playback rate to"
                 ) { rate in
                     PodcastPlaybackPreferences.setGlobalDefault(rate)
                     defaultRateRefresh = UUID()  // force re-read of static
@@ -321,42 +326,6 @@ struct SettingsView: View {
         .accessibilityValue(isOn.wrappedValue ? "On" : "Off")
         .accessibilityAddTraits(isOn.wrappedValue ? [.isButton, .isSelected] : .isButton)
         .padding(.vertical, 10)
-    }
-
-    private func tunerRatePicker(
-        rates: [Float],
-        selectedRate: Float,
-        onSelect: @escaping (Float) -> Void
-    ) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 8)], spacing: 8) {
-            ForEach(rates, id: \.self) { rate in
-                let isSelected = abs(selectedRate - rate) < 0.001
-                Button {
-                    onSelect(rate)
-                } label: {
-                    HStack(spacing: 6) {
-                        TunerLabel(
-                            text: String(format: "%.2g×", rate),
-                            color: isSelected ? .offscriptStudioBlack : .offscriptPaperWhite,
-                            size: 10
-                        )
-                        if isSelected {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(Color.offscriptStudioBlack)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 34)
-                    .background(isSelected ? Color.offscriptSignalYellow : Color.clear)
-                    .overlay(
-                        Rectangle()
-                            .stroke(isSelected ? Color.offscriptSignalYellow : Color.offscriptHairline, lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Set default playback rate to \(String(format: "%.2g×", rate))")
-            }
-        }
     }
 
     // MARK: signal profile
