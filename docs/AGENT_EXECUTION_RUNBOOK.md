@@ -29,6 +29,31 @@ An issue is ready for low-thinking implementation only if it has:
 If any of those are missing, first create a planning/docs PR or add an issue
 comment that turns the issue into an executable spec.
 
+## Kanban Routing Labels
+
+Use the project status and agent labels together. Status alone is not enough.
+
+- `agent:low-thinking-ready`: safe for a constrained implementation agent when
+  this runbook and the issue contract are followed.
+- `agent:needs-spec`: do not implement yet. First tighten acceptance criteria,
+  split the first slice, or add missing verification/non-goals.
+- `agent:senior-required`: do not assign to a low-thinking agent. These issues
+  need owner action, release/signing authority, real-device validation,
+  cross-surface product judgment, or broad architecture work.
+
+Label prefilter for low-thinking candidates:
+
+```sh
+gh issue list \
+  --state open \
+  --label "agent:low-thinking-ready" \
+  --search "-label:agent:senior-required"
+```
+
+Before launching the agent, confirm the issue is `Ready` in the OffScript
+project. Backlog issues with `agent:low-thinking-ready` are valid only when a
+senior/controller agent first selects a narrow slice from the issue contract.
+
 ## Branch And PR Workflow
 
 ```sh
@@ -46,8 +71,11 @@ Rules:
 5. Run the narrowest meaningful test first, then the full OffScript unit suite
    before PR.
 6. Open a PR with issue number, summary, verification, and changelog note.
-7. Let Copilot review the PR, address every actionable comment, rerun tests,
-   and merge only when checks are green or absent and merge state is clean.
+7. Let Copilot review the PR, address every actionable comment, and rerun
+   tests.
+8. Low-thinking agents stop at PR-ready. A senior/controller agent owns merge
+   authority because merging to `main` triggers Xcode Cloud/TestFlight and must
+   account for release state.
 
 ## Standard Verification
 
@@ -68,6 +96,10 @@ audio, lock screen, silent switch, Sign in with Apple, iCloud/CloudKit, and
 release visibility.
 
 ## Recommended Next Issues
+
+These are not the only runnable issues. They are the safest starting points for
+low-thinking implementation agents because the code areas, guardrails, and
+verification path are constrained.
 
 ### #105 Speed Up Large OPML Import
 
@@ -110,27 +142,6 @@ Non-goals:
 
 - do not reintroduce live `@Query` directory arrays at the root Library level;
 - do not replace the Tuner alphabet carousel with a default picker.
-
-### #108 Rebuild Recommendations Around Authored User Signal
-
-Best for product-quality agents. Start in:
-
-- `OffScript/RecommendationService.swift`
-- `OffScript/RecommendationExplainer.swift`
-- `OffScript/HomeView.swift`
-- `OffScriptTests/OffScriptTests.swift`
-
-Required proof:
-
-- fixtures covering explicit positive signal, negative signal, cold start,
-  genre-only discovery, and large seeded library behavior;
-- reason copy that does not say generic algorithm phrases;
-- no Home card overflow.
-
-Non-goals:
-
-- do not imply Apple Podcasts Search is a black-box recommendation engine;
-- do not let passive recency outrank explicit user feedback.
 
 ### #109 Complete Tuner UI Conformance Audit
 
