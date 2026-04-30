@@ -186,6 +186,14 @@ final class RecommendationService {
         return primary.explanation
     }
 
+    static func effectivePreferredGenreTitles(for tasteProfile: UserTasteProfile?) -> [String] {
+        let profileGenres = tasteProfile?.preferredGenres ?? []
+        if !profileGenres.isEmpty {
+            return profileGenres
+        }
+        return AppSettings.preferredGenres.map(\.title)
+    }
+
     @MainActor
     func discoverySection(
         context: ModelContext,
@@ -195,7 +203,11 @@ final class RecommendationService {
         guard let tasteProfile = try? TasteProfileService.loadOrCreate(in: context) else { return nil }
 
         // Only show discovery if the user has some taste data
-        let hasData = !tasteProfile.topTags.isEmpty || !tasteProfile.preferredGenres.isEmpty
+        let preferredGenres = Self.effectivePreferredGenreTitles(for: tasteProfile)
+        if tasteProfile.preferredGenres.isEmpty, !preferredGenres.isEmpty {
+            tasteProfile.preferredGenres = preferredGenres
+        }
+        let hasData = !tasteProfile.topTags.isEmpty || !preferredGenres.isEmpty
         guard hasData else { return nil }
 
         let podcasts = (try? context.fetch(FetchDescriptor<Podcast>(
@@ -228,7 +240,12 @@ final class RecommendationService {
         refreshTasteProfile: Bool = true
     ) throws -> [HomeFeedSection] {
         if refreshTasteProfile {
-            try? TasteProfileService.refresh(in: context)
+            do {
+                try TasteProfileService.refresh(in: context)
+            } catch {
+                context.rollback()
+                NSLog("RecommendationService.homeSections: failed to refresh taste profile: \(String(describing: error))")
+            }
         }
         let queueItems = try context.fetch(FetchDescriptor<QueueItem>(
             sortBy: [
@@ -302,7 +319,7 @@ final class RecommendationService {
             completedShowCounts: completedShowCounts,
             explicitPositiveShowCounts: explicitPositiveShowCounts,
             queuedPositionByEpisodeID: queuedPositionByEpisodeID,
-            preferredGenres: Set((tasteProfile?.preferredGenres ?? AppSettings.preferredGenres.map(\.title)).map { $0.lowercased() }),
+            preferredGenres: Set(Self.effectivePreferredGenreTitles(for: tasteProfile).map { $0.lowercased() }),
             negativeTagWeights: negativeTagWeights,
             negativeShowWeights: negativeShowWeights
         )
@@ -723,7 +740,7 @@ final class RecommendationService {
             completedShowCounts: [:],
             explicitPositiveShowCounts: [:],
             queuedPositionByEpisodeID: [:],
-            preferredGenres: Set((tasteProfile?.preferredGenres ?? AppSettings.preferredGenres.map(\.title)).map { $0.lowercased() }),
+            preferredGenres: Set(Self.effectivePreferredGenreTitles(for: tasteProfile).map { $0.lowercased() }),
             negativeTagWeights: negativeTagWeights,
             negativeShowWeights: negativeShowWeights
         )

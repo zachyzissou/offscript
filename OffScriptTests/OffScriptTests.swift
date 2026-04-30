@@ -878,6 +878,18 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func recommendationPreferredGenresFallbackToOnboardingSettingsWhenProfileIsEmpty() {
+        let originalGenres = AppSettings.preferredGenres
+        AppSettings.preferredGenres = [.technology, .newsAndPolitics]
+        defer { AppSettings.preferredGenres = originalGenres }
+
+        let emptyProfile = UserTasteProfile()
+
+        #expect(RecommendationService.effectivePreferredGenreTitles(for: emptyProfile) == ["Technology", "News & Politics"])
+    }
+
+    @Test
+    @MainActor
     func preferenceFeedbackServicePostsRetuneNotificationAfterSaving() throws {
         let container = try makeContainer()
         let context = container.mainContext
