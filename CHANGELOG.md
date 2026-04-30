@@ -31,6 +31,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ### Fixed — Xcode Cloud signing
 - **Build number advanced to 41 after Xcode Cloud runs #40 and #41 failed exporting app build 40.**
 - **Build number advanced to 42 after Xcode Cloud run #63 failed during App Store Connect preparation** while the product line continued shipping performance builds on main.
+- **Build number advanced to 43 after App Store Connect reported `2.3.11 (42)` already uploaded** despite Cloud run #64 failing during preparation.
 - **CloudKit entitlements are temporarily withheld from the shipped target** because Apple-managed App Store and Ad Hoc profiles for `com.offscript.app` remain invalid after iCloud capability changes. The runtime still falls back to local storage and Settings reports the fallback instead of claiming sync is active.
 
 ### Added — large-library directory controls
@@ -46,6 +47,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Large-library scrolling no longer waits on per-show unplayed count churn by default.** Library now loads the aggregate unplayed count, fresh rail, and bounded in-progress rail first; exact per-show counts are deferred until `UNPLAYED` or `ATTN` directory modes need them.
 - **Count-driven Library directory modes no longer run one count query per show.** `UNPLAYED`, `IN PROGRESS`, and `ATTN` now load the relevant episode set once and bucket counts by podcast in memory, removing hundreds of SwiftData round trips in 250+ show libraries.
 - **Library directory snapshots are now cached between relevant input changes** so import-strip ticks, selection changes, rail image updates, and other unrelated SwiftUI refreshes do not repeatedly re-filter, re-sort, and re-section the whole 250+ show directory.
+- **Library artwork now uses fixed-size image requests on known-size surfaces** so rails, optional artwork rows, and channel detail headers do not pay a `GeometryReader` measurement cost per artwork view.
 - **Library show rows now navigate through a single selected destination** instead of embedding a detail destination in every row of a 250+ show directory.
 - **Library summary reloads are coalesced during background OPML imports** so each imported show does not immediately retrigger the expensive per-show count path while the list is being scrolled.
 - **Library summary counts no longer issue one SwiftData `fetchCount` per subscribed show.** The page now loads the unplayed episode set once, derives the latest rail and per-show counts from that result, and avoids 250+ synchronous count queries on Library open.

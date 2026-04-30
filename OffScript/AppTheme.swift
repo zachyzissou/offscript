@@ -370,33 +370,57 @@ struct OffScriptArtworkView: View {
 
     let url: URL?
     var cornerRadius: CGFloat = OffScriptTheme.Radius.medium
+    var fixedSize: CGSize? = nil
 
     var body: some View {
-        GeometryReader { proxy in
-            let maxPixelDimension = min(max(proxy.size.width, proxy.size.height) * displayScale, 1024)
-            CachedAsyncImage(url: url, maxPixelDimension: maxPixelDimension) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
-                    .overlay(
-                        // Subtle bottom shadow on artwork — uses studio-black
-                        // token for consistency with the OLED Tuner field
-                        // instead of bare Color.black.opacity (CLAUDE.md
-                        // forbids inline opacity on raw white/black).
-                        LinearGradient(
-                            colors: [Color.clear, Color.offscriptStudioBlack.opacity(0.08)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-            } placeholder: {
-                OffScriptArtworkPlaceholder(cornerRadius: cornerRadius)
-                    .frame(width: proxy.size.width, height: proxy.size.height)
+        if let fixedSize {
+            artwork(size: fixedSize)
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        } else {
+            GeometryReader { proxy in
+                artwork(size: proxy.size)
             }
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+
+    private func artwork(size: CGSize) -> some View {
+        let maxPixelDimension = min(max(size.width, size.height) * displayScale, 1024)
+        return CachedAsyncImage(url: url, maxPixelDimension: maxPixelDimension) { image in
+            image
+                .resizable()
+                .scaledToFill()
+                .frame(width: size.width, height: size.height)
+                .clipped()
+                .overlay(
+                    // Subtle bottom shadow on artwork — uses studio-black
+                    // token for consistency with the OLED Tuner field
+                    // instead of bare Color.black.opacity (CLAUDE.md
+                    // forbids inline opacity on raw white/black).
+                    LinearGradient(
+                        colors: [Color.clear, Color.offscriptStudioBlack.opacity(0.08)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+        } placeholder: {
+            OffScriptArtworkPlaceholder(cornerRadius: cornerRadius)
+                .frame(width: size.width, height: size.height)
+        }
+    }
+}
+
+extension OffScriptArtworkView {
+    init(url: URL?, cornerRadius: CGFloat = OffScriptTheme.Radius.medium, size: CGFloat) {
+        self.url = url
+        self.cornerRadius = cornerRadius
+        self.fixedSize = CGSize(width: size, height: size)
+    }
+
+    init(url: URL?, cornerRadius: CGFloat = OffScriptTheme.Radius.medium, size: CGSize) {
+        self.url = url
+        self.cornerRadius = cornerRadius
+        self.fixedSize = size
     }
 }
 
