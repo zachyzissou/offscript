@@ -125,8 +125,11 @@ struct HomeView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .offscriptRecommendationFeedbackChanged)) { _ in
-            guard isActive else { return }
             feedbackRetuneTask?.cancel()
+            guard isActive else {
+                loadedRecommendationModeRaw = nil
+                return
+            }
             feedbackRetuneTask = Task {
                 do {
                     try await Task.sleep(nanoseconds: 180_000_000)

@@ -637,14 +637,28 @@ struct LibraryView: View {
                 cancelDeferredLibraryWork()
             }
         }
-        .onChange(of: subscribedPodcastIDs) { _, _ in scheduleLibraryEpisodeSummaryLoad() }
-        .onChange(of: directoryQuery) { _, newValue in scheduleDirectoryQuery(newValue) }
-        .onChange(of: directorySnapshotInputs) { _, _ in rebuildDirectorySnapshot() }
-        .onChange(of: selectedPodcastID) { _, _ in reloadDirectoryAfterSubscriptionChangeIfPossible() }
+        .onChange(of: subscribedPodcastIDs) { _, _ in
+            guard isActive && isLibraryTabActive else { return }
+            scheduleLibraryEpisodeSummaryLoad()
+        }
+        .onChange(of: directoryQuery) { _, newValue in
+            guard isActive && isLibraryTabActive else { return }
+            scheduleDirectoryQuery(newValue)
+        }
+        .onChange(of: directorySnapshotInputs) { _, _ in
+            guard isActive && isLibraryTabActive else { return }
+            rebuildDirectorySnapshot()
+        }
+        .onChange(of: selectedPodcastID) { _, _ in
+            guard isActive && isLibraryTabActive else { return }
+            reloadDirectoryAfterSubscriptionChangeIfPossible()
+        }
         .onChange(of: directoryScope) { _, _ in
+            guard isActive && isLibraryTabActive else { return }
             ensureFullDirectoryCountsIfNeeded()
         }
         .onChange(of: directorySort) { _, _ in
+            guard isActive && isLibraryTabActive else { return }
             ensureFullDirectoryCountsIfNeeded()
         }
         .onDisappear {
