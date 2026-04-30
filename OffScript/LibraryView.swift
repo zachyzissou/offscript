@@ -498,17 +498,6 @@ nonisolated enum LibraryDirectoryOrganizer {
 }
 
 @MainActor
-enum LibraryDirectorySnapshotLoader {
-    static func subscribedPodcasts(in context: ModelContext) throws -> [LibraryDirectoryPodcast] {
-        let descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> { $0.isSubscribed },
-            sortBy: [SortDescriptor(\Podcast.title)]
-        )
-        return try context.fetch(descriptor).map(LibraryDirectoryPodcast.init(podcast:))
-    }
-}
-
-@MainActor
 enum LibraryDirectoryCountLoader {
     static func countsByPodcastID(
         podcastIDs: [UUID],
@@ -692,6 +681,8 @@ struct LibraryView: View {
 
     let isActive: Bool
     let onOpenSettings: () -> Void
+
+    private static let subscriptionIDFetchChunkSize = 400
 
     private let syncService = FeedSyncService()
     @State private var isImportPresented = false
@@ -1197,14 +1188,29 @@ struct LibraryView: View {
 
     @MainActor
     private func subscribedPodcasts(withIDs ids: [UUID]) throws -> [Podcast] {
-        let requestedIDs = Set(ids)
-        guard !requestedIDs.isEmpty else { return [] }
-        let descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> {
-                requestedIDs.contains($0.id) && $0.isSubscribed
+        var podcastsByID: [UUID: Podcast] = [:]
+        var startIndex = ids.startIndex
+        while startIndex < ids.endIndex {
+            let endIndex = ids.index(
+                startIndex,
+                offsetBy: Self.subscriptionIDFetchChunkSize,
+                limitedBy: ids.endIndex
+            ) ?? ids.endIndex
+            let chunkIDs = Set(ids[startIndex..<endIndex])
+            if !chunkIDs.isEmpty {
+                let descriptor = FetchDescriptor<Podcast>(
+                    predicate: #Predicate<Podcast> {
+                        chunkIDs.contains($0.id) && $0.isSubscribed
+                    }
+                )
+                let chunkPodcasts = try modelContext.fetch(descriptor)
+                for podcast in chunkPodcasts {
+                    podcastsByID[podcast.id] = podcast
+                }
             }
-        )
-        return try modelContext.fetch(descriptor)
+            startIndex = endIndex
+        }
+        return ids.compactMap { podcastsByID[$0] }
     }
 
     @MainActor

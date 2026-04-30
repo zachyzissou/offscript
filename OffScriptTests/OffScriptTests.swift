@@ -1831,30 +1831,6 @@ struct OffScriptTests {
 
     @Test
     @MainActor
-    func libraryDirectorySnapshotLoaderBuildsValueRowsWithoutLiveQueryInvalidation() throws {
-        let container = try makeContainer()
-        let context = container.mainContext
-        let subscribed = Podcast(title: "Subscribed Show", feedURL: URL(string: "https://example.com/subscribed.xml")!)
-        subscribed.author = "Signal Desk"
-        subscribed.categories = ["Technology", "Design"]
-        subscribed.latestPubDate = Date(timeIntervalSince1970: 400)
-        let unsubscribed = Podcast(title: "Ignored Show", feedURL: URL(string: "https://example.com/ignored.xml")!)
-        unsubscribed.isSubscribed = false
-        context.insert(subscribed)
-        context.insert(unsubscribed)
-        try context.save()
-
-        let snapshots = try LibraryDirectorySnapshotLoader.subscribedPodcasts(in: context)
-
-        #expect(snapshots.map(\.id) == [subscribed.id])
-        #expect(snapshots.first?.title == "Subscribed Show")
-        #expect(snapshots.first?.author == "Signal Desk")
-        #expect(snapshots.first?.categories == ["Technology", "Design"])
-        #expect(snapshots.first?.latestPubDate == Date(timeIntervalSince1970: 400))
-    }
-
-    @Test
-    @MainActor
     func libraryDirectoryCountStoreLoadsSubscribedPodcastSnapshots() async throws {
         let container = try makeContainer()
         let context = container.mainContext
