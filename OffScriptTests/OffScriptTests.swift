@@ -1152,6 +1152,10 @@ struct OffScriptTests {
         #expect(rows.first?.unplayedCount == 3)
         #expect(rows.last?.inProgressCount == 1)
         #expect(rows.map(\.isLastInSection) == [true, true])
+
+        let adjacent = Podcast(title: "Another Audio", feedURL: URL(string: "https://example.com/another-row.xml")!)
+        let sectionsWithoutExplicitNumbers = LibraryDirectoryOrganizer.sections(for: [alpha, adjacent])
+        #expect(sectionsWithoutExplicitNumbers.flatMap(\.rows).map(\.channelNumber) == [1, 2])
     }
 
     @Test

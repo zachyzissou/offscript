@@ -216,7 +216,7 @@ nonisolated enum LibraryDirectoryOrganizer {
                 rows: podcasts.enumerated().map { index, podcast in
                     LibraryDirectoryRow(
                         podcast: podcast,
-                        channelNumber: numbersByPodcastID[podcast.id] ?? 0,
+                        channelNumber: numbersByPodcastID[podcast.id] ?? (index + 1),
                         unplayedCount: unplayedCounts[podcast.id] ?? 0,
                         inProgressCount: inProgressCounts[podcast.id] ?? 0,
                         isLastInSection: index == podcasts.count - 1
