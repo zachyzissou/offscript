@@ -705,6 +705,14 @@ struct OffScriptTests {
     }
 
     @Test
+    func sentryEnvironmentUsesStoreKitAppTransactionEnvironment() {
+        #expect(SentryEnvironmentResolver.sentryEnvironment(storeKitEnvironmentRawValue: "Production") == "production")
+        #expect(SentryEnvironmentResolver.sentryEnvironment(storeKitEnvironmentRawValue: "Sandbox") == "testflight")
+        #expect(SentryEnvironmentResolver.sentryEnvironment(storeKitEnvironmentRawValue: "Xcode") == "debug")
+        #expect(SentryEnvironmentResolver.sentryEnvironment(storeKitEnvironmentRawValue: "Unexpected") == "production")
+    }
+
+    @Test
     @MainActor
     func libraryDirectoryOrganizerFiltersAndSortsLargeLibraries() {
         let stale = Podcast(

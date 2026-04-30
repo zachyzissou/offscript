@@ -25,6 +25,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Bulk OPML import cancellation now marks pending/importing rows as cancelled** instead of leaving them stuck mid-import.
 - **Settings no longer claims iCloud sync is active unless the launch actually opened a CloudKit-backed SwiftData container.**
 - **The SwiftData test container is explicitly local-only** so CloudKit entitlements do not break in-memory unit tests.
+- **Sentry TestFlight/App Store environment tagging now uses StoreKit 2 app transactions** instead of the deprecated receipt URL path, clearing the recurring iOS 18 `appStoreReceiptURL` archive warning.
 
 ### Fixed — Xcode Cloud signing
 - **Build number advanced to 41 after Xcode Cloud runs #40 and #41 failed exporting app build 40.**
