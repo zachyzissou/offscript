@@ -370,7 +370,7 @@ struct OffScriptArtworkView: View {
 
     let url: URL?
     var cornerRadius: CGFloat = OffScriptTheme.Radius.medium
-    var fixedSize: CGSize?
+    var fixedSize: CGSize? = nil
 
     var body: some View {
         if let fixedSize {
