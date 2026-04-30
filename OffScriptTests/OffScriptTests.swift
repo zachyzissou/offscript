@@ -1196,34 +1196,32 @@ struct OffScriptTests {
     }
 
     @Test
-    @MainActor
     func libraryDirectoryOrganizerFiltersAndSortsLargeLibraries() {
-        let stale = Podcast(
+        let stale = LibraryDirectoryPodcast(
+            id: UUID(),
             title: "Stale Sync",
             author: "Ops Desk",
-            feedURL: URL(string: "https://example.com/stale.xml")!,
-            categories: ["News"]
+            categories: ["News"],
+            syncStatus: "failed",
+            syncFailureCount: 2
         )
-        stale.syncStatus = "failed"
-        stale.syncFailureCount = 2
-
-        let active = Podcast(
+        let active = LibraryDirectoryPodcast(
+            id: UUID(),
             title: "Audio Craft",
             author: "Studio Team",
-            feedURL: URL(string: "https://example.com/audio.xml")!,
             categories: ["Technology", "Design"]
         )
-        let quiet = Podcast(
+        let quiet = LibraryDirectoryPodcast(
+            id: UUID(),
             title: "Quiet Archive",
             author: "Library",
-            feedURL: URL(string: "https://example.com/archive.xml")!,
             categories: ["History"]
         )
 
         let unplayedCounts = [active.id: 8, quiet.id: 0, stale.id: 1]
         let inProgressCounts = [active.id: 1]
 
-        let queryFiltered = LibraryDirectoryOrganizer.filteredPodcasts(
+        let queryFiltered = LibraryDirectoryOrganizer.filteredDirectoryPodcasts(
             [stale, active, quiet],
             query: "studio",
             scope: .all,
@@ -1233,7 +1231,7 @@ struct OffScriptTests {
         )
         #expect(queryFiltered.map(\.title) == ["Audio Craft"])
 
-        let attentionSorted = LibraryDirectoryOrganizer.filteredPodcasts(
+        let attentionSorted = LibraryDirectoryOrganizer.filteredDirectoryPodcasts(
             [quiet, active, stale],
             query: "",
             scope: .all,
@@ -1243,7 +1241,7 @@ struct OffScriptTests {
         )
         #expect(attentionSorted.map(\.title) == ["Stale Sync", "Audio Craft", "Quiet Archive"])
 
-        let inProgressOnly = LibraryDirectoryOrganizer.filteredPodcasts(
+        let inProgressOnly = LibraryDirectoryOrganizer.filteredDirectoryPodcasts(
             [quiet, active, stale],
             query: "",
             scope: .inProgress,
@@ -1255,24 +1253,22 @@ struct OffScriptTests {
     }
 
     @Test
-    @MainActor
     func libraryDirectoryOrganizerBuildsAlphabetSections() {
-        let numeric = Podcast(title: "99 Invisible", feedURL: URL(string: "https://example.com/99.xml")!)
-        let alpha = Podcast(title: "Audio Craft", feedURL: URL(string: "https://example.com/audio.xml")!)
-        let beta = Podcast(title: "Beta Feed", feedURL: URL(string: "https://example.com/beta.xml")!)
+        let numeric = LibraryDirectoryPodcast(id: UUID(), title: "99 Invisible")
+        let alpha = LibraryDirectoryPodcast(id: UUID(), title: "Audio Craft")
+        let beta = LibraryDirectoryPodcast(id: UUID(), title: "Beta Feed")
 
         let sections = LibraryDirectoryOrganizer.sections(for: [numeric, alpha, beta])
 
         #expect(sections.map(\.title) == ["A", "B", "#"])
-        #expect(sections.flatMap(\.podcasts).map(\.title) == ["Audio Craft", "Beta Feed", "99 Invisible"])
+        #expect(sections.flatMap(\.rows).map(\.title) == ["Audio Craft", "Beta Feed", "99 Invisible"])
     }
 
     @Test
-    @MainActor
     func libraryAlphabetRailTargetsNearestAvailableSection() {
-        let alpha = Podcast(title: "Audio Craft", feedURL: URL(string: "https://example.com/audio-nearest.xml")!)
-        let delta = Podcast(title: "Delta Feed", feedURL: URL(string: "https://example.com/delta-nearest.xml")!)
-        let zeta = Podcast(title: "Zeta Waves", feedURL: URL(string: "https://example.com/zeta-nearest.xml")!)
+        let alpha = LibraryDirectoryPodcast(id: UUID(), title: "Audio Craft")
+        let delta = LibraryDirectoryPodcast(id: UUID(), title: "Delta Feed")
+        let zeta = LibraryDirectoryPodcast(id: UUID(), title: "Zeta Waves")
         let sections = LibraryDirectoryOrganizer.sections(for: [zeta, alpha, delta])
 
         #expect(LibraryDirectoryOrganizer.sectionIDForAlphabetKey("A", sections: sections) == "library-section-A")
@@ -1283,10 +1279,9 @@ struct OffScriptTests {
     }
 
     @Test
-    @MainActor
     func libraryDirectorySnapshotBuildsRowsWithCountsAndNumbers() {
-        let alpha = Podcast(title: "Audio Craft", feedURL: URL(string: "https://example.com/audio-row.xml")!)
-        let beta = Podcast(title: "Beta Feed", feedURL: URL(string: "https://example.com/beta-row.xml")!)
+        let alpha = LibraryDirectoryPodcast(id: UUID(), title: "Audio Craft")
+        let beta = LibraryDirectoryPodcast(id: UUID(), title: "Beta Feed")
 
         let snapshot = LibraryDirectoryOrganizer.snapshot(
             for: [beta, alpha],
@@ -1298,23 +1293,23 @@ struct OffScriptTests {
         )
         let rows = snapshot.sections.flatMap(\.rows)
 
-        #expect(rows.map { $0.podcast.title } == ["Audio Craft", "Beta Feed"])
+        #expect(rows.map(\.title) == ["Audio Craft", "Beta Feed"])
+        #expect(rows.map(\.podcastID) == [alpha.id, beta.id])
         #expect(rows.map(\.channelNumber) == [1, 2])
         #expect(rows.first?.unplayedCount == 3)
         #expect(rows.last?.inProgressCount == 1)
         #expect(rows.map(\.isLastInSection) == [true, true])
 
-        let adjacent = Podcast(title: "Another Audio", feedURL: URL(string: "https://example.com/another-row.xml")!)
+        let adjacent = LibraryDirectoryPodcast(id: UUID(), title: "Another Audio")
         let sectionsWithoutExplicitNumbers = LibraryDirectoryOrganizer.sections(for: [alpha, adjacent])
         #expect(sectionsWithoutExplicitNumbers.flatMap(\.rows).map(\.channelNumber) == [1, 2])
     }
 
     @Test
-    @MainActor
     func libraryDirectoryListItemsFlattenSectionRowsForLazyRendering() {
-        let alpha = Podcast(title: "Audio Craft", feedURL: URL(string: "https://example.com/audio-flat.xml")!)
-        let another = Podcast(title: "Another Audio", feedURL: URL(string: "https://example.com/another-flat.xml")!)
-        let beta = Podcast(title: "Beta Feed", feedURL: URL(string: "https://example.com/beta-flat.xml")!)
+        let alpha = LibraryDirectoryPodcast(id: UUID(), title: "Audio Craft")
+        let another = LibraryDirectoryPodcast(id: UUID(), title: "Another Audio")
+        let beta = LibraryDirectoryPodcast(id: UUID(), title: "Beta Feed")
         let sections = LibraryDirectoryOrganizer.sections(for: [alpha, another, beta])
 
         let items = LibraryDirectoryOrganizer.listItems(for: sections)

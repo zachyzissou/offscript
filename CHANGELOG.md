@@ -24,6 +24,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **The bottom Tuner tab indicator now slides between Home, Library, Queue, and Search** with selection haptics instead of appearing abruptly in each cell.
 - **Root page headers sit tighter to the safe area** to reclaim top-of-app space while keeping the iOS status/Dynamic Island safe region intact.
 - **Large Library sections now render as flattened lazy headers, rows, and separators** so a 250+ show directory does not build an entire oversized letter section as one SwiftUI child.
+- **The Library directory now renders from value snapshots instead of live SwiftData podcast models** so 250+ show scrolling does less model work and only resolves a show when a row is opened.
 
 ### Fixed — onboarding, import, and sync UI honesty
 - **Settings and Sign in with Apple now log identity, iCloud, signal-profile, and Keychain OSStatus breadcrumbs** so TestFlight Settings crashes and Apple sign-in failures can be correlated to the failing subsystem.
