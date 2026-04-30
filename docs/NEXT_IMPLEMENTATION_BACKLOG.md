@@ -19,7 +19,8 @@ For low-thinking implementation runs, start from
 2. the exact files it expects to touch;
 3. the verification command it will run;
 4. the PR title/body it will use;
-5. the changelog entry it will update.
+5. whether the change needs an `Unreleased` changelog entry or is already
+   covered by an existing one.
 
 If an issue does not have enough context to identify files, acceptance
 criteria, verification, and non-goals, upgrade the issue first instead of

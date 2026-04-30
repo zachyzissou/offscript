@@ -8,8 +8,10 @@ OffScript roadmap. The goal is a narrow, reviewable PR, not broad exploration.
 1. GitHub Project `OffScript` is the live kanban.
 2. `docs/NEXT_IMPLEMENTATION_BACKLOG.md` groups the open issues into product
    lanes.
-3. `CHANGELOG.md` must be updated for every user-facing, performance, release,
-   or diagnostics change.
+3. `CHANGELOG.md` uses an `Unreleased` section for agent-visible product,
+   performance, release, and diagnostics work. Do not create versioned
+   changelog blocks in feature PRs; versioned blocks belong with the version
+   bump/release PR described in `CONTRIBUTING.md`.
 4. PR #38 CloudKit signing remains separate. Do not merge or fold it into other
    work unless its signing preflight passes.
 
