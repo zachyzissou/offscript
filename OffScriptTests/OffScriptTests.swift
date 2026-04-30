@@ -1031,9 +1031,13 @@ struct OffScriptTests {
         let evidencedScore = DiscoveryService.score(result: evidenced, tasteProfile: tasteProfile, preview: preview)
 
         #expect(evidencedScore.score > genericScore.score)
+        #expect(genericScore.score <= 0.12)
+        #expect(genericScore.explanation == "Explore technology podcasts")
+        #expect(genericScore.signalTrace.contains(RecommendationSignal(label: "evidence", value: "catalog")))
         #expect(evidencedScore.explanation == "Latest episodes overlap your audio craft signal")
         #expect(evidencedScore.signalTrace.contains(RecommendationSignal(label: "source", value: "latest episode")))
         #expect(evidencedScore.signalTrace.contains(RecommendationSignal(label: "tags", value: "audio craft")))
+        #expect(evidencedScore.signalTrace.contains(RecommendationSignal(label: "evidence", value: "local")))
     }
 
     @Test
@@ -1160,7 +1164,8 @@ struct OffScriptTests {
             fallback: "Matches your selected technology lane",
             signals: [
                 RecommendationSignal(label: "source", value: "genre"),
-                RecommendationSignal(label: "lane", value: "technology")
+                RecommendationSignal(label: "lane", value: "technology"),
+                RecommendationSignal(label: "evidence", value: "local")
             ]
         )
 
@@ -1175,11 +1180,26 @@ struct OffScriptTests {
                 RecommendationSignal(label: "source", value: "genre"),
                 RecommendationSignal(label: "lane", value: "technology"),
                 RecommendationSignal(label: "source", value: "latest episode"),
-                RecommendationSignal(label: "tags", value: "audio craft")
+                RecommendationSignal(label: "tags", value: "audio craft"),
+                RecommendationSignal(label: "evidence", value: "local")
             ]
         )
 
         #expect(reason == "Latest episodes overlap your audio craft signal")
+    }
+
+    @Test
+    func recommendationExplainerDoesNotClaimLocalEvidenceForGenreOnlyDiscovery() {
+        let reason = RecommendationExplainer.authoredReason(
+            fallback: "Matches your selected technology lane",
+            signals: [
+                RecommendationSignal(label: "source", value: "genre"),
+                RecommendationSignal(label: "lane", value: "technology"),
+                RecommendationSignal(label: "evidence", value: "catalog")
+            ]
+        )
+
+        #expect(reason == "A technology lane pick to sample")
     }
 
     @Test
