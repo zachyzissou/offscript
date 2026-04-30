@@ -673,6 +673,41 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func preferenceFeedbackServicePostsRetuneNotificationAfterSaving() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let podcast = Podcast(title: "Signal Show", feedURL: URL(string: "https://example.com/signal.xml")!)
+        let episode = Episode(
+            title: "Signal Episode",
+            pubDate: .now,
+            audioURL: URL(string: "https://example.com/signal.mp3")!,
+            podcast: podcast
+        )
+        context.insert(podcast)
+        context.insert(episode)
+        try context.save()
+
+        var notificationCount = 0
+        let token = NotificationCenter.default.addObserver(
+            forName: .offscriptRecommendationFeedbackChanged,
+            object: nil,
+            queue: nil
+        ) { _ in
+            notificationCount += 1
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        try PreferenceFeedbackService.register(.like, for: episode, in: context)
+
+        let descriptor = FetchDescriptor<PreferenceSignal>()
+        let signals = try context.fetch(descriptor)
+        #expect(signals.count == 1)
+        #expect(signals.first?.action == .like)
+        #expect(notificationCount == 1)
+    }
+
+    @Test
+    @MainActor
     func homeRecommendationsSeparateExplicitShowIntentFromCompletionAffinity() throws {
         let container = try makeContainer()
         let context = container.mainContext

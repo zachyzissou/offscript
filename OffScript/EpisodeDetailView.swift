@@ -373,7 +373,9 @@ struct EpisodeDetailView: View {
             HStack(spacing: 8) {
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        register(.like); feedbackGiven = .like
+                        if register(.like) {
+                            feedbackGiven = .like
+                        }
                     }
                 } label: {
                     HStack(spacing: 6) {
@@ -396,7 +398,9 @@ struct EpisodeDetailView: View {
 
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        register(.lessLikeThis); feedbackGiven = .lessLikeThis
+                        if register(.lessLikeThis) {
+                            feedbackGiven = .lessLikeThis
+                        }
                     }
                 } label: {
                     HStack(spacing: 6) {
@@ -486,10 +490,12 @@ struct EpisodeDetailView: View {
         return "\(EpisodeDurationFormatter.short(remaining).uppercased()) LEFT"
     }
 
-    private func register(_ action: PreferenceSignal.Action) {
-        modelContext.insert(PreferenceSignal(action: action, episode: episode))
-        try? modelContext.save()
-        // origin/main doesn't have TasteProfileService — feedback signals are
-        // persisted but not yet reprocessed into a refreshed taste profile.
+    private func register(_ action: PreferenceSignal.Action) -> Bool {
+        do {
+            try PreferenceFeedbackService.register(action, for: episode, in: modelContext)
+            return true
+        } catch {
+            return false
+        }
     }
 }
