@@ -259,11 +259,17 @@ final class RecommendationService {
             limit: limit,
             excluding: &usedEpisodeIDs
         )
+        let explicitShowIntent = Self.diversified(
+            scoredEpisodes.filter {
+                scoringContext.explicitPositiveShowCounts[$0.episode.podcast.title, default: 0] > 0
+            },
+            limit: limit,
+            excluding: &usedEpisodeIDs
+        )
         let showAffinity = Self.diversified(
             scoredEpisodes.filter {
                 scoringContext.completedShowCounts[$0.episode.podcast.title, default: 0] > 0
                     || scoringContext.showAffinity.contains($0.episode.podcast.title)
-                    || scoringContext.explicitPositiveShowCounts[$0.episode.podcast.title, default: 0] > 0
             },
             limit: limit,
             excluding: &usedEpisodeIDs
@@ -287,6 +293,7 @@ final class RecommendationService {
         var allSections = [
             HomeFeedSection(title: "Signal Lock", subtitle: "The next listen is driven by something you actually did.", scoredEpisodes: signalLock),
             HomeFeedSection(title: "Resume Thread", subtitle: "Partially heard episodes with meaningful time left.", scoredEpisodes: resumeThread),
+            HomeFeedSection(title: "More From Shows You Chose", subtitle: "Follow-ups from shows you explicitly liked or asked for more of.", scoredEpisodes: explicitShowIntent),
             HomeFeedSection(title: "Shows You Finish", subtitle: "Newer episodes from channels with completion signal.", scoredEpisodes: showAffinity),
             HomeFeedSection(title: "Topic Continuation", subtitle: "Shared tags from completed or explicitly liked listens.", scoredEpisodes: topicContinuation)
         ]

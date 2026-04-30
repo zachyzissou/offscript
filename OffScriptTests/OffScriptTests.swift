@@ -591,7 +591,69 @@ struct OffScriptTests {
         let firstEpisode = try #require(sections.first?.episodes.first)
 
         #expect(firstEpisode.id == next.id)
+        #expect(sections.first?.title == "More From Shows You Chose")
         #expect(sections.first?.signalTrace(for: next).contains(RecommendationSignal(label: "source", value: "show intent")) == true)
+    }
+
+    @Test
+    @MainActor
+    func homeRecommendationsSeparateExplicitShowIntentFromCompletionAffinity() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        AppSettings.preferredGenres = []
+        defer { AppSettings.preferredGenres = originalGenres }
+
+        let likedShow = Podcast(title: "Chosen Show", feedURL: URL(string: "https://example.com/chosen-show.xml")!)
+        let finishedShow = Podcast(title: "Finished Show", feedURL: URL(string: "https://example.com/finished-lane.xml")!)
+        let likedSeed = Episode(
+            title: "Liked Seed",
+            pubDate: Date().addingTimeInterval(-6 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/liked-seed.mp3")!,
+            podcast: likedShow
+        )
+        let chosenNext = Episode(
+            title: "Chosen Follow Up",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/chosen-next.mp3")!,
+            podcast: likedShow
+        )
+        let completed = Episode(
+            title: "Completed Seed",
+            pubDate: Date().addingTimeInterval(-5 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/completed-lane.mp3")!,
+            podcast: finishedShow
+        )
+        let finishedNext = Episode(
+            title: "Finished Follow Up",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/finished-next.mp3")!,
+            podcast: finishedShow
+        )
+
+        completed.isPlayed = true
+        context.insert(likedShow)
+        context.insert(finishedShow)
+        context.insert(likedSeed)
+        context.insert(chosenNext)
+        context.insert(completed)
+        context.insert(finishedNext)
+        context.insert(PreferenceSignal(action: .moreLikeThis, episode: likedSeed))
+        context.insert(PlaybackEvent(kind: .completed, position: 1_800, episode: completed))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        let intentSection = try #require(sections.first(where: { $0.title == "More From Shows You Chose" }))
+        let finishSection = try #require(sections.first(where: { $0.title == "Shows You Finish" }))
+
+        #expect(intentSection.episodes.map(\.id).contains(chosenNext.id))
+        #expect(!intentSection.episodes.map(\.id).contains(finishedNext.id))
+        #expect(finishSection.episodes.map(\.id).contains(finishedNext.id))
+        #expect(!finishSection.episodes.map(\.id).contains(chosenNext.id))
     }
 
     @Test
