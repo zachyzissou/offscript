@@ -1384,15 +1384,18 @@ struct OffScriptTests {
 
     @Test
     func libraryAlphabetRailTargetsNearestAvailableSection() {
+        let numeric = LibraryDirectoryPodcast(id: UUID(), title: "99 Invisible")
         let alpha = LibraryDirectoryPodcast(id: UUID(), title: "Audio Craft")
         let delta = LibraryDirectoryPodcast(id: UUID(), title: "Delta Feed")
         let zeta = LibraryDirectoryPodcast(id: UUID(), title: "Zeta Waves")
         let sections = LibraryDirectoryOrganizer.sections(for: [zeta, alpha, delta])
+        let sectionsWithNumbers = LibraryDirectoryOrganizer.sections(for: [zeta, numeric, alpha, delta])
 
         #expect(LibraryDirectoryOrganizer.sectionIDForAlphabetKey("A", sections: sections) == "library-section-A")
         #expect(LibraryDirectoryOrganizer.sectionIDForAlphabetKey("B", sections: sections) == "library-section-D")
         #expect(LibraryDirectoryOrganizer.sectionIDForAlphabetKey("Y", sections: sections) == "library-section-Z")
         #expect(LibraryDirectoryOrganizer.sectionIDForAlphabetKey("#", sections: sections) == "library-section-A")
+        #expect(LibraryDirectoryOrganizer.sectionIDForAlphabetKey("#", sections: sectionsWithNumbers) == "library-section-#")
         #expect(LibraryDirectoryOrganizer.sectionIDForAlphabetKey("M", sections: []) == nil)
     }
 
