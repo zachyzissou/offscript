@@ -1238,10 +1238,27 @@ struct LibraryView: View {
                 return
             }
 
+            var combinedEpisodeIDs = summary.freshEpisodeIDs
+            var seenEpisodeIDs = Set(combinedEpisodeIDs)
+            for episodeID in summary.inProgressEpisodeIDs where seenEpisodeIDs.insert(episodeID).inserted {
+                combinedEpisodeIDs.append(episodeID)
+            }
+            let hydratedEpisodes = try episodes(withIDs: combinedEpisodeIDs)
+            let episodesByID = Dictionary(uniqueKeysWithValues: hydratedEpisodes.map { ($0.id, $0) })
+            let hydratedFreshEpisodes = summary.freshEpisodeIDs.compactMap { episodesByID[$0] }
+            let hydratedInProgressEpisodes = summary.inProgressEpisodeIDs.compactMap { episodesByID[$0] }
+            guard !Task.isCancelled else {
+                OffScriptPerformanceLog.end(
+                    interval,
+                    metadata: "podcasts=\(podcastIDs.count) cancelled=true"
+                )
+                return
+            }
+
             unplayedEpisodeCount = summary.unplayedCount
-            freshEpisodes = try episodes(withIDs: summary.freshEpisodeIDs)
+            freshEpisodes = hydratedFreshEpisodes
             inProgressEpisodeCount = summary.inProgressCount
-            inProgressEpisodes = try episodes(withIDs: summary.inProgressEpisodeIDs)
+            inProgressEpisodes = hydratedInProgressEpisodes
             freshUnplayedCountsByPodcastID = summary.freshUnplayedCountsByPodcastID
             freshInProgressCountsByPodcastID = summary.freshInProgressCountsByPodcastID
             if directoryNeedsFullCounts {
