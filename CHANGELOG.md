@@ -71,6 +71,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Onboarding preference seeding now fetches the newest hydrated episode with a one-row SwiftData query** instead of sorting the podcast's relationship collection after background sync.
 - **The Library directory now renders from a cached value snapshot instead of a live `@Query` podcast array**, reducing SwiftData invalidation churn while scrolling large subscribed libraries.
 - **Settings now uses a subscribed-show `fetchCount` instead of materializing the podcast table**, and the custom tab bar indicator now slides as one continuous Tuner rail.
+- **Home rail cards now use compact Tuner reason tags and shorter signal traces**, keeping recommendation explanations inside narrow 168px cards.
 - **OPML batch hydration now uses a lightweight bootstrap pass** that imports only a small first slice of episodes and skips episode profile enrichment, avoiding thousands of episode/profile writes during the initial import.
 - **The root Library podcast query now filters subscribed shows in SwiftData instead of fetching every historical podcast and filtering in Swift.**
 - **Large-library scrolling no longer waits on per-show unplayed count churn by default.** Library now loads the aggregate unplayed count, fresh rail, and bounded in-progress rail first; exact per-show counts are deferred until `UNPLAYED` or `ATTN` directory modes need them.

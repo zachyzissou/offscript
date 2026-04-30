@@ -476,6 +476,28 @@ struct TunerTag: View {
     }
 }
 
+struct TunerRailReasonTag: View {
+    let text: String
+    var color: Color = .offscriptSignalYellow
+
+    var body: some View {
+        Text(text.uppercased())
+            .font(.system(size: CGFloat(7.8).offscriptScaled(), weight: .semibold, design: .monospaced))
+            .tracking(0.4)
+            .foregroundStyle(color.opacity(0.68))
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
+            .truncationMode(.tail)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2.5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(
+                Rectangle().stroke(color.opacity(0.32), lineWidth: 1)
+            )
+    }
+}
+
 struct RecommendationSignalTraceView: View {
     let signals: [RecommendationSignal]
     var limit: Int = 3

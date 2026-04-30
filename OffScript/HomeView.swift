@@ -605,8 +605,8 @@ private struct TunerDiscoveryRail: View {
                 .multilineTextAlignment(.leading)
                 .frame(width: 168, alignment: .leading)
 
-            TunerTag(text: displayReason, color: .offscriptFnInfo, dim: true, wraps: true)
-            RecommendationSignalTraceView(signals: scored.signalTrace, limit: 2, color: .offscriptSoftPaper)
+            TunerRailReasonTag(text: displayReason, color: .offscriptFnInfo)
+            RecommendationSignalTraceView(signals: scored.signalTrace, limit: 1, color: .offscriptSoftPaper)
 
             Button {
                 Task { await add(scored.result) }
@@ -975,8 +975,8 @@ private struct TunerRailCard: View {
                         .multilineTextAlignment(.leading)
                         .frame(width: 168, alignment: .leading)
 
-                    TunerTag(text: displayReason, color: .offscriptSignalYellow, dim: true, wraps: true)
-                    RecommendationSignalTraceView(signals: signals, limit: 2, color: .offscriptSoftPaper)
+                    TunerRailReasonTag(text: displayReason, color: .offscriptSignalYellow)
+                    RecommendationSignalTraceView(signals: signals, limit: 1, color: .offscriptSoftPaper)
 
                     TunerLabel(text: metadata, color: .offscriptSoftPaper, size: 8)
                 }
