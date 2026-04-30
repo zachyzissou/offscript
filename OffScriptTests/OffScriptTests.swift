@@ -1629,6 +1629,80 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func feedSyncCappedImportOnlyMatchesExistingEpisodesInProcessedWindow() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let podcast = Podcast(
+            title: "Large Back Catalog",
+            feedURL: URL(string: "https://example.com/large-back-catalog.xml")!
+        )
+        let inWindow = Episode(
+            guid: "stale-guid-1",
+            title: "Old Title",
+            pubDate: .distantPast,
+            audioURL: URL(string: "https://example.com/large-1.mp3")!,
+            podcast: podcast
+        )
+        let outsideWindow = Episode(
+            guid: "large-5",
+            title: "Preserved Title",
+            pubDate: .distantPast,
+            audioURL: URL(string: "https://example.com/large-5.mp3")!,
+            podcast: podcast
+        )
+        context.insert(podcast)
+        context.insert(inWindow)
+        context.insert(outsideWindow)
+        try context.save()
+
+        let result = PodcastSearchResult(
+            title: "Large Back Catalog",
+            author: "",
+            feedURL: podcast.feedURL,
+            artworkURL: nil,
+            websiteURL: nil,
+            summary: nil
+        )
+        let baseDate = Date()
+        let parsedItems = (1...5).map { index in
+            ParsedFeedItem(
+                guid: "large-\(index)",
+                title: "Updated Episode \(index)",
+                summary: nil,
+                pubDate: baseDate.addingTimeInterval(TimeInterval(-index)),
+                duration: 1_800,
+                audioURL: URL(string: "https://example.com/large-\(index).mp3")!
+            )
+        }
+        let parsed = ParsedFeed(
+            title: "Large Back Catalog",
+            author: nil,
+            summary: nil,
+            websiteURL: nil,
+            artworkURL: nil,
+            categories: [],
+            items: parsedItems
+        )
+
+        _ = try await FeedSyncService().importPodcast(
+            from: result,
+            parsedFeed: parsed,
+            into: context,
+            options: .opmlBootstrap()
+        )
+
+        let episodes = try context.fetch(FetchDescriptor<Episode>())
+        #expect(episodes.count == 4)
+        #expect(inWindow.title == "Updated Episode 1")
+        #expect(inWindow.guid == "stale-guid-1")
+        #expect(outsideWindow.title == "Preserved Title")
+        #expect(episodes.contains { $0.guid == "large-2" })
+        #expect(episodes.contains { $0.guid == "large-3" })
+        #expect(!episodes.contains { $0.guid == "large-4" })
+    }
+
+    @Test
+    @MainActor
     func feedSyncStagesSearchSubscriptionBeforeNetworkWork() throws {
         let container = try makeContainer()
         let context = container.mainContext
