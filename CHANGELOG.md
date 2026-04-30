@@ -65,6 +65,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **The alphabet jump rail is now a full A-Z/# key bank with selected and disabled states** so large libraries expose every directory letter as a direct Tuner control instead of hiding letters in a horizontal strip.
 - **The Library alphabet selector is back to the compact `#-Z` carousel form** while keeping the working direct-letter jump behavior and selected/disabled Tuner states.
 - **Sparse Library alphabet keys now stay visually selectable when they jump to the nearest available section**, and the carousel highlights the key the listener chose instead of only the section it landed on.
+- **Settings and Library import sheets no longer sit inside empty native navigation hosts**, reducing stray iOS navigation chrome while keeping the authored Tuner headers and inline DONE keys.
 
 ### Changed — Library performance
 - **Large OPML imports now stage subscribed shows before network sync finishes**, so 250+ show libraries appear in Library immediately while feed hydration continues in the background.

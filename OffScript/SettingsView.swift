@@ -42,40 +42,30 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    settingsHeader
-                    statsBlock
-                    playbackSection
-                    recommendationSection
-                    signalProfileSection
-                    iCloudSection
-                    aboutSection
-                }
-                .padding(.horizontal, OffScriptTheme.pagePadding)
-                .padding(.top, OffScriptTheme.modalContentTopPadding)
-                .padding(.bottom, 32)
-                .frame(maxWidth: 720, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .center)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                settingsHeader
+                statsBlock
+                playbackSection
+                recommendationSection
+                signalProfileSection
+                iCloudSection
+                aboutSection
             }
-            .background(Color.offscriptStudioBlack.ignoresSafeArea())
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .task {
-                settingsLogger.info("Settings task started")
-                refreshCounts()
-                refreshSignInState()
-                refreshSignalProfile()
-                await refreshIdentityStatus()
-                settingsLogger.info("Settings task completed: episodes=\(episodeCount, privacy: .public), queued=\(queuedCount, privacy: .public), signedIn=\(isSignedIn, privacy: .public), apple=\(appleCredentialState.displayText, privacy: .public), iCloud=\(cloudKitAvailability.displayText, privacy: .public)")
-            }
-            // No `.toolbar` ToolbarItem — iOS 26 wraps toolbar buttons in
-            // glass-capsule chrome that ignores .plain styling. DONE key
-            // moved inline into `settingsHeader` below.
+            .padding(.horizontal, OffScriptTheme.pagePadding)
+            .padding(.top, OffScriptTheme.modalContentTopPadding)
+            .padding(.bottom, 32)
+            .frame(maxWidth: 720, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .background(Color.offscriptStudioBlack.ignoresSafeArea())
+        .task {
+            settingsLogger.info("Settings task started")
+            refreshCounts()
+            refreshSignInState()
+            refreshSignalProfile()
+            await refreshIdentityStatus()
+            settingsLogger.info("Settings task completed: episodes=\(episodeCount, privacy: .public), queued=\(queuedCount, privacy: .public), signedIn=\(isSignedIn, privacy: .public), apple=\(appleCredentialState.displayText, privacy: .public), iCloud=\(cloudKitAvailability.displayText, privacy: .public)")
         }
     }
 
