@@ -1196,6 +1196,18 @@ struct LibraryView: View {
     }
 
     @MainActor
+    private func subscribedPodcasts(withIDs ids: [UUID]) throws -> [Podcast] {
+        let requestedIDs = Set(ids)
+        guard !requestedIDs.isEmpty else { return [] }
+        let descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> {
+                requestedIDs.contains($0.id) && $0.isSubscribed
+            }
+        )
+        return try modelContext.fetch(descriptor)
+    }
+
+    @MainActor
     private func loadLibraryEpisodeSummary() {
         startLibraryEpisodeSummaryLoad(deferWhileImporting: false)
     }
@@ -1470,13 +1482,34 @@ struct LibraryView: View {
         isSyncingLibrary = true
         defer { isSyncingLibrary = false }
         let podcastIDs = subscribedPodcastIDs
-        for podcastID in podcastIDs {
-            guard let podcast = podcast(withID: podcastID) else { continue }
-            do {
-                try await syncService.sync(podcast: podcast, in: modelContext)
-            } catch {
-                libraryLogger.error("Pull-to-refresh sync failed for '\(podcast.title, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+        guard !podcastIDs.isEmpty else { return }
+        let interval = OffScriptPerformanceLog.begin(
+            "library.sync",
+            metadata: "podcasts=\(podcastIDs.count)"
+        )
+        do {
+            let podcasts = try subscribedPodcasts(withIDs: podcastIDs)
+            let results = await syncService.sync(
+                podcasts: podcasts,
+                in: modelContext,
+                options: .standard()
+            )
+            let failures = results.filter { !$0.isSuccess }
+            for result in failures {
+                if let error = result.error {
+                    libraryLogger.error("Pull-to-refresh sync failed for '\(result.podcast.title, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+                }
             }
+            OffScriptPerformanceLog.end(
+                interval,
+                metadata: "podcasts=\(podcasts.count) failed=\(failures.count)"
+            )
+        } catch {
+            OffScriptPerformanceLog.end(
+                interval,
+                metadata: "podcasts=\(podcastIDs.count) failed=true"
+            )
+            libraryLogger.error("Pull-to-refresh sync setup failed: \(error.localizedDescription, privacy: .public)")
         }
         loadDirectoryPodcasts(force: true)
         loadLibraryEpisodeSummary()
