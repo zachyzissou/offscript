@@ -567,6 +567,16 @@ enum LibraryDirectoryCountLoader {
 
 @ModelActor
 actor LibraryDirectoryCountStore {
+    func subscribedPodcasts() throws -> [LibraryDirectoryPodcast] {
+        let descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.isSubscribed },
+            sortBy: [SortDescriptor(\Podcast.title)]
+        )
+        let podcasts = try modelContext.fetch(descriptor)
+        try Task.checkCancellation()
+        return podcasts.map(LibraryDirectoryPodcast.init(podcast:))
+    }
+
     func episodeSummary() throws -> LibraryEpisodeSummary {
         let countDescriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed }
@@ -705,6 +715,7 @@ struct LibraryView: View {
     @State private var isLoadingFullDirectoryCounts = false
     @State private var summaryLoadTask: Task<Void, Never>?
     @State private var fullCountLoadTask: Task<Void, Never>?
+    @State private var directoryPodcastLoadTask: Task<Void, Never>?
     @State private var directorySnapshotTask: Task<Void, Never>?
     @State private var directoryQueryTask: Task<Void, Never>?
     @State private var selectedPodcastID: UUID?
@@ -1094,28 +1105,41 @@ struct LibraryView: View {
     @MainActor
     private func loadDirectoryPodcasts(force: Bool = false) {
         guard force || !didLoadDirectoryPodcasts else { return }
+        directoryPodcastLoadTask?.cancel()
+        let modelContainer = modelContext.container
         let interval = OffScriptPerformanceLog.begin(
             "library.directory.fetch",
             metadata: "force=\(force)"
         )
-        do {
-            directoryPodcasts = try LibraryDirectorySnapshotLoader.subscribedPodcasts(in: modelContext)
-            didLoadDirectoryPodcasts = true
-            rebuildDirectorySnapshot()
-            OffScriptPerformanceLog.end(
-                interval,
-                metadata: "podcasts=\(directoryPodcasts.count) force=\(force)"
-            )
-        } catch {
-            directoryPodcasts = []
-            didLoadDirectoryPodcasts = true
-            cachedDirectorySnapshot = .empty
-            didBuildDirectorySnapshot = true
-            OffScriptPerformanceLog.end(
-                interval,
-                metadata: "podcasts=0 force=\(force) failed=true"
-            )
-            libraryLogger.error("Library directory snapshot load failed: \(error.localizedDescription, privacy: .public)")
+        directoryPodcastLoadTask = Task { @MainActor in
+            do {
+                let store = LibraryDirectoryCountStore(modelContainer: modelContainer)
+                let podcasts = try await store.subscribedPodcasts()
+                guard !Task.isCancelled else {
+                    OffScriptPerformanceLog.end(
+                        interval,
+                        metadata: "force=\(force) cancelled=true"
+                    )
+                    return
+                }
+                directoryPodcasts = podcasts
+                didLoadDirectoryPodcasts = true
+                rebuildDirectorySnapshot()
+                OffScriptPerformanceLog.end(
+                    interval,
+                    metadata: "podcasts=\(directoryPodcasts.count) force=\(force)"
+                )
+            } catch {
+                directoryPodcasts = []
+                didLoadDirectoryPodcasts = true
+                cachedDirectorySnapshot = .empty
+                didBuildDirectorySnapshot = true
+                OffScriptPerformanceLog.end(
+                    interval,
+                    metadata: "podcasts=0 force=\(force) failed=true"
+                )
+                libraryLogger.error("Library directory snapshot load failed: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
@@ -1153,6 +1177,7 @@ struct LibraryView: View {
     private func cancelDeferredLibraryWork() {
         summaryLoadTask?.cancel()
         fullCountLoadTask?.cancel()
+        directoryPodcastLoadTask?.cancel()
         directorySnapshotTask?.cancel()
         directoryQueryTask?.cancel()
     }
