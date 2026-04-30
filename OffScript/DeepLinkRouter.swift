@@ -9,6 +9,7 @@ private let deepLinkLogger = Logger(subsystem: "com.offscript", category: "DeepL
 /// surfaces without threading bindings through the whole shell.
 extension Notification.Name {
     static let offscriptSwitchTab = Notification.Name("offscript.switchTab")
+    static let offscriptActiveTabChanged = Notification.Name("offscript.activeTabChanged")
     static let offscriptRecommendationFeedbackChanged = Notification.Name("offscript.recommendationFeedbackChanged")
     static let offscriptLibrarySubscriptionsChanged = Notification.Name("offscript.librarySubscriptionsChanged")
 }

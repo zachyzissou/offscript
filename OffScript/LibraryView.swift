@@ -544,6 +544,7 @@ struct LibraryView: View {
     @State private var didBuildDirectorySnapshot = false
     @State private var isSyncingLibrary = false
     @State private var shouldReloadDirectoryOnAppear = false
+    @State private var isLibraryTabActive = false
 
     private var directoryNeedsFullUnplayedCounts: Bool {
         LibraryDirectoryOrganizer.needsPerShowUnplayedCounts(scope: directoryScope, sort: directorySort)
@@ -615,8 +616,7 @@ struct LibraryView: View {
                     // batch importer is mid-flight or has just finished and
                     // hasn't been dismissed yet.
                     LibraryBatchImportStrip(onFinished: {
-                        loadDirectoryPodcasts(force: true)
-                        scheduleLibraryEpisodeSummaryLoad()
+                        refreshDirectoryAfterBatchImportIfActive()
                     })
 
                     if didLoadDirectoryPodcasts && directoryPodcasts.isEmpty {
@@ -684,18 +684,17 @@ struct LibraryView: View {
             loadLibraryEpisodeSummary()
         }
         .onAppear {
+            isLibraryTabActive = true
             effectiveDirectoryQuery = directoryQuery
-            if shouldReloadDirectoryOnAppear {
-                shouldReloadDirectoryOnAppear = false
-                loadDirectoryPodcasts(force: true)
-                loadLibraryEpisodeSummary()
-            } else {
+            reloadDirectoryAfterSubscriptionChangeIfPossible()
+            if !shouldReloadDirectoryOnAppear {
                 loadDirectoryPodcastsIfNeeded()
             }
         }
         .onChange(of: subscribedPodcastIDs) { _, _ in scheduleLibraryEpisodeSummaryLoad() }
         .onChange(of: directoryQuery) { _, newValue in scheduleDirectoryQuery(newValue) }
         .onChange(of: directorySnapshotInputs) { _, _ in rebuildDirectorySnapshot() }
+        .onChange(of: selectedPodcastID) { _, _ in reloadDirectoryAfterSubscriptionChangeIfPossible() }
         .onChange(of: directoryScope) { _, _ in
             ensureFullDirectoryCountsIfNeeded()
         }
@@ -703,12 +702,17 @@ struct LibraryView: View {
             ensureFullDirectoryCountsIfNeeded()
         }
         .onDisappear {
+            isLibraryTabActive = false
             summaryLoadTask?.cancel()
             fullCountLoadTask?.cancel()
             directoryQueryTask?.cancel()
         }
         .onReceive(NotificationCenter.default.publisher(for: .offscriptLibrarySubscriptionsChanged)) { _ in
             shouldReloadDirectoryOnAppear = true
+            reloadDirectoryAfterSubscriptionChangeIfPossible()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .offscriptActiveTabChanged)) { note in
+            handleActiveTabChanged(note)
         }
         // Settings + Import buttons render inline in LibraryTunerHeader, not
         // as toolbar items — iOS 26 wraps toolbar buttons in glass chrome.
@@ -857,6 +861,43 @@ struct LibraryView: View {
             didBuildDirectorySnapshot = true
             libraryLogger.error("Library directory snapshot load failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    @MainActor
+    private func reloadDirectoryAfterSubscriptionChangeIfPossible() {
+        guard isLibraryTabActive, shouldReloadDirectoryOnAppear, selectedPodcastID == nil else { return }
+        shouldReloadDirectoryOnAppear = false
+        loadDirectoryPodcasts(force: true)
+        loadLibraryEpisodeSummary()
+    }
+
+    @MainActor
+    private func refreshDirectoryAfterBatchImportIfActive() {
+        guard isLibraryTabActive else {
+            shouldReloadDirectoryOnAppear = true
+            return
+        }
+        loadDirectoryPodcasts(force: true)
+        scheduleLibraryEpisodeSummaryLoad()
+    }
+
+    @MainActor
+    private func handleActiveTabChanged(_ note: Notification) {
+        guard let tab = note.userInfo?["tab"] as? String else { return }
+        if tab == "library" {
+            isLibraryTabActive = true
+            reloadDirectoryAfterSubscriptionChangeIfPossible()
+        } else {
+            isLibraryTabActive = false
+            cancelDeferredLibraryWork()
+        }
+    }
+
+    @MainActor
+    private func cancelDeferredLibraryWork() {
+        summaryLoadTask?.cancel()
+        fullCountLoadTask?.cancel()
+        directoryQueryTask?.cancel()
     }
 
     private func podcast(withID id: UUID) -> Podcast? {

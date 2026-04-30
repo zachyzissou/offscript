@@ -80,6 +80,10 @@ struct SearchView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .task(id: query) { await search() }
+        .onReceive(NotificationCenter.default.publisher(for: .offscriptActiveTabChanged)) { note in
+            guard let tab = note.userInfo?["tab"] as? String, tab != "search" else { return }
+            searchFieldFocused = false
+        }
     }
 
     /// Custom Tuner search input — hairline rectangle with mono prompt,
