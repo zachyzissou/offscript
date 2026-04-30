@@ -197,6 +197,22 @@ nonisolated enum LibraryDirectoryOrganizer {
         sections(for: podcasts, numbersByPodcastID: [:], unplayedCounts: [:], inProgressCounts: [:])
     }
 
+    static func sectionIDForAlphabetKey(_ key: String, sections: [LibraryDirectorySection]) -> String? {
+        guard !sections.isEmpty else { return nil }
+        if let exact = sections.first(where: { $0.title == key }) {
+            return exact.id
+        }
+
+        let sortedSections = sections.sorted { sectionSort($0.title, $1.title) }
+        if key == "#" {
+            return sortedSections.first?.id
+        }
+        if let next = sortedSections.first(where: { sectionSort(key, $0.title) }) {
+            return next.id
+        }
+        return sortedSections.last?.id
+    }
+
     static func sections(
         for podcasts: [Podcast],
         numbersByPodcastID: [UUID: Int],
@@ -1037,18 +1053,19 @@ private struct LibraryAlphabetRail: View {
                 HStack(spacing: 4) {
                     ForEach(keys, id: \.self) { key in
                         let section = sectionsByTitle[key]
+                        let targetSectionID = LibraryDirectoryOrganizer.sectionIDForAlphabetKey(key, sections: sections)
                         let isSelected = selectedSectionID == section?.id
 
-                        if let section {
+                        if let targetSectionID {
                             Button {
-                                onSelect(section.id)
+                                onSelect(targetSectionID)
                             } label: {
-                                letterKey(key, isSelected: isSelected, isDisabled: false)
+                                letterKey(key, isSelected: isSelected, isDisabled: section == nil)
                             }
                             .id(key)
                             .buttonStyle(.plain)
                             .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("Jump to \(key)")
+                            .accessibilityLabel(section == nil ? "Jump near \(key)" : "Jump to \(key)")
                             .accessibilityIdentifier("LibraryJumpLetter\(key)")
                             .accessibilityAddTraits(isSelected ? .isSelected : [])
                         } else {

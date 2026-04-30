@@ -1133,6 +1133,21 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func libraryAlphabetRailTargetsNearestAvailableSection() {
+        let alpha = Podcast(title: "Audio Craft", feedURL: URL(string: "https://example.com/audio-nearest.xml")!)
+        let delta = Podcast(title: "Delta Feed", feedURL: URL(string: "https://example.com/delta-nearest.xml")!)
+        let zeta = Podcast(title: "Zeta Waves", feedURL: URL(string: "https://example.com/zeta-nearest.xml")!)
+        let sections = LibraryDirectoryOrganizer.sections(for: [zeta, alpha, delta])
+
+        #expect(LibraryDirectoryOrganizer.sectionIDForAlphabetKey("A", sections: sections) == "library-section-A")
+        #expect(LibraryDirectoryOrganizer.sectionIDForAlphabetKey("B", sections: sections) == "library-section-D")
+        #expect(LibraryDirectoryOrganizer.sectionIDForAlphabetKey("Y", sections: sections) == "library-section-Z")
+        #expect(LibraryDirectoryOrganizer.sectionIDForAlphabetKey("#", sections: sections) == "library-section-A")
+        #expect(LibraryDirectoryOrganizer.sectionIDForAlphabetKey("M", sections: []) == nil)
+    }
+
+    @Test
+    @MainActor
     func libraryDirectorySnapshotBuildsRowsWithCountsAndNumbers() {
         let alpha = Podcast(title: "Audio Craft", feedURL: URL(string: "https://example.com/audio-row.xml")!)
         let beta = Podcast(title: "Beta Feed", feedURL: URL(string: "https://example.com/beta-row.xml")!)
