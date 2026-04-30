@@ -762,6 +762,62 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func homeRecommendationsFetchExplicitShowCandidatesOutsideGlobalRecencyWindow() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        AppSettings.preferredGenres = []
+        defer { AppSettings.preferredGenres = originalGenres }
+
+        let now = Date()
+        let likedShow = Podcast(title: "Deep Signal", feedURL: URL(string: "https://example.com/deep-signal.xml")!)
+        let noisyShow = Podcast(title: "Noisy Daily", feedURL: URL(string: "https://example.com/noisy-daily.xml")!)
+        likedShow.isSubscribed = true
+        noisyShow.isSubscribed = true
+        let seed = Episode(
+            title: "Episode You Liked",
+            pubDate: now.addingTimeInterval(-60 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/deep-seed.mp3")!,
+            podcast: likedShow
+        )
+        seed.isPlayed = true
+        let earnedOlderEpisode = Episode(
+            title: "Older But Actually Relevant",
+            pubDate: now.addingTimeInterval(-45 * 86_400),
+            duration: 2_100,
+            audioURL: URL(string: "https://example.com/deep-earned.mp3")!,
+            podcast: likedShow
+        )
+
+        context.insert(likedShow)
+        context.insert(noisyShow)
+        context.insert(seed)
+        context.insert(earnedOlderEpisode)
+        context.insert(PreferenceSignal(action: .moreLikeThis, episode: seed))
+
+        for index in 0..<400 {
+            let episode = Episode(
+                title: "Noisy Fresh \(index)",
+                pubDate: now.addingTimeInterval(Double(-index) * 60),
+                duration: 1_800,
+                audioURL: URL(string: "https://example.com/noisy-\(index).mp3")!,
+                podcast: noisyShow
+            )
+            context.insert(episode)
+        }
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        let allEpisodes = sections.flatMap(\.episodes)
+        let section = try #require(sections.first(where: { $0.episodes.contains(where: { $0.id == earnedOlderEpisode.id }) }))
+
+        #expect(allEpisodes.contains(where: { $0.id == earnedOlderEpisode.id }))
+        #expect(section.signalTrace(for: earnedOlderEpisode).contains(RecommendationSignal(label: "source", value: "show intent")) == true)
+    }
+
+    @Test
+    @MainActor
     func preferenceFeedbackServicePostsRetuneNotificationAfterSaving() throws {
         let container = try makeContainer()
         let context = container.mainContext
