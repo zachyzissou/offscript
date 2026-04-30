@@ -958,7 +958,7 @@ private struct TunerRailCard: View {
         .frame(width: 188, alignment: .leading)
         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(reason)")
+        .accessibilityLabel("\(episode.title) from \(episode.podcast.title). \(displayReason)")
     }
 
     private var metadata: String {

@@ -698,6 +698,32 @@ struct OffScriptTests {
     }
 
     @Test
+    func recommendationExplainerPreservesGenericQuickDurationReasons() {
+        let reason = RecommendationExplainer.authoredReason(
+            fallback: "Quick 18m listen",
+            signals: [
+                RecommendationSignal(label: "source", value: "duration"),
+                RecommendationSignal(label: "window", value: "18m")
+            ]
+        )
+
+        #expect(reason == "Quick 18m listen")
+    }
+
+    @Test
+    func recommendationExplainerKeepsShortListenPreferenceReason() {
+        let reason = RecommendationExplainer.authoredReason(
+            fallback: "Fits your short-listen setting",
+            signals: [
+                RecommendationSignal(label: "source", value: "duration"),
+                RecommendationSignal(label: "window", value: "28m")
+            ]
+        )
+
+        #expect(reason == "Fits your short-listen setting")
+    }
+
+    @Test
     func recommendationExplainerKeepsUnknownFallbacks() {
         let fallback = "Special editorial pick"
 

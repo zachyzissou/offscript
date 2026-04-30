@@ -119,6 +119,14 @@ enum RecommendationExplainer {
             }
             return "Fresh from your subscribed channels"
         case "duration":
+            if fallback.localizedCaseInsensitiveContains("quick"),
+               let window = lookup["window"],
+               !window.isEmpty {
+                return "Quick \(window) listen"
+            }
+            if !fallback.localizedCaseInsensitiveContains("short-listen setting") {
+                return fallback
+            }
             return "Fits your short-listen setting"
         case "latest episode":
             if let tags = lookup["tags"], !tags.isEmpty {
