@@ -34,6 +34,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Build number advanced to 43 after App Store Connect reported `2.3.11 (42)` already uploaded** despite Cloud run #64 failing during preparation.
 - **Build number advanced to 44 after App Store Connect reported `2.3.11 (43)` already uploaded** despite Cloud run #65 failing during preparation.
 - **Build number advanced to `2026043001` after Xcode Cloud run #66 hit transient Sentry binary artifact download failures** and App Store Connect reported the small integer build-number range already uploaded, returning the project to the documented date-stamped TestFlight numbering scheme.
+- **Build number advanced to `2026043002` after Xcode Cloud run #71 failed during App Store Connect preparation** before TestFlight internal testing could run.
 - **CloudKit entitlements are temporarily withheld from the shipped target** because Apple-managed App Store and Ad Hoc profiles for `com.offscript.app` remain invalid after iCloud capability changes. The runtime still falls back to local storage and Settings reports the fallback instead of claiming sync is active.
 
 ### Added — large-library directory controls
