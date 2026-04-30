@@ -1365,6 +1365,50 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func libraryDirectoryCountLoaderCountsSubscribedShowsWithoutFetchingEpisodeLists() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let kept = Podcast(title: "Kept", feedURL: URL(string: "https://example.com/kept.xml")!)
+        let second = Podcast(title: "Second", feedURL: URL(string: "https://example.com/second.xml")!)
+        let unsubscribed = Podcast(title: "Ignored", feedURL: URL(string: "https://example.com/ignored.xml")!)
+        unsubscribed.isSubscribed = false
+
+        context.insert(kept)
+        context.insert(second)
+        context.insert(unsubscribed)
+
+        let keptFresh = Episode(title: "Kept Fresh", pubDate: .now, audioURL: URL(string: "https://example.com/kept-fresh.mp3")!, podcast: kept)
+        let keptStarted = Episode(title: "Kept Started", pubDate: .now, audioURL: URL(string: "https://example.com/kept-started.mp3")!, podcast: kept)
+        keptStarted.playedPosition = 120
+        let keptPlayed = Episode(title: "Kept Played", pubDate: .now, audioURL: URL(string: "https://example.com/kept-played.mp3")!, podcast: kept)
+        keptPlayed.isPlayed = true
+        let secondStarted = Episode(title: "Second Started", pubDate: .now, audioURL: URL(string: "https://example.com/second-started.mp3")!, podcast: second)
+        secondStarted.playedPosition = 90
+        let ignoredFresh = Episode(title: "Ignored Fresh", pubDate: .now, audioURL: URL(string: "https://example.com/ignored-fresh.mp3")!, podcast: unsubscribed)
+
+        [keptFresh, keptStarted, keptPlayed, secondStarted, ignoredFresh].forEach(context.insert)
+        try context.save()
+
+        let podcastIDs = [kept.id, second.id, unsubscribed.id]
+        let unplayedCounts = try await LibraryDirectoryCountLoader.unplayedCountsByPodcastID(
+            podcastIDs: podcastIDs,
+            context: context
+        )
+        let inProgressCounts = try await LibraryDirectoryCountLoader.inProgressCountsByPodcastID(
+            podcastIDs: podcastIDs,
+            context: context
+        )
+
+        #expect(unplayedCounts[kept.id] == 2)
+        #expect(unplayedCounts[second.id] == 1)
+        #expect(unplayedCounts[unsubscribed.id] == nil)
+        #expect(inProgressCounts[kept.id] == 1)
+        #expect(inProgressCounts[second.id] == 1)
+        #expect(inProgressCounts[unsubscribed.id] == nil)
+    }
+
+    @Test
+    @MainActor
     func tasteProfileRefreshAggregatesSignals() throws {
         let container = try makeContainer()
         let context = container.mainContext
