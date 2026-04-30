@@ -29,6 +29,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ### Changed — recommendation quality
 - **Explicit “more like this” and like signals now carry substantially more weight than passive completions** so recommendations follow intentional user feedback instead of feeling like generic completion-based ranking.
+- **Discovery genre matches now stay low-confidence until backed by local evidence** such as latest-episode tag overlap, topic matches, show affinity, or feed freshness, and genre-only WHY copy no longer claims local evidence.
 
 ### Fixed — onboarding, import, and sync UI honesty
 - **Settings and Sign in with Apple now log identity, iCloud, signal-profile, and Keychain OSStatus breadcrumbs** so TestFlight Settings crashes and Apple sign-in failures can be correlated to the failing subsystem.

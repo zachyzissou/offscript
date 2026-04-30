@@ -107,7 +107,13 @@ enum RecommendationExplainer {
             return "Pairs with what is playing now"
         case "genre":
             if let lane = lookup["lane"], !lane.isEmpty {
+                if lookup["evidence"] != "local" {
+                    return "A \(lane) lane pick to sample"
+                }
                 return "A \(lane) lane pick with local evidence behind it"
+            }
+            if lookup["evidence"] != "local" {
+                return "A genre-lane pick to sample"
             }
             return "A genre-lane pick with local evidence behind it"
         case "fresh":

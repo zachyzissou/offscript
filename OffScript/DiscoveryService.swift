@@ -165,6 +165,7 @@ actor DiscoveryService {
         var score: Double = 0.0
         var explanations: [String] = []
         var signals: [RecommendationSignal] = []
+        var hasConcreteEvidence = false
 
         let titleLower = result.title.lowercased()
         let summaryLower = (result.summary ?? "").lowercased()
@@ -182,7 +183,7 @@ actor DiscoveryService {
             .compactMap { $0?.lowercased() })
         if let resultGenre = resultGenres.intersection(preferredGenresLower).sorted().first {
             score += 0.35
-            explanations.append("Matches your saved \(resultGenre) lane")
+            explanations.append("Explore \(resultGenre) podcasts")
             signals.append(RecommendationSignal(label: "source", value: "genre"))
             signals.append(RecommendationSignal(label: "lane", value: resultGenre))
         }
@@ -202,6 +203,7 @@ actor DiscoveryService {
             }
         }
         if !latestEpisodeMatchedTags.isEmpty {
+            hasConcreteEvidence = true
             let sample = latestEpisodeMatchedTags.prefix(2).joined(separator: ", ")
             explanations.insert("Latest episodes overlap your \(sample) signal", at: 0)
             signals.append(RecommendationSignal(label: "source", value: "latest episode"))
@@ -214,6 +216,7 @@ actor DiscoveryService {
                 signals.append(RecommendationSignal(label: "episode", value: Self.truncated(title, limit: 42)))
             }
         } else if !matchedTags.isEmpty {
+            hasConcreteEvidence = true
             let sample = matchedTags.prefix(2).joined(separator: ", ")
             explanations.append("Covers topics you like: \(sample)")
             signals.append(RecommendationSignal(label: "source", value: "taste tag"))
@@ -226,6 +229,7 @@ actor DiscoveryService {
             let titleWords = Set(titleLower.split(separator: " ").map(String.init))
             let overlap = showWords.intersection(titleWords)
             if !overlap.isEmpty {
+                hasConcreteEvidence = true
                 score += 0.10
                 explanations.append("Similar to shows you finish")
                 signals.append(RecommendationSignal(label: "source", value: "show affinity"))
@@ -237,9 +241,11 @@ actor DiscoveryService {
             let days = max(0, Date().timeIntervalSince(freshestEpisode) / 86_400)
             switch days {
             case ..<14:
+                hasConcreteEvidence = true
                 score += 0.08
                 signals.append(RecommendationSignal(label: "freshness", value: "active feed"))
             case ..<45:
+                hasConcreteEvidence = true
                 score += 0.04
                 signals.append(RecommendationSignal(label: "freshness", value: "recent feed"))
             default:
@@ -249,6 +255,10 @@ actor DiscoveryService {
 
         // Novelty baseline
         score += 0.05
+        signals.append(RecommendationSignal(label: "evidence", value: hasConcreteEvidence ? "local" : "catalog"))
+        if !hasConcreteEvidence {
+            score = min(score, 0.12)
+        }
 
         // Build final explanation
         let explanation: String
