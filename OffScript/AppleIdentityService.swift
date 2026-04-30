@@ -24,6 +24,17 @@ enum AppleCredentialValidationState: Equatable {
         case .unknown: "APPLE ID · UNKNOWN"
         }
     }
+
+    var shortLabel: String {
+        switch self {
+        case .signedOut: "SIGNED OUT"
+        case .authorized: "VERIFIED"
+        case .revoked: "REVOKED"
+        case .notFound: "NOT FOUND"
+        case .transferred: "TRANSFERRED"
+        case .unknown: "UNKNOWN"
+        }
+    }
 }
 
 enum CloudKitAccountAvailability: Equatable {
@@ -46,6 +57,17 @@ enum CloudKitAccountAvailability: Equatable {
         case .couldNotDetermine: "ICLOUD · UNKNOWN"
         case .temporarilyUnavailable: "ICLOUD · TEMPORARY ISSUE"
         case .notConfigured: "ICLOUD · NOT CONFIGURED"
+        }
+    }
+
+    var shortLabel: String {
+        switch self {
+        case .available: "AVAILABLE"
+        case .noAccount: "NO ACCOUNT"
+        case .restricted: "RESTRICTED"
+        case .couldNotDetermine: "UNKNOWN"
+        case .temporarilyUnavailable: "TEMP ISSUE"
+        case .notConfigured: "NOT CONFIG"
         }
     }
 }
