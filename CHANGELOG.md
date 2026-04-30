@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to OffScript. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/spec/v2.0.0.html) — though TestFlight builds carry a `YYYYMMDD<run>.<attempt>` build number layered on top of the marketing version.
+All notable changes to OffScript. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/spec/v2.0.0.html) — though TestFlight builds carry a date-stamped build number such as `YYYYMMDDNN` layered on top of the marketing version.
 
 ## [Unreleased]
 
@@ -33,6 +33,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Build number advanced to 42 after Xcode Cloud run #63 failed during App Store Connect preparation** while the product line continued shipping performance builds on main.
 - **Build number advanced to 43 after App Store Connect reported `2.3.11 (42)` already uploaded** despite Cloud run #64 failing during preparation.
 - **Build number advanced to 44 after App Store Connect reported `2.3.11 (43)` already uploaded** despite Cloud run #65 failing during preparation.
+- **Build number advanced to `2026043001` after Xcode Cloud run #66 hit transient Sentry binary artifact download failures** and App Store Connect reported the small integer build-number range already uploaded, returning the project to the documented date-stamped TestFlight numbering scheme.
 - **CloudKit entitlements are temporarily withheld from the shipped target** because Apple-managed App Store and Ad Hoc profiles for `com.offscript.app` remain invalid after iCloud capability changes. The runtime still falls back to local storage and Settings reports the fallback instead of claiming sync is active.
 
 ### Added — large-library directory controls
