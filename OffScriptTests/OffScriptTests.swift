@@ -1596,6 +1596,40 @@ struct OffScriptTests {
     }
 
     @Test
+    func libraryAlphabetTargetsPrecomputeExactNearestAndReachableState() {
+        let alpha = LibraryDirectoryPodcast(id: UUID(), title: "Audio Craft")
+        let delta = LibraryDirectoryPodcast(id: UUID(), title: "Delta Feed")
+        let zeta = LibraryDirectoryPodcast(id: UUID(), title: "Zeta Waves")
+        let snapshot = LibraryDirectoryOrganizer.snapshot(
+            for: [zeta, alpha, delta],
+            query: "",
+            scope: .all,
+            sort: .title,
+            unplayedCounts: [:],
+            inProgressCounts: [:]
+        )
+
+        #expect(snapshot.alphabetTargets.count == 27)
+        #expect(snapshot.alphabetTargets.first?.key == "#")
+        #expect(snapshot.alphabetTargets.first?.sectionID == "library-section-A")
+        #expect(snapshot.alphabetTargets.first?.isNearestJump == true)
+
+        let exactA = snapshot.alphabetTargets.first { $0.key == "A" }
+        #expect(exactA?.sectionID == "library-section-A")
+        #expect(exactA?.isExact == true)
+        #expect(exactA?.isNearestJump == false)
+
+        let nearestB = snapshot.alphabetTargets.first { $0.key == "B" }
+        #expect(nearestB?.sectionID == "library-section-D")
+        #expect(nearestB?.isExact == false)
+        #expect(nearestB?.isNearestJump == true)
+
+        let nearestY = snapshot.alphabetTargets.first { $0.key == "Y" }
+        #expect(nearestY?.sectionID == "library-section-Z")
+        #expect(nearestY?.isReachable == true)
+    }
+
+    @Test
     func libraryDirectorySnapshotBuildsRowsWithCountsAndNumbers() {
         let alpha = LibraryDirectoryPodcast(id: UUID(), title: "Audio Craft")
         let beta = LibraryDirectoryPodcast(id: UUID(), title: "Beta Feed")

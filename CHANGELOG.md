@@ -78,6 +78,9 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Settings and Library import sheets no longer sit inside empty native navigation hosts**, reducing stray iOS navigation chrome while keeping the authored Tuner headers and inline DONE keys.
 
 ### Changed — Library performance
+- **Library directory snapshots now build off the main actor and cancel stale work** so large `#-Z` filter/sort/index rebuilds do not keep blocking Library scrolling or the Library-to-Home tab transition.
+- **The Library `#-Z` selector now uses precomputed jump targets from the directory snapshot** instead of recalculating nearest sections inside every rail render, keeping 250+ show letter jumps responsive and state-consistent when filters change.
+- **Large Library rows now opt into SwiftUI equatable rendering** so unchanged channel rows avoid repaint churn while counts, filters, and import status update around them.
 - **Inactive Home and Library tabs now stop rendering their heavy page bodies** while preserving tab state, so switching from a 250+ show Library back to Home no longer keeps the hidden directory tree in the transition path.
 - **Count-driven Library directory modes now derive unplayed and in-progress per-show counts from one scoped fetch** instead of scanning overlapping episode sets twice for `ATTN` views.
 - **Home/Library tab changes, recommendation loads, directory snapshots, summary fetches, and per-show count fetches now emit performance timings** so 250+ show lag can be measured from device logs instead of guessed from simulator feel.
