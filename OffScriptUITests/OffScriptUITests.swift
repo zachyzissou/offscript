@@ -109,15 +109,16 @@ final class OffScriptUITests: XCTestCase {
         tapWhenReady(app.buttons["UNPLAYED"].firstMatch, in: app, name: "UNPLAYED scope")
         XCTAssertTrue(app.staticTexts["A Channel 001"].waitForExistence(timeout: 10))
 
-        let filter = app.textFields.firstMatch
+        let filter = libraryFilterField(in: app)
         XCTAssertTrue(filter.waitForExistence(timeout: 8), "Library filter did not appear. Hierarchy:\n\(app.debugDescription)")
         filter.tap()
         filter.typeText("Z Channel")
         XCTAssertTrue(app.staticTexts["Z Channel 026"].waitForExistence(timeout: 10))
 
-        app.buttons["Clear library filter"].tap()
+        let clearFilter = app.buttons["Clear library filter"].firstMatch
+        XCTAssertTrue(clearFilter.waitForExistence(timeout: 5), "Clear library filter did not appear. Hierarchy:\n\(app.debugDescription)")
+        clearFilter.tap()
         XCTAssertTrue(app.staticTexts["A Channel 001"].waitForExistence(timeout: 10))
-        dismissKeyboard(in: app)
     }
 
     private func tapWhenReady(
@@ -132,18 +133,19 @@ final class OffScriptUITests: XCTestCase {
         for _ in 0..<maxSwipes where !element.isHittable {
             app.swipeUp()
         }
+        for _ in 0..<maxSwipes where !element.isHittable {
+            app.swipeDown()
+        }
         XCTAssertTrue(element.isHittable, "\(name) was not hittable. Hierarchy:\n\(app.debugDescription)", file: file, line: line)
         element.tap()
     }
 
-    private func dismissKeyboard(in app: XCUIApplication) {
-        guard app.keyboards.firstMatch.exists else { return }
-        let search = app.keyboards.buttons["Search"].firstMatch
-        if search.exists {
-            search.tap()
-        } else {
-            app.tap()
+    private func libraryFilterField(in app: XCUIApplication) -> XCUIElement {
+        let labeledField = app.textFields["Filter shows"]
+        if labeledField.exists {
+            return labeledField
         }
+        return app.textFields["FILTER SHOWS BY TITLE, AUTHOR, OR CATEGORY"]
     }
 
     private func makeApp(
