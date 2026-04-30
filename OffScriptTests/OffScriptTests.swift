@@ -1485,6 +1485,53 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func tasteProfileRefreshLetsOneExplicitIntentBeatSeveralPassiveCompletions() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let passiveShow = Podcast(title: "Passive Show", feedURL: URL(string: "https://example.com/passive-signals.xml")!)
+        let chosenShow = Podcast(title: "Chosen Show", feedURL: URL(string: "https://example.com/chosen-signals.xml")!)
+        let chosen = Episode(
+            title: "Explicit Choice",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/chosen-signals.mp3")!,
+            podcast: chosenShow
+        )
+        let chosenProfile = EpisodeProfile(episodeID: chosen.id)
+        chosenProfile.tags = ["chosen"]
+
+        context.insert(passiveShow)
+        context.insert(chosenShow)
+        context.insert(chosen)
+        context.insert(chosenProfile)
+        context.insert(PreferenceSignal(action: .moreLikeThis, episode: chosen))
+
+        for index in 1...4 {
+            let passive = Episode(
+                title: "Passive Completion \(index)",
+                pubDate: .now,
+                duration: 1_800,
+                audioURL: URL(string: "https://example.com/passive-signals-\(index).mp3")!,
+                podcast: passiveShow
+            )
+            let passiveProfile = EpisodeProfile(episodeID: passive.id)
+            passiveProfile.tags = ["passive"]
+            context.insert(passive)
+            context.insert(passiveProfile)
+            context.insert(PlaybackEvent(kind: .completed, position: 1_800, episode: passive))
+        }
+        try context.save()
+
+        try TasteProfileService.refresh(in: context, force: true)
+        let tasteProfile = try #require(try context.fetch(FetchDescriptor<UserTasteProfile>()).first)
+
+        #expect(tasteProfile.topTags.first == "chosen")
+        #expect(tasteProfile.showAffinity.first == "Chosen Show")
+    }
+
+    @Test
+    @MainActor
     func tasteProfileRefreshDemotesNegativePreferenceSignals() throws {
         let container = try makeContainer()
         let context = container.mainContext

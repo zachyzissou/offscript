@@ -103,8 +103,8 @@ enum TasteProfileService {
 
     private static func preferenceWeight(_ action: PreferenceSignal.Action) -> Double {
         switch action {
-        case .moreLikeThis: 4.0
-        case .like: 2.5
+        case .moreLikeThis: 8.0
+        case .like: 5.0
         case .lessLikeThis: -3.5
         case .notInterested: -5.0
         }
