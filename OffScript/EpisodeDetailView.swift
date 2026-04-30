@@ -126,7 +126,7 @@ struct EpisodeDetailView: View {
                     }
                     Text(episode.title)
                         .font(.system(size: 22, weight: .light, design: .default))
-                        .tracking(-0.4)
+                        .tracking(0)
                         .foregroundStyle(Color.offscriptPaperWhite)
                         .lineLimit(4)
                         .multilineTextAlignment(.leading)

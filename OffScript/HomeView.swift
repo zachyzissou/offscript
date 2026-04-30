@@ -222,7 +222,7 @@ private struct HomeTunerHeader: View {
                 // Big spec-sheet headline
                 Text("Home")
                     .font(.system(size: 32, weight: .bold))
-                    .tracking(-0.5)
+                    .tracking(0)
                     .foregroundStyle(Color.offscriptPaperWhite)
 
                 Spacer()
@@ -326,7 +326,7 @@ private struct HomeStarterRail: View {
             }
             Text("Pick a few well-liked channels")
                 .font(.system(size: 22, weight: .semibold))
-                .tracking(-0.3)
+                .tracking(0)
                 .foregroundStyle(Color.offscriptPaperWhite)
             Text("These are widely-loved podcasts to seed your library. Subscribe to a few that look interesting — OffScript will start tailoring your feed once it has signal to work with.")
                 .font(.system(size: 13))
@@ -451,7 +451,7 @@ private struct HomeEmptyState: View {
             TunerLabel(text: "● NO CHANNELS TUNED", color: .offscriptFnInfo)
             Text("Add three shows you trust")
                 .font(.system(size: 22, weight: .semibold))
-                .tracking(-0.3)
+                .tracking(0)
                 .foregroundStyle(Color.offscriptPaperWhite)
             Text("OffScript will build a feed that feels curated, not algorithmic. Open Search to find your first three.")
                 .font(.system(size: 13.5))
@@ -703,7 +703,7 @@ private struct HeroTunerCard: View {
                 } label: {
                     Text(episode.title)
                         .font(.system(size: 20, weight: .semibold))
-                        .tracking(-0.3)
+                        .tracking(0)
                         .foregroundStyle(Color.offscriptPaperWhite)
                         .multilineTextAlignment(.leading)
                         .lineLimit(3)

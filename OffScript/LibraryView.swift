@@ -689,7 +689,7 @@ struct LibraryView: View {
             TunerLabel(text: "● NO CHANNELS TUNED", color: .offscriptFnInfo)
             Text("Your library is empty")
                 .font(.system(size: 22, weight: .semibold))
-                .tracking(-0.3)
+                .tracking(0)
                 .foregroundStyle(Color.offscriptPaperWhite)
             Text("Use Search to bring in shows. OffScript keeps them fresh here once you subscribe.")
                 .font(.system(size: 13.5))
@@ -1766,7 +1766,7 @@ private struct PodcastDetailTunerHeader: View {
 
             Text(podcast.title)
                 .font(.system(size: 26, weight: .semibold))
-                .tracking(-0.4)
+                .tracking(0)
                 .foregroundStyle(Color.offscriptPaperWhite)
                 .lineSpacing(2)
 

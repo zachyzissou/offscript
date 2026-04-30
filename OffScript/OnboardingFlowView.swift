@@ -98,7 +98,7 @@ struct OnboardingFlowView: View {
                     }
                 }
                 .font(.system(size: 56, weight: .bold, design: .default))
-                .tracking(-2)
+                .tracking(0)
                 .staggeredEntrance(index: 1, delay: 0.10)
 
                 TunerLabel(text: "A RECEIVER FOR WHAT YOU ACTUALLY LIKE", size: 10)

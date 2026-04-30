@@ -26,7 +26,7 @@ struct GenrePickerView: View {
 
                         Text("Pick your bands")
                             .font(.system(size: 32, weight: .bold, design: .default))
-                            .tracking(-0.6)
+                            .tracking(0)
                             .foregroundStyle(Color.offscriptPaperWhite)
                             .staggeredEntrance(index: 1)
 

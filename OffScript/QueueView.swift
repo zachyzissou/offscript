@@ -61,7 +61,7 @@ struct QueueView: View {
             TunerLabel(text: "● QUEUE EMPTY", color: .offscriptSoftPaper)
             Text("Nothing queued yet")
                 .font(.system(size: 22, weight: .semibold))
-                .tracking(-0.3)
+                .tracking(0)
                 .foregroundStyle(Color.offscriptPaperWhite)
             Text("This is your working set, not a backlog. Queue a few episodes you actually plan to hear next.")
                 .font(.system(size: 13.5))
@@ -165,7 +165,7 @@ private struct QueueTunerHeader: View {
 
             Text("Queue")
                 .font(.system(size: 32, weight: .bold))
-                .tracking(-0.5)
+                .tracking(0)
                 .foregroundStyle(Color.offscriptPaperWhite)
 
             if let totalDuration {
@@ -212,7 +212,7 @@ private struct QueueLeadStrip: View {
                         .lineLimit(1)
                     Text(item.episode.title)
                         .font(.system(size: 16, weight: .semibold))
-                        .tracking(-0.2)
+                        .tracking(0)
                         .foregroundStyle(Color.offscriptPaperWhite)
                         .lineLimit(3)
                 }

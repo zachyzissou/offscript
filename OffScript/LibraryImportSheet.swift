@@ -138,7 +138,7 @@ struct LibraryImportSheet: View {
             TunerLabel(text: "● PICK A SOURCE", color: .offscriptFnInfo)
             Text("Bring shows in by URL or OPML")
                 .font(.system(size: 16, weight: .semibold))
-                .tracking(-0.2)
+                .tracking(0)
                 .foregroundStyle(Color.offscriptPaperWhite)
             Text("Paste a podcast feed URL to add a single show, or pick an OPML file exported from another podcast app to bring everything across at once.")
                 .font(.system(size: 13))
@@ -213,7 +213,7 @@ struct LibraryImportSheet: View {
             TunerLabel(text: "● FEED URL", color: .offscriptSignalYellow)
             Text("Paste a podcast feed URL")
                 .font(.system(size: 16, weight: .semibold))
-                .tracking(-0.2)
+                .tracking(0)
                 .foregroundStyle(Color.offscriptPaperWhite)
 
             HStack(spacing: 10) {
@@ -290,7 +290,7 @@ struct LibraryImportSheet: View {
 
             Text("Found \(entries.count) feed\(entries.count == 1 ? "" : "s")")
                 .font(.system(size: 16, weight: .semibold))
-                .tracking(-0.2)
+                .tracking(0)
                 .foregroundStyle(Color.offscriptPaperWhite)
 
             // Hint that import keeps running after the sheet closes — the

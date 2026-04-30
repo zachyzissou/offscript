@@ -44,7 +44,7 @@ struct ImportProgressView: View {
 
                 Text(headerTitle)
                     .font(.system(size: 32, weight: .bold))
-                    .tracking(-0.5)
+                    .tracking(0)
                     .foregroundStyle(Color.offscriptPaperWhite)
 
                 Text(headerCopy)

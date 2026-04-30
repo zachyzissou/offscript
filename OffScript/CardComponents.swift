@@ -67,7 +67,7 @@ struct EpisodeVerticalCard: View {
                 } label: {
                     Text(episode.title)
                         .font(.system(size: 14, weight: .semibold, design: .default))
-                        .tracking(-0.2)
+                        .tracking(0)
                         .foregroundStyle(Color.offscriptPaperWhite)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
@@ -227,7 +227,7 @@ struct EpisodeCompactCard: View {
 
                     Text(episode.title)
                         .font(.system(size: 13.5, weight: .semibold, design: .default))
-                        .tracking(-0.2)
+                        .tracking(0)
                         .foregroundStyle(Color.offscriptPaperWhite)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
