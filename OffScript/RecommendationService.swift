@@ -73,10 +73,12 @@ final class RecommendationService {
         let profileByEpisodeID: [UUID: EpisodeProfile]
         let likedTags: Set<String>
         let completedTags: Set<String>
+        let explicitPositiveTags: Set<String>
         let tasteProfile: UserTasteProfile?
         let topTags: Set<String>
         let showAffinity: Set<String>
         let completedShowCounts: [String: Int]
+        let explicitPositiveShowCounts: [String: Int]
         let queuedPositionByEpisodeID: [UUID: Int]
         let preferredGenres: Set<String>
         let dislikedTags: Set<String>
@@ -172,27 +174,41 @@ final class RecommendationService {
         let playbackEvents = try context.fetch(FetchDescriptor<PlaybackEvent>(
             predicate: #Predicate<PlaybackEvent> { $0.date >= signalCutoff }
         ))
+        var profileEpisodeIDs = Set(episodes.map(\.id))
+        profileEpisodeIDs.formUnion(preferences.map { $0.episode.id })
+        profileEpisodeIDs.formUnion(playbackEvents.compactMap { $0.episode?.id })
+        let profiles = try Self.profiles(for: profileEpisodeIDs, context: context)
+        let profileByEpisodeID = Self.profileMap(from: profiles)
         let tasteProfile = try? TasteProfileService.loadOrCreate(in: context)
         let dislikedEpisodeIDs: Set<UUID> = Set(preferences.filter { $0.action == .notInterested || $0.action == .lessLikeThis }.compactMap { (signal: PreferenceSignal) -> UUID? in signal.episode.id })
         let negativePreferences = preferences.filter { $0.action == .notInterested || $0.action == .lessLikeThis }
         let negativePlaybackEvents = playbackEvents.filter { $0.kind == .skippedQuickly || $0.kind == .abandoned }
-        let profileByEpisodeID = Dictionary(uniqueKeysWithValues: episodes.compactMap { episode in
-            episode.profile.map { (episode.id, $0) }
-        })
         let likedTags = Self.normalizedTags(preferences.lazy
             .filter { $0.action == .like || $0.action == .moreLikeThis }
-            .flatMap { $0.episode.profile?.tags ?? [] })
+            .flatMap { profileByEpisodeID[$0.episode.id]?.tags ?? $0.episode.profile?.tags ?? [] })
         let completedTags = Self.normalizedTags(playbackEvents.lazy
             .filter { $0.kind == .completed }
-            .flatMap { $0.episode?.profile?.tags ?? [] })
+            .flatMap { event -> [String] in
+                guard let episode = event.episode else { return [] }
+                return profileByEpisodeID[episode.id]?.tags ?? episode.profile?.tags ?? []
+            })
+        let explicitPositivePreferences = preferences.filter { $0.action == .like || $0.action == .moreLikeThis }
+        let explicitPositiveTags = Self.normalizedTags(explicitPositivePreferences.lazy.flatMap {
+            profileByEpisodeID[$0.episode.id]?.tags ?? $0.episode.profile?.tags ?? []
+        })
         let completedShows = playbackEvents
-            .filter { $0.kind == .completed || $0.kind == .advancedFromQueue || $0.kind == .resumed }
+            .filter { $0.kind == .completed }
             .compactMap { $0.episode?.podcast.title }
         let completedShowCounts = Dictionary(completedShows.map { ($0, 1) }, uniquingKeysWith: +)
+        let explicitPositiveShows = explicitPositivePreferences.map { $0.episode.podcast.title }
+        let explicitPositiveShowCounts = Dictionary(explicitPositiveShows.map { ($0, 1) }, uniquingKeysWith: +)
         let dislikedTags = Self.normalizedTags(
-            negativePreferences.lazy.flatMap { $0.episode.profile?.tags ?? [] }
+            negativePreferences.lazy.flatMap { profileByEpisodeID[$0.episode.id]?.tags ?? $0.episode.profile?.tags ?? [] }
         ).union(Self.normalizedTags(
-            negativePlaybackEvents.lazy.flatMap { $0.episode?.profile?.tags ?? [] }
+            negativePlaybackEvents.lazy.flatMap { event -> [String] in
+                guard let episode = event.episode else { return [] }
+                return profileByEpisodeID[episode.id]?.tags ?? episode.profile?.tags ?? []
+            }
         ))
         let penalizedShows = Set(
             negativePreferences.map { $0.episode.podcast.title }
@@ -203,10 +219,12 @@ final class RecommendationService {
             profileByEpisodeID: profileByEpisodeID,
             likedTags: likedTags,
             completedTags: completedTags,
+            explicitPositiveTags: explicitPositiveTags,
             tasteProfile: tasteProfile,
             topTags: Self.normalizedTags(tasteProfile?.topTags ?? []),
             showAffinity: Set(tasteProfile?.showAffinity ?? []),
             completedShowCounts: completedShowCounts,
+            explicitPositiveShowCounts: explicitPositiveShowCounts,
             queuedPositionByEpisodeID: queuedPositionByEpisodeID,
             preferredGenres: Set((tasteProfile?.preferredGenres ?? AppSettings.preferredGenres.map(\.title)).map { $0.lowercased() }),
             dislikedTags: dislikedTags,
@@ -245,6 +263,7 @@ final class RecommendationService {
             scoredEpisodes.filter {
                 scoringContext.completedShowCounts[$0.episode.podcast.title, default: 0] > 0
                     || scoringContext.showAffinity.contains($0.episode.podcast.title)
+                    || scoringContext.explicitPositiveShowCounts[$0.episode.podcast.title, default: 0] > 0
             },
             limit: limit,
             excluding: &usedEpisodeIDs
@@ -288,6 +307,7 @@ final class RecommendationService {
     ) -> (score: Double, explanation: String, signalTrace: [RecommendationSignal])? {
         let profile = context.profileByEpisodeID[episode.id]
         let profileTags = Self.normalizedTags(profile?.tags ?? [])
+        let matchingExplicitTags = profileTags.intersection(context.explicitPositiveTags)
         let matchingLikedTags = profileTags.intersection(context.likedTags)
         let matchingCompletedTags = profileTags.intersection(context.completedTags)
         let matchingTopTags = profileTags.intersection(context.topTags)
@@ -329,6 +349,31 @@ final class RecommendationService {
 
         if Self.isSuppressedByNegativeSignal(episode, profileTags: profileTags, context: context) {
             return nil
+        }
+
+        if !matchingExplicitTags.isEmpty {
+            let sample = matchingExplicitTags.sorted().prefix(2).joined(separator: ", ")
+            return (
+                360 + Double(min(matchingExplicitTags.count, 4)) * 22 + freshnessTieBreak + qualityTieBreak,
+                "Matches what you asked for: \(sample)",
+                [
+                    RecommendationSignal(label: "source", value: "explicit signal"),
+                    RecommendationSignal(label: "tags", value: sample)
+                ]
+            )
+        }
+
+        let explicitShowCount = context.explicitPositiveShowCounts[episode.podcast.title, default: 0]
+        if explicitShowCount > 0 {
+            return (
+                380 + Double(min(explicitShowCount, 4)) * 20 + freshnessTieBreak + qualityTieBreak,
+                "You asked for more from \(episode.podcast.title)",
+                [
+                    RecommendationSignal(label: "source", value: "show intent"),
+                    RecommendationSignal(label: "show", value: episode.podcast.title),
+                    RecommendationSignal(label: "signals", value: "\(explicitShowCount)")
+                ]
+            )
         }
 
         let completedShowCount = context.completedShowCounts[episode.podcast.title, default: 0]
@@ -513,7 +558,6 @@ final class RecommendationService {
             predicate: #Predicate<Episode> { $0.podcast.isSubscribed == true && $0.id != currentEpisodeID && $0.isPlayed == false }
         ))
 
-        let profiles = try context.fetch(FetchDescriptor<EpisodeProfile>())
         let signalCutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? .distantPast
         let preferences = try context.fetch(FetchDescriptor<PreferenceSignal>(
             predicate: #Predicate<PreferenceSignal> { $0.date >= signalCutoff }
@@ -528,12 +572,20 @@ final class RecommendationService {
         let tasteProfile = try? TasteProfileService.loadOrCreate(in: context)
         let likedEpisodeIDs: Set<UUID> = Set(preferences.filter { $0.action == .like || $0.action == .moreLikeThis }.compactMap { (signal: PreferenceSignal) -> UUID? in signal.episode.id })
         let negativePreferences = preferences.filter { $0.action == .notInterested || $0.action == .lessLikeThis }
-        let profileByEpisodeID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.episodeID, $0) })
-        let likedTags = Self.normalizedTags(profiles.lazy.filter { likedEpisodeIDs.contains($0.episodeID) }.flatMap(\.tags))
+        var profileEpisodeIDs = Set(episodes.map(\.id))
+        profileEpisodeIDs.insert(currentEpisode.id)
+        profileEpisodeIDs.formUnion(preferences.map { $0.episode.id })
+        profileEpisodeIDs.formUnion(negativePlaybackEvents.compactMap { $0.episode?.id })
+        let profiles = try Self.profiles(for: profileEpisodeIDs, context: context)
+        let profileByEpisodeID = Self.profileMap(from: profiles)
+        let likedTags = Self.normalizedTags(likedEpisodeIDs.flatMap { profileByEpisodeID[$0]?.tags ?? [] })
         let dislikedTags = Self.normalizedTags(
-            negativePreferences.lazy.flatMap { $0.episode.profile?.tags ?? [] }
+            negativePreferences.lazy.flatMap { profileByEpisodeID[$0.episode.id]?.tags ?? $0.episode.profile?.tags ?? [] }
         ).union(Self.normalizedTags(
-            negativePlaybackEvents.lazy.flatMap { $0.episode?.profile?.tags ?? [] }
+            negativePlaybackEvents.lazy.flatMap { event -> [String] in
+                guard let episode = event.episode else { return [] }
+                return profileByEpisodeID[episode.id]?.tags ?? episode.profile?.tags ?? []
+            }
         ))
         let penalizedShows = Set(
             negativePreferences.map { $0.episode.podcast.title }
@@ -543,10 +595,12 @@ final class RecommendationService {
             profileByEpisodeID: profileByEpisodeID,
             likedTags: likedTags,
             completedTags: [],
+            explicitPositiveTags: likedTags,
             tasteProfile: tasteProfile,
             topTags: Self.normalizedTags(tasteProfile?.topTags ?? []),
             showAffinity: Set(tasteProfile?.showAffinity ?? []),
             completedShowCounts: [:],
+            explicitPositiveShowCounts: [:],
             queuedPositionByEpisodeID: [:],
             preferredGenres: Set((tasteProfile?.preferredGenres ?? AppSettings.preferredGenres.map(\.title)).map { $0.lowercased() }),
             dislikedTags: dislikedTags,
@@ -556,7 +610,7 @@ final class RecommendationService {
         // Also boost episodes from the same podcast
         let currentPodcastID = currentEpisode.podcast.id
         let currentProfile = profileByEpisodeID[currentEpisode.id]
-        let currentTags = Set(currentProfile?.tags ?? [])
+        let currentTags = Self.normalizedTags(currentProfile?.tags ?? [])
 
         return episodes
             .filter { episode in
@@ -585,10 +639,10 @@ final class RecommendationService {
 
                 // Boost episodes with overlapping tags to current episode
                 let episodeProfile = profileByEpisodeID[episode.id]
-                let episodeTags = Set(episodeProfile?.tags ?? [])
+                let episodeTags = Self.normalizedTags(episodeProfile?.tags ?? [])
                 let currentOverlap = episodeTags.intersection(currentTags)
                 if !currentOverlap.isEmpty {
-                    score += Double(currentOverlap.count) * 0.05
+                    score += Double(min(currentOverlap.count, 4)) * 0.12
                     if episode.podcast.id != currentPodcastID {
                         let tag = currentOverlap.first ?? ""
                         result = (
@@ -675,6 +729,18 @@ final class RecommendationService {
 
     private static func normalizedTags<S: Sequence>(_ tags: S) -> Set<String> where S.Element == String {
         Set(tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }.filter { !$0.isEmpty })
+    }
+
+    private static func profileMap(from profiles: [EpisodeProfile]) -> [UUID: EpisodeProfile] {
+        Dictionary(profiles.map { ($0.episodeID, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    private static func profiles(for episodeIDs: Set<UUID>, context: ModelContext) throws -> [EpisodeProfile] {
+        guard !episodeIDs.isEmpty else { return [] }
+        let ids = Array(episodeIDs)
+        return try context.fetch(FetchDescriptor<EpisodeProfile>(
+            predicate: #Predicate<EpisodeProfile> { ids.contains($0.episodeID) }
+        ))
     }
 
     private static func recentCandidateDescriptor(limit: Int) -> FetchDescriptor<Episode> {

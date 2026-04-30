@@ -489,6 +489,113 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func homeRecommendationsPreferExplicitMoreLikeThisOverPassiveShowAffinity() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        AppSettings.preferredGenres = []
+        defer { AppSettings.preferredGenres = originalGenres }
+
+        let likedShow = Podcast(title: "Liked Topic", feedURL: URL(string: "https://example.com/liked-topic.xml")!)
+        let affinityShow = Podcast(title: "Finished Show", feedURL: URL(string: "https://example.com/passive-finished.xml")!)
+        let seed = Episode(
+            title: "Seed You Asked For",
+            pubDate: Date().addingTimeInterval(-9 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/seed-like.mp3")!,
+            podcast: likedShow
+        )
+        let explicitMatch = Episode(
+            title: "Older Explicit Match",
+            pubDate: Date().addingTimeInterval(-8 * 86_400),
+            duration: 2_100,
+            audioURL: URL(string: "https://example.com/explicit-match.mp3")!,
+            podcast: likedShow
+        )
+        let completed = Episode(
+            title: "Completed Passive",
+            pubDate: Date().addingTimeInterval(-4 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/passive-completed.mp3")!,
+            podcast: affinityShow
+        )
+        let passiveAffinity = Episode(
+            title: "Newer Passive Affinity",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/passive-affinity.mp3")!,
+            podcast: affinityShow
+        )
+        let seedProfile = EpisodeProfile(episodeID: seed.id)
+        seedProfile.tags = ["indie interviews"]
+        let matchProfile = EpisodeProfile(episodeID: explicitMatch.id)
+        matchProfile.tags = ["indie interviews"]
+
+        completed.isPlayed = true
+        context.insert(likedShow)
+        context.insert(affinityShow)
+        context.insert(seed)
+        context.insert(explicitMatch)
+        context.insert(completed)
+        context.insert(passiveAffinity)
+        context.insert(seedProfile)
+        context.insert(matchProfile)
+        context.insert(PreferenceSignal(action: .moreLikeThis, episode: seed))
+        context.insert(PlaybackEvent(kind: .completed, position: 1_800, episode: completed))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        let firstEpisode = try #require(sections.first?.episodes.first)
+
+        #expect(firstEpisode.id == explicitMatch.id)
+        #expect(sections.first?.signalTrace(for: explicitMatch).contains(RecommendationSignal(label: "source", value: "explicit signal")) == true)
+    }
+
+    @Test
+    @MainActor
+    func homeRecommendationsUseCurrentLikedShowSignalWithoutCachedProfileRefresh() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        AppSettings.preferredGenres = []
+        defer { AppSettings.preferredGenres = originalGenres }
+
+        let tasteProfile = UserTasteProfile()
+        tasteProfile.topTags = ["already tuned"]
+        tasteProfile.showAffinity = []
+        tasteProfile.lastUpdatedAt = .now
+        let show = Podcast(title: "Freshly Liked Show", feedURL: URL(string: "https://example.com/freshly-liked.xml")!)
+        let liked = Episode(
+            title: "Liked Episode",
+            pubDate: Date().addingTimeInterval(-7 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/freshly-liked-seed.mp3")!,
+            podcast: show
+        )
+        let next = Episode(
+            title: "Same Show Next",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/freshly-liked-next.mp3")!,
+            podcast: show
+        )
+
+        context.insert(tasteProfile)
+        context.insert(show)
+        context.insert(liked)
+        context.insert(next)
+        context.insert(PreferenceSignal(action: .like, episode: liked))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        let firstEpisode = try #require(sections.first?.episodes.first)
+
+        #expect(firstEpisode.id == next.id)
+        #expect(sections.first?.signalTrace(for: next).contains(RecommendationSignal(label: "source", value: "show intent")) == true)
+    }
+
+    @Test
+    @MainActor
     func homeRecommendationsDoNotReturnRecencyOnlyCandidates() throws {
         let container = try makeContainer()
         let context = container.mainContext
@@ -758,6 +865,63 @@ struct OffScriptTests {
         #expect(scored.explanation == "Also covers \"audio craft\"")
         #expect(scored.signalTrace.contains(RecommendationSignal(label: "source", value: "now playing")))
         #expect(scored.signalTrace.contains(RecommendationSignal(label: "tag", value: "audio craft")))
+    }
+
+    @Test
+    @MainActor
+    func playerSuggestionsPreferStrongNowPlayingOverlapOverSameShow() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let currentPodcast = Podcast(title: "Current Show", feedURL: URL(string: "https://example.com/current-player.xml")!)
+        let relatedPodcast = Podcast(title: "Deep Related", feedURL: URL(string: "https://example.com/deep-related.xml")!)
+        let current = Episode(
+            title: "Current Context",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/current-context.mp3")!,
+            podcast: currentPodcast
+        )
+        let sameShow = Episode(
+            title: "Same Feed But Unrelated",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/same-feed.mp3")!,
+            podcast: currentPodcast
+        )
+        let deepMatch = Episode(
+            title: "Cross Show Deep Match",
+            pubDate: Date().addingTimeInterval(-2 * 86_400),
+            duration: 2_400,
+            audioURL: URL(string: "https://example.com/deep-match.mp3")!,
+            podcast: relatedPodcast
+        )
+        let currentProfile = EpisodeProfile(episodeID: current.id)
+        currentProfile.tags = ["editing", "field recording", "interviews"]
+        let sameProfile = EpisodeProfile(episodeID: sameShow.id)
+        sameProfile.tags = ["news"]
+        let deepProfile = EpisodeProfile(episodeID: deepMatch.id)
+        deepProfile.tags = ["editing", "field recording", "interviews"]
+
+        context.insert(currentPodcast)
+        context.insert(relatedPodcast)
+        context.insert(current)
+        context.insert(sameShow)
+        context.insert(deepMatch)
+        context.insert(currentProfile)
+        context.insert(sameProfile)
+        context.insert(deepProfile)
+        try context.save()
+
+        let suggestions = try RecommendationService().playerSuggestions(
+            currentEpisode: current,
+            context: context,
+            limit: 3
+        )
+        let scored = try #require(suggestions.first)
+
+        #expect(scored.episode.id == deepMatch.id)
+        #expect(scored.signalTrace.contains(RecommendationSignal(label: "source", value: "now playing")))
     }
 
     @Test

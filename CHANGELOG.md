@@ -56,6 +56,10 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home can render a Tuner-styled discovery rail** sourced from the existing taste profile, with trace rows explaining whether each new podcast came from genre, tag, show-affinity, or discovery signal. Discovery rows can be tuned into the library without leaving Home.
 
 ### Changed — taste profile quality
+- **Home recommendations now treat explicit Like / More Like This feedback as first-class signal** ahead of passive show completion, so the next Home surface follows what the listener deliberately asked for instead of drifting back toward generic fresh/feed picks.
+- **Home show-affinity recommendations now use current preference events immediately** instead of waiting on the cached taste profile refresh window, so a newly liked show can influence the next render right away.
+- **Player suggestions now let strong now-playing topic overlap beat unrelated same-show episodes**, making the player rail feel contextual to the current listen rather than a plain “more from this feed” list.
+- **“Shows You Finish” now means actual completed playback events** instead of grouping resumed or queue-advanced events into completion evidence.
 - **Home, Discovery, and Player recommendation cards now use authored local signal explanations** instead of raw algorithm fallback strings like `Matches your saved signal`, keeping WHY copy concrete even when Apple Intelligence is unavailable.
 - **Taste refresh now uses weighted, decayed evidence instead of equal counts.** Recent explicit `More like this` signals beat old passive completions, while `Less like this`, `Not interested`, quick skips, and abandons demote matching tags and shows.
 - **Recommendation modes now materially change Home ranking.** `SIGNAL` excludes genre-only candidates, while `BALANCED` and `DISCOVERY` can include a separate tuned-genre lane after local evidence.
