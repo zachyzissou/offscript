@@ -63,8 +63,21 @@ nonisolated struct LibraryDirectorySnapshot {
     let sections: [LibraryDirectorySection]
     let numbersByPodcastID: [UUID: Int]
 
+    static let empty = LibraryDirectorySnapshot(podcasts: [], sections: [], numbersByPodcastID: [:])
+
     var visibleCount: Int { podcasts.count }
     var isEmpty: Bool { podcasts.isEmpty }
+}
+
+private struct LibraryPodcastFingerprint: Equatable {
+    let id: UUID
+    let title: String
+    let author: String?
+    let categories: [String]
+    let latestPubDate: Date?
+    let subscribedAt: Date?
+    let syncStatus: String
+    let syncFailureCount: Int
 }
 
 nonisolated enum LibraryDirectoryOrganizer {
@@ -258,20 +271,25 @@ struct LibraryView: View {
     @State private var fullCountLoadTask: Task<Void, Never>?
     @State private var directoryQueryTask: Task<Void, Never>?
     @State private var selectedPodcast: Podcast?
+    @State private var cachedDirectorySnapshot = LibraryDirectorySnapshot.empty
 
     private var subscribedPodcasts: [Podcast] {
         podcasts
     }
 
-    private var directorySnapshot: LibraryDirectorySnapshot {
-        LibraryDirectoryOrganizer.snapshot(
-            for: subscribedPodcasts,
-            query: effectiveDirectoryQuery,
-            scope: directoryScope,
-            sort: directorySort,
-            unplayedCounts: directoryUnplayedCountsByPodcastID,
-            inProgressCounts: directoryInProgressCountsByPodcastID
-        )
+    private var directorySnapshotInputs: [LibraryPodcastFingerprint] {
+        subscribedPodcasts.map {
+            LibraryPodcastFingerprint(
+                id: $0.id,
+                title: $0.title,
+                author: $0.author,
+                categories: $0.categories,
+                latestPubDate: $0.latestPubDate,
+                subscribedAt: $0.subscribedAt,
+                syncStatus: $0.syncStatus,
+                syncFailureCount: $0.syncFailureCount
+            )
+        }
     }
 
     private var directoryNeedsFullUnplayedCounts: Bool {
@@ -303,7 +321,7 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        let snapshot = directorySnapshot
+        let snapshot = cachedDirectorySnapshot
         ScrollViewReader { scrollProxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -379,12 +397,32 @@ struct LibraryView: View {
         .navigationDestination(item: $selectedPodcast) { podcast in
             PodcastDetailView(podcast: podcast)
         }
-        .task { loadLibraryEpisodeSummary() }
-        .onAppear { effectiveDirectoryQuery = directoryQuery }
-        .onChange(of: subscribedPodcastIDs) { _, _ in scheduleLibraryEpisodeSummaryLoad() }
+        .task {
+            rebuildDirectorySnapshot()
+            loadLibraryEpisodeSummary()
+        }
+        .onAppear {
+            effectiveDirectoryQuery = directoryQuery
+            rebuildDirectorySnapshot()
+        }
+        .onChange(of: directorySnapshotInputs) { _, _ in
+            rebuildDirectorySnapshot()
+            scheduleLibraryEpisodeSummaryLoad()
+        }
         .onChange(of: directoryQuery) { _, newValue in scheduleDirectoryQuery(newValue) }
-        .onChange(of: directoryScope) { _, _ in ensureFullDirectoryCountsIfNeeded() }
-        .onChange(of: directorySort) { _, _ in ensureFullDirectoryCountsIfNeeded() }
+        .onChange(of: effectiveDirectoryQuery) { _, _ in rebuildDirectorySnapshot() }
+        .onChange(of: directoryScope) { _, _ in
+            rebuildDirectorySnapshot()
+            ensureFullDirectoryCountsIfNeeded()
+        }
+        .onChange(of: directorySort) { _, _ in
+            rebuildDirectorySnapshot()
+            ensureFullDirectoryCountsIfNeeded()
+        }
+        .onChange(of: freshUnplayedCountsByPodcastID) { _, _ in rebuildDirectorySnapshot() }
+        .onChange(of: freshInProgressCountsByPodcastID) { _, _ in rebuildDirectorySnapshot() }
+        .onChange(of: fullUnplayedCountsByPodcastID) { _, _ in rebuildDirectorySnapshot() }
+        .onChange(of: fullInProgressCountsByPodcastID) { _, _ in rebuildDirectorySnapshot() }
         .onDisappear {
             summaryLoadTask?.cancel()
             fullCountLoadTask?.cancel()
@@ -397,6 +435,18 @@ struct LibraryView: View {
             LibraryImportSheet()
                 .tunerModalSurface()
         }
+    }
+
+    @MainActor
+    private func rebuildDirectorySnapshot() {
+        cachedDirectorySnapshot = LibraryDirectoryOrganizer.snapshot(
+            for: subscribedPodcasts,
+            query: effectiveDirectoryQuery,
+            scope: directoryScope,
+            sort: directorySort,
+            unplayedCounts: directoryUnplayedCountsByPodcastID,
+            inProgressCounts: directoryInProgressCountsByPodcastID
+        )
     }
 
     private var emptyState: some View {
