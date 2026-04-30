@@ -1400,6 +1400,14 @@ struct OffScriptTests {
         #expect(rows.first?.unplayedCount == 3)
         #expect(rows.last?.inProgressCount == 1)
         #expect(rows.map(\.isLastInSection) == [true, true])
+        #expect(snapshot.listItems.map(\.id) == [
+            "header-library-section-A",
+            "row-\(alpha.id)",
+            "section-separator-library-section-A",
+            "header-library-section-B",
+            "row-\(beta.id)",
+            "section-separator-library-section-B"
+        ])
 
         let adjacent = LibraryDirectoryPodcast(id: UUID(), title: "Another Audio")
         let sectionsWithoutExplicitNumbers = LibraryDirectoryOrganizer.sections(for: [alpha, adjacent])
@@ -1462,6 +1470,30 @@ struct OffScriptTests {
         #expect(counts[kept.id] == 2)
         #expect(counts[second.id] == 1)
         #expect(counts[ignored.id] == nil)
+    }
+
+    @Test
+    @MainActor
+    func libraryDirectorySnapshotLoaderBuildsValueRowsWithoutLiveQueryInvalidation() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let subscribed = Podcast(title: "Subscribed Show", feedURL: URL(string: "https://example.com/subscribed.xml")!)
+        subscribed.author = "Signal Desk"
+        subscribed.categories = ["Technology", "Design"]
+        subscribed.latestPubDate = Date(timeIntervalSince1970: 400)
+        let unsubscribed = Podcast(title: "Ignored Show", feedURL: URL(string: "https://example.com/ignored.xml")!)
+        unsubscribed.isSubscribed = false
+        context.insert(subscribed)
+        context.insert(unsubscribed)
+        try context.save()
+
+        let snapshots = try LibraryDirectorySnapshotLoader.subscribedPodcasts(in: context)
+
+        #expect(snapshots.map(\.id) == [subscribed.id])
+        #expect(snapshots.first?.title == "Subscribed Show")
+        #expect(snapshots.first?.author == "Signal Desk")
+        #expect(snapshots.first?.categories == ["Technology", "Design"])
+        #expect(snapshots.first?.latestPubDate == Date(timeIntervalSince1970: 400))
     }
 
     @Test
