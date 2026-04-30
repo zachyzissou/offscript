@@ -42,6 +42,8 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Large OPML imports now stage subscribed shows before network sync finishes**, so 250+ show libraries appear in Library immediately while feed hydration continues in the background.
 - **OPML batch hydration now uses a lightweight bootstrap pass** that imports only a small first slice of episodes and skips episode profile enrichment, avoiding thousands of episode/profile writes during the initial import.
 - **The root Library podcast query now filters subscribed shows in SwiftData instead of fetching every historical podcast and filtering in Swift.**
+- **Large-library scrolling no longer waits on per-show unplayed count churn by default.** Library now loads the aggregate unplayed count, fresh rail, and bounded in-progress rail first; exact per-show counts are deferred until `UNPLAYED` or `ATTN` directory modes need them.
+- **Library show rows now navigate through a single selected destination** instead of embedding a detail destination in every row of a 250+ show directory.
 - **Library summary reloads are coalesced during background OPML imports** so each imported show does not immediately retrigger the expensive per-show count path while the list is being scrolled.
 - **Library summary counts no longer issue one SwiftData `fetchCount` per subscribed show.** The page now loads the unplayed episode set once, derives the latest rail and per-show counts from that result, and avoids 250+ synchronous count queries on Library open.
 - **Library directory rendering now builds one snapshot per render pass** for filtered shows, alphabet sections, and row numbers, with debounced search input so typing does not repeatedly sort/group the whole library.
