@@ -68,6 +68,13 @@ nonisolated struct LibraryDirectorySnapshot {
 }
 
 nonisolated enum LibraryDirectoryOrganizer {
+    static func needsPerShowUnplayedCounts(
+        scope: LibraryDirectoryScope,
+        sort: LibraryDirectorySort
+    ) -> Bool {
+        scope == .unplayed || sort == .attention
+    }
+
     static func snapshot(
         for podcasts: [Podcast],
         query: String,
@@ -212,15 +219,6 @@ struct LibraryView: View {
     )
     private var podcasts: [Podcast]
 
-    // Predicate-filtered query for the small in-progress set. Fresh/unplayed
-    // summary data is loaded below with fetch limits and fetchCount so Library
-    // does not materialize a full back catalog just to draw the first rail.
-    @Query(
-        filter: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed && $0.playedPosition > 0 },
-        sort: [SortDescriptor(\Episode.lastPlayedAt, order: .reverse)]
-    )
-    private var inProgressEpisodes: [Episode]
-
     let onOpenSettings: () -> Void
 
     private let syncService = FeedSyncService()
@@ -231,11 +229,17 @@ struct LibraryView: View {
     @State private var directorySort: LibraryDirectorySort = .title
     @State private var directoryDensity: LibraryDirectoryDensity = .compact
     @State private var selectedDirectorySectionID: String?
+    @State private var inProgressEpisodes: [Episode] = []
+    @State private var inProgressEpisodeCount = 0
     @State private var freshEpisodes: [Episode] = []
     @State private var unplayedEpisodeCount = 0
-    @State private var freshCountsByPodcastID: [UUID: Int] = [:]
+    @State private var freshUnplayedCountsByPodcastID: [UUID: Int] = [:]
+    @State private var fullUnplayedCountsByPodcastID: [UUID: Int] = [:]
+    @State private var isLoadingFullUnplayedCounts = false
     @State private var summaryLoadTask: Task<Void, Never>?
+    @State private var fullCountLoadTask: Task<Void, Never>?
     @State private var directoryQueryTask: Task<Void, Never>?
+    @State private var selectedPodcast: Podcast?
 
     private var subscribedPodcasts: [Podcast] {
         podcasts
@@ -247,9 +251,17 @@ struct LibraryView: View {
             query: effectiveDirectoryQuery,
             scope: directoryScope,
             sort: directorySort,
-            unplayedCounts: freshCountsByPodcastID,
+            unplayedCounts: directoryUnplayedCountsByPodcastID,
             inProgressCounts: inProgressCountsByPodcastID
         )
+    }
+
+    private var directoryNeedsFullUnplayedCounts: Bool {
+        LibraryDirectoryOrganizer.needsPerShowUnplayedCounts(scope: directoryScope, sort: directorySort)
+    }
+
+    private var directoryUnplayedCountsByPodcastID: [UUID: Int] {
+        directoryNeedsFullUnplayedCounts ? fullUnplayedCountsByPodcastID : freshUnplayedCountsByPodcastID
     }
 
     private var isCompactDirectory: Bool {
@@ -273,7 +285,7 @@ struct LibraryView: View {
                         showCount: subscribedPodcasts.count,
                         visibleCount: snapshot.visibleCount,
                         unplayedCount: unplayedEpisodeCount,
-                        inProgressCount: inProgressEpisodes.count,
+                        inProgressCount: inProgressEpisodeCount,
                         onOpenImport: { isImportPresented = true },
                         onOpenSettings: onOpenSettings
                     )
@@ -338,12 +350,18 @@ struct LibraryView: View {
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .navigationDestination(item: $selectedPodcast) { podcast in
+            PodcastDetailView(podcast: podcast)
+        }
         .task { loadLibraryEpisodeSummary() }
         .onAppear { effectiveDirectoryQuery = directoryQuery }
         .onChange(of: subscribedPodcastIDs) { _, _ in scheduleLibraryEpisodeSummaryLoad() }
         .onChange(of: directoryQuery) { _, newValue in scheduleDirectoryQuery(newValue) }
+        .onChange(of: directoryScope) { _, _ in ensureFullUnplayedCountsIfNeeded() }
+        .onChange(of: directorySort) { _, _ in ensureFullUnplayedCountsIfNeeded() }
         .onDisappear {
             summaryLoadTask?.cancel()
+            fullCountLoadTask?.cancel()
             directoryQueryTask?.cancel()
         }
         .refreshable { await syncSubscriptions() }
@@ -402,6 +420,11 @@ struct LibraryView: View {
             if snapshot.isEmpty {
                 LibraryDirectoryEmptyState(query: effectiveDirectoryQuery, scope: directoryScope)
             } else {
+                if isLoadingFullUnplayedCounts && directoryNeedsFullUnplayedCounts {
+                    TunerLabel(text: "● LOADING DIRECTORY COUNTS", color: .offscriptSignalYellow, size: 8)
+                        .padding(.top, 2)
+                }
+
                 LibraryAlphabetRail(
                     sections: snapshot.sections,
                     selectedSectionID: selectedDirectorySectionID
@@ -426,13 +449,13 @@ struct LibraryView: View {
                             .id(section.id)
 
                             ForEach(Array(section.podcasts.enumerated()), id: \.element.id) { idx, podcast in
-                                NavigationLink {
-                                    PodcastDetailView(podcast: podcast)
+                                Button {
+                                    selectedPodcast = podcast
                                 } label: {
                                     PodcastShelfRow(
                                         podcast: podcast,
                                         channelNumber: snapshot.numbersByPodcastID[podcast.id] ?? (idx + 1),
-                                        unplayedCount: freshCountsByPodcastID[podcast.id] ?? 0,
+                                        unplayedCount: directoryUnplayedCountsByPodcastID[podcast.id] ?? 0,
                                         inProgressCount: inProgressCountsByPodcastID[podcast.id] ?? 0,
                                         isCompact: isCompactDirectory
                                     )
@@ -466,11 +489,19 @@ struct LibraryView: View {
     @MainActor
     private func startLibraryEpisodeSummaryLoad(deferWhileImporting: Bool) {
         summaryLoadTask?.cancel()
+        fullCountLoadTask?.cancel()
+        fullUnplayedCountsByPodcastID = [:]
+        isLoadingFullUnplayedCounts = false
         let podcastIDs = subscribedPodcastIDs
         guard !podcastIDs.isEmpty else {
             freshEpisodes = []
+            inProgressEpisodes = []
+            inProgressEpisodeCount = 0
             unplayedEpisodeCount = 0
-            freshCountsByPodcastID = [:]
+            freshUnplayedCountsByPodcastID = [:]
+            fullUnplayedCountsByPodcastID = [:]
+            fullCountLoadTask?.cancel()
+            isLoadingFullUnplayedCounts = false
             return
         }
 
@@ -494,15 +525,63 @@ struct LibraryView: View {
                 sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
             )
             freshDescriptor.fetchLimit = 10
+            let inProgressDescriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed && $0.playedPosition > 0 }
+            )
+            var inProgressPageDescriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.podcast.isSubscribed && !$0.isPlayed && $0.playedPosition > 0 },
+                sortBy: [SortDescriptor(\Episode.lastPlayedAt, order: .reverse)]
+            )
+            inProgressPageDescriptor.fetchLimit = 8
 
             unplayedEpisodeCount = try modelContext.fetchCount(countDescriptor)
             freshEpisodes = try modelContext.fetch(freshDescriptor)
-            freshCountsByPodcastID = Dictionary(freshEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +)
+            inProgressEpisodeCount = try modelContext.fetchCount(inProgressDescriptor)
+            inProgressEpisodes = try modelContext.fetch(inProgressPageDescriptor)
+            freshUnplayedCountsByPodcastID = Dictionary(freshEpisodes.map { ($0.podcast.id, 1) }, uniquingKeysWith: +)
+            if directoryNeedsFullUnplayedCounts {
+                startFullUnplayedCountLoad(podcastIDs: podcastIDs)
+            }
+        } catch {
+            freshEpisodes = []
+            inProgressEpisodes = []
+            inProgressEpisodeCount = 0
+            unplayedEpisodeCount = 0
+            freshUnplayedCountsByPodcastID = [:]
+            fullUnplayedCountsByPodcastID = [:]
+            libraryLogger.error("Library summary load failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
 
-            var counts = freshCountsByPodcastID
-            let chunkSize = 24
+    @MainActor
+    private func ensureFullUnplayedCountsIfNeeded() {
+        guard directoryNeedsFullUnplayedCounts else { return }
+        guard !subscribedPodcastIDs.isEmpty else { return }
+        guard fullUnplayedCountsByPodcastID.isEmpty else { return }
+        startFullUnplayedCountLoad(podcastIDs: subscribedPodcastIDs)
+    }
+
+    @MainActor
+    private func startFullUnplayedCountLoad(podcastIDs: [UUID]) {
+        fullCountLoadTask?.cancel()
+        isLoadingFullUnplayedCounts = true
+        fullUnplayedCountsByPodcastID = [:]
+        fullCountLoadTask = Task { @MainActor in
+            await refreshFullUnplayedCounts(podcastIDs: podcastIDs)
+        }
+    }
+
+    @MainActor
+    private func refreshFullUnplayedCounts(podcastIDs: [UUID]) async {
+        var counts: [UUID: Int] = [:]
+        let chunkSize = 24
+
+        do {
             for start in stride(from: 0, to: podcastIDs.count, by: chunkSize) {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled else {
+                    isLoadingFullUnplayedCounts = false
+                    return
+                }
                 let chunk = podcastIDs[start..<min(start + chunkSize, podcastIDs.count)]
                 for podcastID in chunk {
                     let descriptor = FetchDescriptor<Episode>(
@@ -511,16 +590,23 @@ struct LibraryView: View {
                         }
                     )
                     let count = try modelContext.fetchCount(descriptor)
-                    counts[podcastID] = count
+                    if count > 0 {
+                        counts[podcastID] = count
+                    }
                 }
-                freshCountsByPodcastID = counts.filter { $0.value > 0 }
                 await Task.yield()
             }
+
+            guard !Task.isCancelled else {
+                isLoadingFullUnplayedCounts = false
+                return
+            }
+            fullUnplayedCountsByPodcastID = counts
+            isLoadingFullUnplayedCounts = false
         } catch {
-            freshEpisodes = []
-            unplayedEpisodeCount = 0
-            freshCountsByPodcastID = [:]
-            libraryLogger.error("Library summary load failed: \(error.localizedDescription, privacy: .public)")
+            fullUnplayedCountsByPodcastID = [:]
+            isLoadingFullUnplayedCounts = false
+            libraryLogger.error("Library per-show count load failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

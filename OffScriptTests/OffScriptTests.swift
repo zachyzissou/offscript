@@ -968,6 +968,14 @@ struct OffScriptTests {
     }
 
     @Test
+    func libraryDirectoryOrganizerLoadsPerShowCountsOnlyForCountDrivenModes() {
+        #expect(!LibraryDirectoryOrganizer.needsPerShowUnplayedCounts(scope: .all, sort: .title))
+        #expect(!LibraryDirectoryOrganizer.needsPerShowUnplayedCounts(scope: .needsSync, sort: .latest))
+        #expect(LibraryDirectoryOrganizer.needsPerShowUnplayedCounts(scope: .unplayed, sort: .title))
+        #expect(LibraryDirectoryOrganizer.needsPerShowUnplayedCounts(scope: .all, sort: .attention))
+    }
+
+    @Test
     @MainActor
     func tasteProfileRefreshAggregatesSignals() throws {
         let container = try makeContainer()
