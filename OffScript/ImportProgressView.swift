@@ -215,7 +215,7 @@ struct ImportProgressView: View {
                     .sorted(by: { $0.pubDate > $1.pubDate })
                     .first {
                     modelContext.insert(PreferenceSignal(action: .like, episode: newestEpisode))
-                    try modelContext.save()
+                    modelContext.saveOrLog("OnboardingPreferenceSignal")
                 }
             } catch {
                 let failureCount = podcast.syncFailureCount + 1
@@ -223,7 +223,7 @@ struct ImportProgressView: View {
                 podcast.syncFailureCount = failureCount
                 podcast.syncErrorMessage = error.localizedDescription
                 podcast.nextRetryAt = FeedSyncRetryPolicy.nextRetryDate(afterFailureCount: failureCount)
-                try? modelContext.save()
+                modelContext.saveOrLog("OnboardingBackgroundSync")
                 importLogger.error("Onboarding background sync failed for \(podcast.feedURL, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }

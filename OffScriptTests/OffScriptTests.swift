@@ -1425,7 +1425,7 @@ struct OffScriptTests {
         #expect(podcast.websiteURL == result.websiteURL)
         #expect(podcast.summary == result.summary)
         #expect(podcast.subscribedAt != nil)
-        #expect(podcast.syncStatus == "syncing")
+        #expect(podcast.syncStatus == "idle")
         #expect(podcast.lastSyncAttemptAt != nil)
         #expect(podcast.syncErrorMessage == nil)
     }
