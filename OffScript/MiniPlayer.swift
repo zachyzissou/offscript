@@ -45,9 +45,15 @@ struct MiniPlayer: View {
 
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack(spacing: 8) {
+                                    // Surface a playback fault directly on
+                                    // the MiniPlayer status badge — without
+                                    // this, a stream stall on cellular reads
+                                    // as "● PLAYING" until the user opens
+                                    // the full player and sees the error
+                                    // strip.
                                     TunerLabel(
-                                        text: player.isPlaying ? "● PLAYING" : "❙❙ PAUSED",
-                                        color: player.isPlaying ? .offscriptFnMode : .offscriptSoftPaper,
+                                        text: statusLabel,
+                                        color: statusColor,
                                         size: 8
                                     )
                                     TunerLabel(
@@ -132,6 +138,19 @@ struct MiniPlayer: View {
                 .background(Color.offscriptStudioBlack)
             }
         }
+    }
+
+    /// MiniPlayer status eyebrow: error wins over play state so a
+    /// cellular stall doesn't read as `● PLAYING` until the user opens
+    /// the full player and sees the error strip.
+    private var statusLabel: String {
+        if player.playbackError != nil { return "● ERROR" }
+        return player.isPlaying ? "● PLAYING" : "❙❙ PAUSED"
+    }
+
+    private var statusColor: Color {
+        if player.playbackError != nil { return .offscriptFnRecord }
+        return player.isPlaying ? .offscriptFnMode : .offscriptSoftPaper
     }
 
     private var progressValue: Double {
