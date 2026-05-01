@@ -26,6 +26,7 @@ struct EpisodeDetailView: View {
     @ObservedObject private var player = PlaybackController.shared
     @ObservedObject private var downloadService = DownloadService.shared
     @State private var feedbackGiven: PreferenceSignal.Action? = nil
+    @Query private var queueItems: [QueueItem]
     let episode: Episode
     let recommendationReason: String?
     let recommendationSignals: [RecommendationSignal]
@@ -47,6 +48,19 @@ struct EpisodeDetailView: View {
 
     private var isCurrentlyPlaying: Bool {
         player.currentEpisode?.id == episode.id
+    }
+
+    /// `QUEUE NEXT` is a no-op when this episode is already at
+    /// position 0 of the queue. Hide the key in that case so a heavy
+    /// listener doesn't see two queue keys for the same effect.
+    private var isQueuedFirst: Bool {
+        let firstID = queueItems
+            .sorted { lhs, rhs in
+                if lhs.position == rhs.position { return lhs.createdAt < rhs.createdAt }
+                return lhs.position < rhs.position
+            }
+            .first?.episode.id
+        return firstID == episode.id
     }
 
     var body: some View {
@@ -252,6 +266,38 @@ struct EpisodeDetailView: View {
             .buttonStyle(.plain)
             .disabled(episode.isQueued)
             .accessibilityLabel(episode.isQueued ? "Already queued" : "Add \(episode.title) to queue")
+
+            // QUEUE NEXT — promotes the episode to position 0 so it
+            // plays right after the current one finishes. Distinct
+            // from QUEUE (end-of-queue) so a heavy listener with a
+            // long working set doesn't have to drag-reorder. Hides
+            // when the episode is already next-up to avoid a no-op.
+            if !isQueuedFirst {
+                Button {
+                    withAnimation {
+                        do { try QueueService.playNext(episode, in: modelContext) }
+                        catch { episodeDetailLogger.error("Queue playNext failed: \(error.localizedDescription, privacy: .public)") }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.to.line")
+                            .font(.system(size: 9))
+                            .accessibilityHidden(true)
+                        Text("QUEUE NEXT")
+                    }
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .tracking(1.6)
+                    .foregroundStyle(Color.offscriptSignalYellow)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Queue \(episode.title) to play next")
+                .accessibilityIdentifier("EpisodeDetailQueueNext")
+            }
 
             DownloadButton(episode: episode)
 
