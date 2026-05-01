@@ -41,7 +41,7 @@ enum SentryEnvironmentResolver {
 /// Sentry's native crash handler always wins.
 @MainActor
 enum CrashReporter {
-    private static let logger = Logger(subsystem: "OffScript", category: "CrashReporter")
+    private static let logger = Logger(subsystem: "com.offscript", category: "CrashReporter")
 
     /// Read at launch. Empty / placeholder DSNs (e.g. on a CI build that
     /// didn't get the secret) skip Sentry init entirely so crash-on-init

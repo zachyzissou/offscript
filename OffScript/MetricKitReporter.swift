@@ -22,7 +22,7 @@ import Sentry
 final class MetricKitReporter: NSObject, MXMetricManagerSubscriber {
     static let shared = MetricKitReporter()
 
-    private let logger = Logger(subsystem: "OffScript", category: "MetricKit")
+    private let logger = Logger(subsystem: "com.offscript", category: "MetricKit")
 
     /// Call once on launch (after CrashReporter.configure so Sentry is up).
     func configure() {

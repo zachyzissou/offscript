@@ -28,7 +28,7 @@ final class OffScriptAppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct OffScriptApp: App {
     @UIApplicationDelegateAdaptor(OffScriptAppDelegate.self) private var appDelegate
-    private static let logger = Logger(subsystem: "OffScript", category: "SwiftData")
+    private static let logger = Logger(subsystem: "com.offscript", category: "SwiftData")
 
     init() {
         // Crash + perf telemetry. Sentry first so its hooks are installed

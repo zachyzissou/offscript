@@ -61,6 +61,9 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Episode Detail feedback now uses the same retune notification path as Home cards** so likes and `NOT FOR ME` taps refresh recommendations consistently across entry points.
 - **Discovery genre matches now stay low-confidence until backed by local evidence** such as latest-episode tag overlap, topic matches, show affinity, or feed freshness, and genre-only WHY copy no longer claims local evidence.
 
+### Fixed — observability hygiene
+- **`BackgroundFeedRefresh`, `CrashReporter`, `MetricKitReporter`, and `OffScriptApp` SwiftData loggers now use the `com.offscript` subsystem** like every other logger in the app — they were inconsistently using a bare `OffScript` subsystem, which meant `Console.app` filters on `subsystem:com.offscript` silently dropped those four important categories (background refresh, crash reporter, MetricKit, SwiftData container init/migration). Per the design bible's "Logger convention: `Logger(subsystem: \"com.offscript\", category: \"ServiceName\")`" rule.
+
 ### Fixed — silent failure paths
 - **Background feed refresh, deep-link episode lookup, `deleteAllDownloads`, `resumeQueuedDownloadsIfNeeded`, and `reconcilePersistedDownloads` now log the underlying SwiftData fetch error** instead of dropping it via bare `try?` — so a failed background refresh, a broken episode deep link, or a download lifecycle hiccup leaves a real OSLog entry (`BackgroundRefresh` at `.warning`, `DeepLink` and `DownloadService` at `.error`) instead of disappearing silently.
 - **`modelContext.save()` calls on the played-state toggle (CardComponents) and the debug seed/reset paths (ContentView) no longer swallow errors via bare `try?`** — they now use `do/catch` with category-scoped OSLog (`CardComponents`, `App`) so SwiftData save failures during sample/large-library seeding or a played-state flip surface as real log lines.
