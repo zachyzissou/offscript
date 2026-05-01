@@ -12,6 +12,11 @@ extension Notification.Name {
     static let offscriptActiveTabChanged = Notification.Name("offscript.activeTabChanged")
     static let offscriptRecommendationFeedbackChanged = Notification.Name("offscript.recommendationFeedbackChanged")
     static let offscriptLibrarySubscriptionsChanged = Notification.Name("offscript.librarySubscriptionsChanged")
+    /// Posted by `DeepLinkRouter` when an `offscript://podcast/<uuid>` URL
+    /// resolves to a real podcast. `LibraryView` listens and pushes
+    /// `PodcastDetailView` via its existing `selectedPodcastID` binding.
+    /// `userInfo["podcastID"]: UUID`.
+    static let offscriptOpenPodcast = Notification.Name("offscript.openPodcast")
 }
 
 /// Centralized handler for `offscript://` URLs coming from:
@@ -117,9 +122,36 @@ enum DeepLinkRouter {
     }
 
     private static func handlePodcast(id: UUID, in context: ModelContext) {
-        // Podcast deep linking still TODO — needs navigation state to push
-        // PodcastDetailView from outside the LibraryView NavigationStack.
-        // Logged so we know if anyone's hitting these URLs in the wild.
-        deepLinkLogger.info("Podcast deep link received but navigation not yet wired: \(id, privacy: .public)")
+        // Verify the podcast exists in SwiftData before routing — a stale
+        // Spotlight donation pointing at a deleted podcast would otherwise
+        // switch to Library and push an empty detail view.
+        var descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        do {
+            guard try context.fetch(descriptor).first != nil else {
+                deepLinkLogger.warning("Podcast deep link missed — id \(id, privacy: .public) not in store")
+                return
+            }
+        } catch {
+            deepLinkLogger.error("Podcast deep-link fetch failed for \(id, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        // Switch to the Library tab first so the LibraryView NavigationStack
+        // is on screen when the open-podcast notification lands. The
+        // notification carries the UUID — LibraryView listens and binds
+        // to its existing `selectedPodcastID` state.
+        NotificationCenter.default.post(
+            name: .offscriptSwitchTab,
+            object: nil,
+            userInfo: ["tab": "library"]
+        )
+        NotificationCenter.default.post(
+            name: .offscriptOpenPodcast,
+            object: nil,
+            userInfo: ["podcastID": id]
+        )
     }
 }
