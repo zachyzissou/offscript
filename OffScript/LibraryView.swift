@@ -1016,6 +1016,13 @@ struct LibraryView: View {
                 .padding(.top, OffScriptTheme.rootContentTopPadding)
                 .padding(.bottom, 90)
             }
+            // Pull-to-refresh — native iOS gesture for re-syncing
+            // every subscribed feed. Reuses the same path as the SYNC
+            // header key, so the LibrarySyncResult chip surfaces the
+            // outcome consistently regardless of which trigger fired.
+            .refreshable {
+                await syncSubscriptions()
+            }
         }
     }
 
@@ -2273,6 +2280,7 @@ struct PodcastDetailView: View {
     @State private var hasMoreEpisodes = false
     @State private var loadError: String?
     @State private var searchLoadTask: Task<Void, Never>?
+    private let syncService = FeedSyncService()
 
     init(podcast: Podcast) {
         self.podcast = podcast
@@ -2402,6 +2410,21 @@ struct PodcastDetailView: View {
             .padding(.bottom, 90)
         }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
+        // Pull-to-refresh — native iOS gesture for re-syncing this
+        // single feed without bouncing back to Library. Companion to
+        // the new ↻ REFRESH key in the PodcastDetail header from #238.
+        .refreshable {
+            do {
+                try await syncService.sync(
+                    podcast: podcast,
+                    in: modelContext,
+                    options: .standard()
+                )
+            } catch {
+                libraryLogger.error("PodcastDetail pull-to-refresh failed for '\(podcast.title, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+            }
+            loadEpisodes(resetLimit: false)
+        }
         .accessibilityIdentifier("PodcastDetailScreen")
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
