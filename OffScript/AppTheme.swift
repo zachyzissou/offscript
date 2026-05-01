@@ -656,9 +656,10 @@ struct TunerRatePicker: View {
                                 .foregroundStyle(Color.offscriptStudioBlack)
                         }
                     }
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .background(isSelected ? Color.offscriptSignalYellow : Color.clear)
                     .overlay(Rectangle().stroke(isSelected ? Color.offscriptSignalYellow : Color.offscriptHairline, lineWidth: 1))
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .ignore)
