@@ -89,6 +89,14 @@ struct HomeView: View {
                     .padding(.top, 88)
                     .padding(.bottom, 28)
                 }
+                // Pull-to-refresh — native iOS gesture for re-tuning
+                // recommendations, mirroring the new Library pull-to-
+                // refresh from #239. The HomeTunerHeader's retune key
+                // already wires the same path; this just makes the
+                // standard swipe-down gesture work too.
+                .refreshable {
+                    await loadSections(manual: true)
+                }
                 // Pin HomeTunerHeader as a top overlay instead of safeAreaInset.
                 // safeAreaInset content renders in a parent compositor layer
                 // that doesn't inherit the parent's opacity — when the user
