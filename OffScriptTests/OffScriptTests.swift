@@ -427,6 +427,53 @@ struct OffScriptTests {
     }
 
     @Test
+    @MainActor
+    func queueServiceClearAllEmptiesQueueAndUpdatesIsQueued() throws {
+        // #200 / #126 — `× CLEAR ALL` confirm now delegates to a single
+        // `QueueService.clearAll(...)` transaction. Verifies the method
+        // empties the queue, returns the count, and clears `isQueued`
+        // on every removed episode.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let podcast = Podcast(title: "Bulk Show", feedURL: URL(string: "https://example.com/bulk.xml")!)
+        context.insert(podcast)
+        let episodes = (1...4).map { i -> Episode in
+            let ep = Episode(
+                title: "Bulk \(i)",
+                pubDate: .now,
+                audioURL: URL(string: "https://example.com/bulk-\(i).mp3")!,
+                podcast: podcast
+            )
+            context.insert(ep)
+            return ep
+        }
+        for ep in episodes {
+            try QueueService.addToEnd(ep, in: context)
+        }
+        #expect(episodes.allSatisfy { $0.isQueued })
+
+        let cleared = try QueueService.clearAll(in: context)
+        let remaining = try QueueService.orderedItems(in: context)
+
+        #expect(cleared == 4)
+        #expect(remaining.isEmpty)
+        #expect(episodes.allSatisfy { $0.isQueued == false })
+    }
+
+    @Test
+    @MainActor
+    func queueServiceClearAllOnEmptyQueueIsANoOp() throws {
+        // Idempotency check — calling clearAll on an empty queue
+        // shouldn't throw and should report 0 removed.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let cleared = try QueueService.clearAll(in: context)
+        #expect(cleared == 0)
+    }
+
+    @Test
     func genreCarriesAppleGenreID() {
         #expect(Genre.technology.appleGenreID == 1318)
         #expect(Genre.comedy.appleGenreID == 1303)
