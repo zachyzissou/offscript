@@ -108,17 +108,18 @@ struct OnboardingFlowView: View {
                 // below reads as the primary content peak (#194 — testers
                 // were skipping the small numbered rows because the
                 // wordmark + paragraph above ate all the visual weight).
-                Text("No algorithm pushing. No paid placements. Just a tuner that listens to what you listen to and lines up the next thing — on this device.")
+                Text("No algorithm pushing. Just a tuner that listens to what you listen to and lines up the next thing — on this device.")
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .staggeredEntrance(index: 3, delay: 0.10)
 
-                // Numbered manifesto — bumped to bold body type so testers
-                // actually read the four product promises. Each row is
-                // the real "how this works" content; before it scanned as
-                // small print next to the giant OFF / SCRIPT. wordmark.
+                // Numbered manifesto — bumped to semibold body type so
+                // testers actually read the four product promises. Each
+                // row is the real "how this works" content; before it
+                // scanned as small print next to the giant OFF / SCRIPT.
+                // wordmark.
                 VStack(spacing: 0) {
                     ForEach(Array(manifesto.enumerated()), id: \.offset) { i, line in
                         HStack(alignment: .firstTextBaseline, spacing: 14) {
