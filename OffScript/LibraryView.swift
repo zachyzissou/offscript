@@ -2671,10 +2671,14 @@ private struct PodcastDetailTunerHeader: View {
                         showUnsubscribeConfirmation = false
                     }
                 } label: {
-                    TunerLabel(text: "CANCEL", color: .offscriptSoftPaper, size: 10)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 9)
+                    // Match Queue × CLEAR ALL / Settings × RESET confirm
+                    // panels: 44pt min height, equal-weight CANCEL/×
+                    // CONFIRM, paperWhite Cancel for the same vocabulary
+                    // across destructive bulk actions.
+                    TunerLabel(text: "CANCEL", color: .offscriptPaperWhite, size: 11)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Cancel unsubscribe")
@@ -2685,10 +2689,10 @@ private struct PodcastDetailTunerHeader: View {
                         _ = PodcastUnsubscribeService.unsubscribe(podcast, in: modelContext)
                     }
                 } label: {
-                    TunerLabel(text: "UNSUBSCRIBE", color: .offscriptFnRecord, size: 10)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 9)
+                    TunerLabel(text: "× UNSUBSCRIBE", color: .offscriptFnRecord, size: 11)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Confirm unsubscribe")
