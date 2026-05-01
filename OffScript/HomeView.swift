@@ -38,7 +38,9 @@ struct HomeView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
                         if let errorMessage {
-                            HomeErrorRow(message: errorMessage)
+                            HomeErrorRow(message: errorMessage) {
+                                Task { await loadSections(manual: true) }
+                            }
                         }
 
                         if isLoading {
@@ -360,13 +362,34 @@ private struct HomeTunerHeader: View {
 
 private struct HomeErrorRow: View {
     let message: String
+    var onRetry: (() -> Void)? = nil
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             TunerLabel(text: "● FEED UNAVAILABLE", color: .offscriptFnRecord)
             Text(message)
                 .font(.system(size: 12.5))
                 .foregroundStyle(Color.offscriptPaperWhite)
                 .fixedSize(horizontal: false, vertical: true)
+
+            // Retry key — recommendation pipeline is cheap to re-run and
+            // the most common cause of `errorMessage` is a transient
+            // SwiftData fetch hiccup or a momentary CDN glitch on the
+            // discovery side. Without retry the user is forced to leave
+            // the tab and come back to trigger reload.
+            if let onRetry {
+                Button(action: onRetry) {
+                    TunerLabel(text: "↻ RETRY", color: .offscriptSignalYellow, size: 10)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: 44)
+                        .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Retry loading recommendations")
+                .accessibilityIdentifier("HomeErrorRetry")
+            }
         }
         .padding(.horizontal, OffScriptTheme.pagePadding)
         .padding(.vertical, 8)
