@@ -534,11 +534,14 @@ struct EpisodeDetailView: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Color.offscriptSoftPaper)
+                    .accessibilityHidden(true)
             }
             .padding(10)
             .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Open \(episode.podcast.title) channel")
     }
 
     // MARK: - Helpers
