@@ -26,6 +26,10 @@ struct SettingsView: View {
     /// new message is set.
     @State private var signInMessageClearTask: Task<Void, Never>?
     @State private var isDefaultRatePickerExpanded = false
+    /// Reset-per-podcast-rates is destructive (wipes every show's
+    /// custom speed) and otherwise irreversible — drop into a confirm
+    /// strip first, mirroring the Queue × CLEAR ALL pattern from #200.
+    @State private var isConfirmingResetRates = false
 
     @State private var subscribedPodcastCount: Int = 0
     @State private var episodeCount: Int = 0
@@ -266,34 +270,95 @@ struct SettingsView: View {
     /// fall back to the global default. Useful escape hatch when the
     /// user accidentally fast-tasted everything to 2× and wants out.
     private var resetRatesRow: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Reset per-podcast rates")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.offscriptPaperWhite)
-                Text("Clears every show's custom playback speed back to the default.")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .lineSpacing(2)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Reset per-podcast rates")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.offscriptPaperWhite)
+                    Text("Clears every show's custom playback speed back to the default.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(2)
+                }
+                Spacer(minLength: 12)
+                Button {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        isConfirmingResetRates = true
+                    }
+                } label: {
+                    TunerLabel(
+                        text: "× RESET",
+                        color: .offscriptFnRecord,
+                        size: 10
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(minHeight: 44)
+                    .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isConfirmingResetRates)
+                .accessibilityLabel("Reset per-podcast playback rates")
+                .accessibilityHint("Asks for confirmation before clearing every show's custom rate")
+                .accessibilityIdentifier("SettingsResetRates")
             }
-            Spacer(minLength: 12)
-            Button {
-                UserDefaults.standard.removeObject(forKey: "offscript.podcastRates")
-            } label: {
-                TunerLabel(
-                    text: "× RESET",
-                    color: .offscriptFnRecord,
-                    size: 10
-                )
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+            .padding(.vertical, 10)
+
+            if isConfirmingResetRates {
+                resetRatesConfirmStrip
+                    .padding(.bottom, 10)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Reset per-podcast playback rates")
         }
-        .padding(.vertical, 10)
+    }
+
+    /// Tuner-styled inline confirm — matches the Queue × CLEAR ALL
+    /// confirm pattern from #200 so destructive bulk-resets all use
+    /// the same vocabulary across the app.
+    private var resetRatesConfirmStrip: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TunerLabel(text: "● CONFIRM RESET", color: .offscriptFnRecord)
+            Text("Clear every show's custom playback rate? This can't be undone.")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.offscriptPaperWhite)
+                .lineSpacing(2)
+
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        isConfirmingResetRates = false
+                    }
+                } label: {
+                    TunerLabel(text: "CANCEL", color: .offscriptPaperWhite, size: 11)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel reset per-podcast playback rates")
+                .accessibilityIdentifier("SettingsResetRatesCancel")
+
+                Button {
+                    UserDefaults.standard.removeObject(forKey: "offscript.podcastRates")
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isConfirmingResetRates = false
+                    }
+                } label: {
+                    TunerLabel(text: "× CONFIRM", color: .offscriptFnRecord, size: 11)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Confirm reset per-podcast playback rates")
+                .accessibilityIdentifier("SettingsResetRatesConfirm")
+            }
+        }
+        .padding(12)
+        .overlay(Rectangle().stroke(Color.offscriptFnRecord.opacity(0.6), lineWidth: 1))
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     /// Force a re-render of the default-rate menu when the user picks a
