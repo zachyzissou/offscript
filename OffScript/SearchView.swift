@@ -367,8 +367,12 @@ private struct StarterTopicsSection: View {
                         TunerLabel(text: topic.uppercased(), color: .offscriptPaperWhite, size: 10)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 9)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            // 44pt min-height to meet HIG's tap target —
+                            // padding alone (9pt × 2 + ~12pt label) only
+                            // gave ~30pt, below the 44pt floor.
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                             .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Search for \(topic)")
@@ -393,6 +397,9 @@ private struct RecentSearchesSection: View {
                     withAnimation(.easeInOut(duration: 0.2)) { onClear() }
                 } label: {
                     TunerLabel(text: "× CLEAR", color: .offscriptFnRecord, size: 9)
+                        .padding(.horizontal, 8)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear recent searches")
