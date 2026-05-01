@@ -7,10 +7,14 @@ contract.
 
 ## How To Read This Doc
 
-Each surface has up to three rows:
+Each surface has up to four rows:
 
-- **Automated** — runs in CI / `xcodebuild`. If a row is in this column
-  the test command is the verification.
+- **Automated unit** — runs in CI / `xcodebuild` against
+  `OffScriptTests`. If a row is in this column the test command is the
+  verification.
+- **Automated UI** — runs in CI / `xcodebuild` against
+  `OffScriptUITests`. If a row is in this column the test command is the
+  verification.
 - **Simulator manual** — run on the iOS Simulator with the listed launch
   arguments. Reasonable for any agent or contributor with Xcode.
 - **TestFlight / real device** — only meaningful on hardware. Required
@@ -71,7 +75,7 @@ Source of truth: `OffScript/AppSettings.swift`, `OffScript/ContentView.swift`.
 
 | Layer | Verification | Notes |
 |---|---|---|
-| Automated unit | `OffScriptTests` — `feedSyncOPMLBootstrapCapsEpisodes…`, `feedSyncOnboardingBootstrapCapsEpisodes…`, `onboardingPreferenceSignalFetchesNewestEpisode…` | Bootstrap import + signal extraction. |
+| Automated unit | `OffScriptTests` — `feedSyncOPMLBootstrapCapsEpisodesAndSkipsProfiles`, `feedSyncOnboardingBootstrapCapsEpisodesAndSkipsExpensiveEnrichment`, `onboardingPreferenceSignalFetchesNewestEpisodeWithoutSortingRelationship` | Bootstrap import + signal extraction. |
 | Automated UI | `OffScriptUITests/testOnboardingFirstScreenSmoke` | Verifies first screen, "POWER ON →", privacy copy. |
 | Simulator manual | `-offscript.hasSeenOnboarding NO` | Walk the entire onboarding flow including starter subscriptions. |
 | Real device | TestFlight install, fresh device | Required for Sign in with Apple flow validation. Tracked in #112. |
@@ -82,7 +86,7 @@ Source of truth: `OffScript/AppSettings.swift`, `OffScript/ContentView.swift`.
 |---|---|---|
 | Automated UI | `OffScriptUITests/testLargeLibrarySeedSmoke`, `testLargeLibrarySwitchesFromLibraryToHomeQuickly`, `testLargeLibraryAlphabetRailJumpsToSelectedLetter`, `testLargeLibraryDirectoryControlsStayResponsive` | Drive a 258-show seeded library through scroll, alphabet jump, ATTN/UNPLAYED filters, search filter clear. |
 | Automated UI | `OffScriptUITests/testTunerDetailScreensUseInlineBackChrome`, `testLibraryReloadsAfterDetailUnsubscribe` | Detail-push back chrome + post-unsubscribe reload. |
-| Automated unit | `OffScriptTests` — `podcastDetailRanker*`, library snapshot/refresh tests | Episode rank labelling, snapshot indexing. |
+| Automated unit | `OffScriptTests` — `podcastDetailRankerPrefersFeedSuppliedEpisodeNumber`, `podcastDetailRankerNumbersOldestFirstOnFullFeed`, `podcastDetailRankerSuppressesNumberOnFilteredSubsets`, `podcastDetailRankerStillUsesExplicitNumberOnFilteredSubsets`, `podcastDetailRankerHandlesEmptyAndOutOfRangeIndexes`, plus `libraryDirectory*` snapshot/refresh tests | Episode rank labelling, snapshot indexing. |
 | Simulator manual | `-offscript.debugSeedLibrarySize 258 -offscript.debugSeedEpisodesPerShow 3 -offscript.debugLaunchTab 1` | Visual audit of large-library scroll perf, hairlines, density. Issues #107, #115, #119. |
 | Real device | iPhone 17 Pro, real OPML import | Required for actual import latency claims. Tracked in #105. |
 
@@ -90,7 +94,7 @@ Source of truth: `OffScript/AppSettings.swift`, `OffScript/ContentView.swift`.
 
 | Layer | Verification | Notes |
 |---|---|---|
-| Automated unit | `OffScriptTests` — `feedSync*` family (~15 tests) | Bootstrap caps, dedupe, retry, staging, cancellation, concurrent-fetch + serial-apply. |
+| Automated unit | `OffScriptTests` — `feedSync*` family: `feedSyncImportsAlreadyParsedOPMLFeedWithoutRefetching`, `feedSyncFastBatchImportUsesCheapProfilesAndSkipsExternalChapters`, `feedSyncOPMLBootstrapCapsEpisodesAndSkipsProfiles`, `feedSyncCappedImportOnlyMatchesExistingEpisodesInProcessedWindow`, `feedSyncStagesSearchSubscriptionBeforeNetworkWork`, `feedSyncSubscribeThenHydrateCanReturnBeforeNetworkWork`, `feedSyncStagesMultipleOnboardingSubscriptionsInOneBatch`, `feedSyncOnboardingBootstrapCapsEpisodesAndSkipsExpensiveEnrichment`, `feedSyncSelectsLatestCappedItemsWithoutFullFeedSort`; plus the `opmlBatch*` / `opmlImport*` / `opmlBootstrap*` siblings | Bootstrap caps, dedupe, retry, staging, cancellation, concurrent-fetch + serial-apply. |
 | Simulator manual | Drag-drop OPML into the simulator's Files app, then `IMPORT` from Library | Verifies the OPML/paste entry point and progress UI. Issue #105. |
 | Real device | TestFlight, real iCloud-sized OPML | Required for real network/feed-server timeout claims. |
 
@@ -107,7 +111,7 @@ Source of truth: `OffScript/AppSettings.swift`, `OffScript/ContentView.swift`.
 
 | Layer | Verification | Notes |
 |---|---|---|
-| Automated unit | `OffScriptTests` — `QueueService*` reorder, dedupe, position tests | Queue logic. |
+| Automated unit | `OffScriptTests` — `queueServiceMovesItemsAndPersistsOrder`, `queueServicePlayNextPromotesEpisodeToFront`, `queueServiceSkipsCurrentEpisodeWhenPoppingNext` | Queue logic. |
 | Automated UI | `OffScriptUITests/testPostOnboardingShellSmoke` | Tab visit smoke. |
 | Simulator manual | `-offscript.debugSeedSampleData YES`, queue several episodes, reorder | Issue #126 covers heavy-listener queue ergonomics. |
 | Real device | TestFlight, multi-day queue use | Required to evaluate persistence and reorder gestures at scale. |
@@ -116,7 +120,7 @@ Source of truth: `OffScript/AppSettings.swift`, `OffScript/ContentView.swift`.
 
 | Layer | Verification | Notes |
 |---|---|---|
-| Automated unit | `OffScriptTests` — `PlaybackController*`, chapter parser, transcript parser | Playback state machine, chapter/transcript pipelines. |
+| Automated unit | `OffScriptTests` — `playbackAudioSessionUsesSilentSwitchSafeCategory`, `chapterParserExtractsTimestampedShowNotes`, `rssParserExtractsFeedMetadataChaptersAndTranscripts`, `episodeResolvedChaptersPreferPersistedMetadata`, `downloadServiceDeletesLocalFilesAndResetsEpisodeState`, `downloadServiceReconcilesInterruptedDownloadsOnConfigure` | Playback audio session, chapter/transcript pipelines, download service. |
 | Simulator manual | `-offscript.debugBootPlayback YES -offscript.debugPresentPlayer YES` | Visual audit of Player and MiniPlayer surfaces. |
 | Real device only | Background playback, lock screen art, silent-switch behavior, Now Playing widget, Live Activity, Dynamic Island | Required — the simulator does not faithfully reproduce these. Tracked in #113, #124. |
 
@@ -133,7 +137,7 @@ Source of truth: `OffScript/AppSettings.swift`, `OffScript/ContentView.swift`.
 
 | Layer | Verification | Notes |
 |---|---|---|
-| Automated unit | `OffScriptTests` — `recommendationExplainer*` (~10 tests), taste profile refresh family, scoring/composition tests | WHY copy clipping, signal compositing, taste profile. |
+| Automated unit | `OffScriptTests` — `recommendationExplainer*` family (`recommendationExplainerRewritesSavedSignalReasonsFromTrace`, `recommendationExplainerComposesAndClipsExplicitEvidence`, `recommendationExplainerRewritesGenreLaneReasonsFromTrace`, `recommendationExplainerPrioritizesEvidenceInMixedDiscoveryTraces`, `recommendationExplainerDoesNotClaimLocalEvidenceForGenreOnlyDiscovery`, `recommendationExplainerPreservesGenericQuickDurationReasons`, `recommendationExplainerKeepsShortListenPreferenceReason`, `recommendationExplainerKeepsUnknownFallbacks`); `tasteProfileRefresh*` family (`tasteProfileRefreshAggregatesSignals`, `tasteProfileRefreshBuildsTagsFromCompletedEpisodes`, `tasteProfileRefreshWeightsRecentExplicitSignalAboveOldCompletion`, `tasteProfileRefreshLetsOneExplicitIntentBeatSeveralPassiveCompletions`, `tasteProfileRefreshDemotesNegativePreferenceSignals`, `tasteProfileRefreshSkipsWhenFreshUnlessForced`); `homeRecommendations*`, `recommendationScoreRewardsBetterFit`, `genrePreferenceBoostIncreasesScore`, `headlineCandidateUsesStrongestAuthoredSignalAcrossSections`, `signalLockedModeExcludesGenreOnlyCandidates`, `lessLikeThis*`, `repeatedNegativeSignalsHardSuppressSharedTags`, `discoveryPreviewEvidenceBeatsGenreOnlyCatalogMatch`, `playerSuggestionsExposeNowPlayingSignalTrace`, `playerSuggestionsPreferStrongNowPlayingOverlapOverSameShow`, `preferenceFeedbackServicePostsRetuneNotificationAfterSaving`, `recommendationPreferredGenresFallbackToOnboardingSettingsWhenProfileIsEmpty` | WHY copy clipping, signal compositing, taste profile. |
 | Simulator manual | `-offscript.debugSeedSampleData YES`, scroll Home rails | Visual audit of rail card layouts. Issue #118 covered text overflow. |
 | Real device | TestFlight, multi-day listening | Required for "follows intentional feedback" claim in CHANGELOG. Tracked in #108. |
 
@@ -156,8 +160,7 @@ Source of truth: `OffScript/AppSettings.swift`, `OffScript/ContentView.swift`.
 
 | Layer | Verification | Notes |
 |---|---|---|
-| Tooling | `scripts/app_store_connect.py xcode-cloud {probe,inspect,build-run}` | Xcode Cloud + ASC visibility helpers. |
-| Tooling | `scripts/app_store_connect.py signing-preflight --cloudkit-container iCloud.com.offscript.app --profile-type IOS_APP_STORE` | CloudKit container preflight (PR #38, #129). |
+| Tooling | `scripts/app_store_connect.py xcode-cloud {probe,inspect,reconfigure,start-build,build-run}` | Xcode Cloud + ASC visibility helpers. |
 | Manual | Verify the visible internal TestFlight build matches the latest uploaded build before declaring shipped. | Issue #121 covers the unassigned-build edge case. |
 
 ## Pre-Release Sign-Off Checklist
