@@ -1,7 +1,10 @@
 import SafariServices
 import ImageIO
+import OSLog
 import SwiftUI
 import UIKit
+
+private let imageCacheLogger = Logger(subsystem: "com.offscript", category: "ImageCache")
 
 private extension CGFloat {
     func offscriptScaled(_ textStyle: UIFont.TextStyle = .caption2) -> CGFloat {
@@ -253,7 +256,15 @@ final class ImageCache: @unchecked Sendable {
         }
 
         let task = Task<UIImage?, Never> { [session] in
-            guard let (data, _) = try? await session.data(from: url) else {
+            let data: Data
+            do {
+                (data, _) = try await session.data(from: url)
+            } catch {
+                // .debug instead of .warning/.error — podcast artwork URLs
+                // 404 routinely (feeds going stale, hosts moving), and we
+                // already render the placeholder. Logging at .debug keeps
+                // verbose-mode triage available without spamming Console.
+                imageCacheLogger.debug("Image fetch failed for \(url, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 return nil
             }
             return Self.decodeImage(from: data, maxPixelDimension: maxPixelDimension)
