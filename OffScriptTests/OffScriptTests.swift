@@ -1509,6 +1509,63 @@ struct OffScriptTests {
     }
 
     @Test
+    func recommendationExplainerClipsLongShowAffinityReasons() {
+        let longShow = "The Comprehensive History of Long-Winded Audio Storytelling and the People Who Make It"
+        let reason = RecommendationExplainer.authoredReason(
+            fallback: "Matches your saved signal",
+            signals: [
+                RecommendationSignal(label: "source", value: "show affinity"),
+                RecommendationSignal(label: "show", value: longShow)
+            ]
+        )
+
+        #expect(reason.count <= 72)
+        #expect(reason.hasSuffix("…"))
+        #expect(reason.hasPrefix("More from The Comprehensive History"))
+    }
+
+    @Test
+    func recommendationExplainerClipsLongTagOverlapReasons() {
+        let tags = "artificial intelligence infrastructure, developer workflows, distributed systems, observability"
+        let reason = RecommendationExplainer.authoredReason(
+            fallback: "Multiple topic matches",
+            signals: [
+                RecommendationSignal(label: "source", value: "topic overlap"),
+                RecommendationSignal(label: "tags", value: tags)
+            ]
+        )
+
+        #expect(reason.count <= 72)
+        #expect(reason.hasSuffix("…"))
+    }
+
+    @Test
+    func recommendationExplainerClipsLongLatestEpisodeReasons() {
+        let tags = "artificial intelligence infrastructure, developer workflows, distributed systems"
+        let reason = RecommendationExplainer.authoredReason(
+            fallback: "Latest episodes overlap your saved signals",
+            signals: [
+                RecommendationSignal(label: "source", value: "latest episode"),
+                RecommendationSignal(label: "tags", value: tags)
+            ]
+        )
+
+        #expect(reason.count <= 72)
+    }
+
+    @Test
+    func recommendationExplainerClipsLongFallbackForUnknownSources() {
+        let fallback = "An extremely lengthy editorial-style fallback string that would otherwise overflow rail card layouts on narrow iPhones"
+        let reason = RecommendationExplainer.authoredReason(
+            fallback: fallback,
+            signals: [RecommendationSignal(label: "source", value: "made-up-bucket")]
+        )
+
+        #expect(reason.count <= 72)
+        #expect(reason.hasSuffix("…"))
+    }
+
+    @Test
     @MainActor
     func appSettingsRoundTripsPreferences() {
         let originalAutoPlay = AppSettings.autoPlayNext
