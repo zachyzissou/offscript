@@ -973,6 +973,7 @@ private struct HeroTunerCard: View {
                             .frame(minWidth: 44, minHeight: 44)
                             .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     .accessibilityLabel("More actions for \(episode.title)")
                     .accessibilityHint(showsFeedbackActions ? "Double-tap to hide feedback actions." : "Double-tap to show feedback actions.")
                 }
