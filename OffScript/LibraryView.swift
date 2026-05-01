@@ -1797,6 +1797,11 @@ private struct LibraryTunerHeader: View {
                 .monospacedDigit()
             TunerLabel(text: label, color: .offscriptSoftPaper, size: 8)
         }
+        // Combine the value+label so VoiceOver reads "12 shows" once
+        // instead of "12, SHOWS" as two separate stops. Same fix as
+        // the Settings stats row (#245).
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(value) \(label.lowercased())")
     }
 }
 
