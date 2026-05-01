@@ -560,6 +560,31 @@ struct OffScriptTests {
     }
 
     @Test
+    func discoveryLimitDemotesWhenSignalIsThin() {
+        // Strong signal (3+ populated rails) gets the full mode limit.
+        #expect(RecommendationService.discoveryCardLimit(mode: .discovery, signalDrivenRailCount: 5) == 10)
+        #expect(RecommendationService.discoveryCardLimit(mode: .balanced, signalDrivenRailCount: 3) == 6)
+
+        // Mid signal (1-2 rails) halves the limit but stays >= 3.
+        #expect(RecommendationService.discoveryCardLimit(mode: .discovery, signalDrivenRailCount: 2) == 5)
+        #expect(RecommendationService.discoveryCardLimit(mode: .balanced, signalDrivenRailCount: 1) == 3)
+
+        // Thin signal (0 rails) caps at 3 so discovery doesn't dominate
+        // an otherwise-empty Home.
+        #expect(RecommendationService.discoveryCardLimit(mode: .discovery, signalDrivenRailCount: 0) == 3)
+        #expect(RecommendationService.discoveryCardLimit(mode: .balanced, signalDrivenRailCount: 0) == 3)
+    }
+
+    @Test
+    func discoveryLimitIgnoresSignalCountWhenNotProvided() {
+        // Pre-existing callers that don't pass a signal count get the
+        // unchanged full mode limit so behavior is backward-compatible.
+        #expect(RecommendationService.discoveryCardLimit(mode: .discovery, signalDrivenRailCount: nil) == 10)
+        #expect(RecommendationService.discoveryCardLimit(mode: .balanced, signalDrivenRailCount: nil) == 6)
+        #expect(RecommendationService.discoveryCardLimit(mode: .signalLocked, signalDrivenRailCount: nil) == 0)
+    }
+
+    @Test
     @MainActor
     func homeRecommendationsSurfaceSubscriptionFreshnessWhenSignalIsThin() throws {
         // Reproduces the "feels like Apple Podcasts" case (#191): user

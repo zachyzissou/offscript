@@ -231,14 +231,35 @@ struct HomeView: View {
             }
         }
 
+        // Count populated signal-driven rails so the recommendation
+        // service can shrink the discovery lane when listening signal
+        // is thin (#191). From Your Subscriptions is intentionally
+        // excluded — it's the catch-all that fills in for thin signal,
+        // not a signal indicator itself.
+        let signalRailTitles: Set<String> = [
+            "Signal Lock",
+            "Resume Thread",
+            "More From Shows You Chose",
+            "Shows You Finish",
+            "Topic Continuation",
+            "Tuned Genres"
+        ]
+        let signalRailCount = existingSections.filter {
+            signalRailTitles.contains($0.title) && !$0.episodes.isEmpty
+        }.count
+
         let discoveryInterval = OffScriptPerformanceLog.begin(
             "home.discovery",
-            metadata: "mode=\(mode.rawValue)"
+            metadata: "mode=\(mode.rawValue) signalRails=\(signalRailCount)"
         )
-        if let discovery = await recommendationService.discoverySection(context: modelContext, mode: mode) {
+        if let discovery = await recommendationService.discoverySection(
+            context: modelContext,
+            mode: mode,
+            signalDrivenRailCount: signalRailCount
+        ) {
             OffScriptPerformanceLog.end(
                 discoveryInterval,
-                metadata: "mode=\(mode.rawValue) results=\(discovery.discoveryResults.count)"
+                metadata: "mode=\(mode.rawValue) signalRails=\(signalRailCount) results=\(discovery.discoveryResults.count)"
             )
             guard !Task.isCancelled,
                   AppSettings.recommendationMode == mode,
