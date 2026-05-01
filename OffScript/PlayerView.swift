@@ -590,6 +590,7 @@ private struct TunerScrubber: View {
         GeometryReader { proxy in
             let width = max(proxy.size.width, 1)
             let thumbX = min(max(width * progress, 0), width)
+            let isDragging = dragValue != nil
 
             ZStack(alignment: .leading) {
                 Rectangle()
@@ -611,20 +612,38 @@ private struct TunerScrubber: View {
                     .fill(Color.offscriptSignalYellow)
                     .frame(width: 6, height: 22)
                     .offset(x: min(max(thumbX - 3, 0), width - 6))
+
+                // Position bubble — only visible during a drag (#195).
+                // Tracks the finger's X position so the user can read
+                // the target timestamp before releasing instead of
+                // guessing where the seek will land.
+                if isDragging {
+                    Self.positionBubble(timestamp: Self.timestamp(displayValue))
+                        .offset(x: Self.bubbleOffset(thumbX: thumbX, width: width))
+                        .offset(y: -36)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        .accessibilityHidden(true)
+                }
             }
             .frame(height: 44)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { gesture in
-                        dragValue = seekValue(for: gesture.location.x, width: width)
+                        let next = seekValue(for: gesture.location.x, width: width)
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            dragValue = next
+                        }
                     }
                     .onEnded { gesture in
                         let newValue = seekValue(for: gesture.location.x, width: width)
-                        dragValue = nil
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            dragValue = nil
+                        }
                         onSeek(newValue)
                     }
             )
+            .animation(.easeOut(duration: 0.12), value: isDragging)
         }
         .frame(height: 44)
         .accessibilityElement(children: .ignore)
@@ -646,6 +665,45 @@ private struct TunerScrubber: View {
     private func seekValue(for locationX: CGFloat, width: CGFloat) -> Double {
         let ratio = min(max(Double(locationX / max(width, 1)), 0), 1)
         return ratio * max(duration, 1)
+    }
+
+    /// Tuner-vocabulary timestamp bubble — sharp hairline rectangle, mono
+    /// signal-yellow text on flat black. Width is intrinsic (fixedSize)
+    /// so it hugs the formatted timestamp.
+    private static func positionBubble(timestamp: String) -> some View {
+        TunerLabel(text: timestamp, color: .offscriptSignalYellow, size: 11)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.offscriptStudioBlack)
+            .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+            .fixedSize()
+    }
+
+    /// Approximate bubble width (widest typical timestamp ~58pt at 11pt
+    /// mono with horizontal padding). Used to clamp the bubble offset
+    /// so it doesn't extend past the rail's leading or trailing edges.
+    private static let approximateBubbleWidth: CGFloat = 64
+
+    private static func bubbleOffset(thumbX: CGFloat, width: CGFloat) -> CGFloat {
+        let half = approximateBubbleWidth / 2
+        let centered = thumbX - half
+        let maxOffset = max(0, width - approximateBubbleWidth)
+        return min(max(centered, 0), maxOffset)
+    }
+
+    /// Scrubber-precision timestamp: H:MM:SS for hour-plus episodes,
+    /// M:SS otherwise. Distinct from `EpisodeDurationFormatter.short`
+    /// which rounds to minutes — a scrubber needs second-level precision
+    /// so the readout actually changes as the finger moves.
+    static func timestamp(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let secs = total % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, secs)
+        }
+        return String(format: "%d:%02d", minutes, secs)
     }
 }
 
