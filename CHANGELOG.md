@@ -27,6 +27,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home recommendations now have a dedicated “More From Shows You Chose” lane** so explicit like/more-like-this show intent is not mislabeled as passive completion affinity.
 
 ### Changed — Tuner UI conformance
+- **Library OPML batch import strip's running header now reads as one VoiceOver stop** — `Importing 12 of 50 feeds in background` instead of two separate stops for the eyebrow and count. Cancel button stays its own a11y element.
 - **Settings sign-in identity readouts (`CREDENTIAL` / `CLOUD`) now read as a single VoiceOver element each.** Same `accessibilityElement(children: .ignore)` pattern as #245 / #246 / #247.
 - **EpisodeDetail `FROM CHANNEL` chip now reads as one VoiceOver action** — `Open <podcast title> channel`. Was multi-stop (`From Channel`, podcast title, `chevron.right`). Hides the decorative chevron and combines the rest via `accessibilityElement(children: .ignore)`.
 - **Decorative chevrons on PodcastShelfRow and Settings rate-picker disclosure now hidden from VoiceOver.** The "ChevronRight" / "ChevronUp" SF symbol names were leaking into a11y readback as noise alongside the meaningful row labels.
