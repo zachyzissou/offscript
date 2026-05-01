@@ -20,6 +20,9 @@ Config/AppStoreConnect.local.env
 
 # Claude worktrees + agent state
 .claude/worktrees/
+.claude/scheduled_tasks.lock
+.claude/scheduled_tasks.json
+.claude/projects/
 
 # Generated docs preview
 docs/stitch/
