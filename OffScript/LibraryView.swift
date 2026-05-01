@@ -88,6 +88,15 @@ nonisolated enum LibraryDirectoryDensity: String, CaseIterable, Identifiable, Se
     }
 }
 
+/// Outcome of a user-initiated SYNC, captured so the directory can
+/// render a brief `✓ SYNCED N` / `● N FAILED` chip after the spinner
+/// stops. Pure value type so the @State binding stays cheap.
+struct LibrarySyncResult: Equatable {
+    let total: Int
+    let failed: Int
+    var succeeded: Int { max(0, total - failed) }
+}
+
 nonisolated struct LibraryDirectoryRow: Equatable, Identifiable, Sendable {
     var id: UUID { podcastID }
     let podcastID: UUID
@@ -759,6 +768,12 @@ struct LibraryView: View {
     @State private var cachedDirectorySnapshot = LibraryDirectorySnapshot.empty
     @State private var didBuildDirectorySnapshot = false
     @State private var isSyncingLibrary = false
+    /// Latest user-initiated SYNC outcome — surfaced as a brief inline
+    /// chip below the header so a user who taps SYNC and sees the
+    /// spinner stop knows whether 5 of 50 feeds failed without flipping
+    /// to the `needsSync` filter scope. Cleared on the next manual SYNC.
+    @State private var lastSyncResult: LibrarySyncResult?
+    @State private var lastSyncResultClearTask: Task<Void, Never>?
     @State private var shouldReloadDirectoryOnAppear = false
     @State private var isLibraryTabActive = false
 
@@ -943,6 +958,18 @@ struct LibraryView: View {
                     LibraryBatchImportStrip(onFinished: {
                         refreshDirectoryAfterBatchImportIfActive()
                     })
+
+                    // Brief inline summary of the latest manual SYNC.
+                    // Auto-clears after ~6s; a fresh tap on SYNC clears
+                    // it immediately. Companion to the inline `● SYNC
+                    // FAILED` chips on individual rows so the user can
+                    // see at a glance whether the sync was clean.
+                    if let result = lastSyncResult {
+                        LibrarySyncResultStrip(result: result) {
+                            lastSyncResult = nil
+                            lastSyncResultClearTask?.cancel()
+                        }
+                    }
 
                     if didLoadDirectoryPodcasts && directoryPodcasts.isEmpty {
                         emptyState
@@ -1553,6 +1580,11 @@ struct LibraryView: View {
     private func syncSubscriptions() async {
         guard !isSyncingLibrary else { return }
         isSyncingLibrary = true
+        // Clear any prior summary chip while a new sync runs so the
+        // user doesn't see a stale "✓ SYNCED 50" while a fresh pass is
+        // mid-flight.
+        lastSyncResult = nil
+        lastSyncResultClearTask?.cancel()
         defer { isSyncingLibrary = false }
         let podcastIDs = subscribedPodcastIDs
         guard !podcastIDs.isEmpty else { return }
@@ -1577,15 +1609,32 @@ struct LibraryView: View {
                 interval,
                 metadata: "podcasts=\(podcasts.count) failed=\(failures.count)"
             )
+            recordSyncResult(LibrarySyncResult(total: podcasts.count, failed: failures.count))
         } catch {
             OffScriptPerformanceLog.end(
                 interval,
                 metadata: "podcasts=\(podcastIDs.count) failed=true"
             )
             libraryLogger.error("Pull-to-refresh sync setup failed: \(error.localizedDescription, privacy: .public)")
+            recordSyncResult(LibrarySyncResult(total: podcastIDs.count, failed: podcastIDs.count))
         }
         loadDirectoryPodcasts(force: true)
         loadLibraryEpisodeSummary()
+    }
+
+    /// Capture the latest sync outcome and schedule auto-clear so the
+    /// chip doesn't linger forever — the user gets ~6s of feedback,
+    /// then the chip dismisses on its own. The next manual SYNC also
+    /// clears it immediately (via `syncSubscriptions`'s reset).
+    private func recordSyncResult(_ result: LibrarySyncResult) {
+        lastSyncResult = result
+        lastSyncResultClearTask?.cancel()
+        lastSyncResultClearTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            if !Task.isCancelled {
+                lastSyncResult = nil
+            }
+        }
     }
 }
 
@@ -2748,6 +2797,54 @@ private struct FilterRow: View {
 /// live count and a hairline progress rail; when finished shows the
 /// summary with a dismiss key. Lives at the top of the Library page so
 /// the user always sees what's happening once they leave the sheet.
+private struct LibrarySyncResultStrip: View {
+    let result: LibrarySyncResult
+    var onDismiss: () -> Void = {}
+
+    var body: some View {
+        HStack(spacing: 12) {
+            if result.failed == 0 {
+                TunerLabel(text: "✓ SYNCED \(result.succeeded)", color: .offscriptFnMode)
+                    .accessibilityIdentifier("LibrarySyncResult.AllSucceeded")
+            } else if result.succeeded == 0 {
+                TunerLabel(text: "● SYNC FAILED", color: .offscriptFnRecord)
+                    .accessibilityIdentifier("LibrarySyncResult.AllFailed")
+                Text("\(result.failed) feeds failed to refresh.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Color.offscriptPaperWhite)
+            } else {
+                TunerLabel(text: "● SYNCED \(result.succeeded) · \(result.failed) FAILED", color: .offscriptFnRecord)
+                    .accessibilityIdentifier("LibrarySyncResult.PartialFailure")
+                Text("Filter to NEEDS SYNC to see which.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Button(action: onDismiss) {
+                TunerLabel(text: "× DISMISS", color: .offscriptSoftPaper, size: 9)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss sync result")
+        }
+        .padding(.vertical, 10)
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .top
+        )
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .bottom
+        )
+        .transition(.opacity)
+    }
+}
+
 private struct LibraryBatchImportStrip: View {
     @ObservedObject private var importer = BatchImportService.shared
     var onFinished: () -> Void = {}
