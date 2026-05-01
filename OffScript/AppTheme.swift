@@ -451,10 +451,12 @@ struct TunerTag: View {
             baseTag
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
+                .truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
         } else {
             baseTag
                 .lineLimit(1)
+                .truncationMode(.tail)
                 .fixedSize(horizontal: true, vertical: true)
         }
     }
