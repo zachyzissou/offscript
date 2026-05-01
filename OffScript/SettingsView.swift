@@ -480,7 +480,7 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                     .padding(.top, 4)
                     .accessibilityLabel(showSignOutConfirmation ? "Hide sign out confirmation" : "Sign out of OffScript")
-                    .accessibilityHint("Stops iCloud sync on next launch. Local data remains on this device.")
+                    .accessibilityHint(showSignOutConfirmation ? "" : "Stops iCloud sync on next launch. Local data remains on this device.")
 
                     if showSignOutConfirmation {
                         signOutConfirmationPanel

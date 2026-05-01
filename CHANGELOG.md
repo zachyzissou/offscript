@@ -5,7 +5,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ## [Unreleased]
 
 ### Added — UI QA swarm coverage
-- **Settings playback-rate reset, signal rebuild, sign-out, and the sign-out confirmation Cancel/Confirm pair now expose explicit VoiceOver labels** with hint copy on the destructive sign-out action, so destructive Settings flows can be operated with VoiceOver without guessing what each Tuner key does (#127).
+- **Settings playback-rate reset, signal rebuild, sign-out, and the sign-out confirmation Cancel/Confirm pair now exposes explicit VoiceOver labels** with hint copy on the destructive sign-out action, so destructive Settings flows can be operated with VoiceOver without guessing what each Tuner key does (#127).
 - **Large-library UI smoke coverage now seeds a deterministic 258-show library** and launches directly into Library, giving the 250+ show scrolling case a repeatable simulator test instead of a manual-only complaint.
 - **Settings UI coverage now opens the config panel against a deterministic 258-show library** and verifies simulator iCloud status stays recoverable instead of crashing.
 - **Debug large-library seeding now resets stale simulator data when an explicit library size is requested**, so visual audits and UI tests are not polluted by previous sample stores.
