@@ -9,6 +9,12 @@ private let queueLogger = Logger(subsystem: "com.offscript", category: "Queue")
 struct QueueView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var queueItems: [QueueItem]
+    /// Used by the empty state to pick the right escape hatch — if the
+    /// user already has shows tuned, the right next move is BROWSE
+    /// LIBRARY (find an episode to queue), not EXPLORE SHOWS (which
+    /// would push them back to Search even though their library is
+    /// already populated).
+    @Query(filter: #Predicate<Podcast> { $0.isSubscribed }) private var subscribedPodcasts: [Podcast]
     /// `× CLEAR ALL` is irreversible and operates on the entire working
     /// set — under a heavy listener's queue (10+ items) the silent wipe
     /// is the wrong default. Drop into a confirm strip first; tap
@@ -74,30 +80,60 @@ struct QueueView: View {
     }
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let hasSubscriptions = !subscribedPodcasts.isEmpty
+        return VStack(alignment: .leading, spacing: 12) {
             TunerLabel(text: "● QUEUE EMPTY", color: .offscriptSoftPaper)
             Text("Nothing queued yet")
                 .font(.system(size: 22, weight: .semibold))
                 .tracking(0)
                 .foregroundStyle(Color.offscriptPaperWhite)
-            Text("This is your working set, not a backlog. Queue a few episodes you actually plan to hear next.")
+            Text(hasSubscriptions
+                 ? "This is your working set, not a backlog. Queue a few episodes from Library or Home that you actually plan to hear next."
+                 : "This is your working set, not a backlog. Find shows you trust first, then queue episodes you actually plan to hear next.")
                 .font(.system(size: 13.5))
                 .foregroundStyle(Color.offscriptPaperWhite)
                 .lineSpacing(2)
 
-            NavigationLink {
-                SearchView(hidesRootNavigationBar: false)
-            } label: {
-                HStack {
-                    TunerLabel(text: "→ EXPLORE SHOWS", color: .offscriptSignalYellow, size: 11)
-                    Spacer()
+            // Context-aware escape hatch — a user with subscriptions
+            // wants Library (find an episode to queue), not Search
+            // (which they'd already used to get those subscriptions).
+            // First-launch users with zero subscriptions still get
+            // EXPLORE SHOWS because Library is empty for them.
+            if hasSubscriptions {
+                Button {
+                    NotificationCenter.default.post(
+                        name: .offscriptSwitchTab,
+                        object: nil,
+                        userInfo: ["tab": "library"]
+                    )
+                } label: {
+                    HStack {
+                        TunerLabel(text: "→ BROWSE LIBRARY", color: .offscriptSignalYellow, size: 11)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                .buttonStyle(.plain)
+                .accessibilityLabel("Browse library to find episodes to queue")
+                .accessibilityIdentifier("QueueEmptyBrowseLibrary")
+                .padding(.top, 4)
+            } else {
+                NavigationLink {
+                    SearchView(hidesRootNavigationBar: false)
+                } label: {
+                    HStack {
+                        TunerLabel(text: "→ EXPLORE SHOWS", color: .offscriptSignalYellow, size: 11)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
             }
-            .buttonStyle(.plain)
-            .padding(.top, 4)
         }
         .padding(.top, 16)
     }
