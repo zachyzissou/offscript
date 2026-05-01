@@ -21,6 +21,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home recommendations now have a dedicated “More From Shows You Chose” lane** so explicit like/more-like-this show intent is not mislabeled as passive completion affinity.
 
 ### Changed — Tuner UI conformance
+- **The Queue lead strip now reflects current-state instead of always reading "● NEXT UP"** — when the lead queue item is the episode currently playing it switches to a green `● NOW PLAYING` eyebrow with a disabled `● PLAYING` key, and when the user has a resume position mid-episode the eyebrow becomes `● NEXT UP · IN PROGRESS` with a `→ RESUME` action key. Removes the visual ambiguity heavy listeners hit when bouncing between Player and Queue (#126).
 - **Repository now has a [`docs/TUNER_CONFORMANCE.md`](docs/TUNER_CONFORMANCE.md) audit log** with a per-surface Tuner-conformance state table and an explicit "Intentional Native Exceptions" list (Sign in with Apple, share sheet, file importer, SFSafariViewController, MPNowPlayingInfoCenter, Live Activity / Dynamic Island), so future surface additions can be checked against a single source instead of re-deriving the rules per PR (#109).
 - **Root Home, Library, Queue, and Search tabs now hide native empty navigation bars** so the top-of-app spacing is governed by the iOS safe area plus the 2pt Tuner inset instead of an invisible reserved nav bar.
 - **Shared Tuner labels, tags, and readouts now scale through Dynamic Type metrics** while preserving the mono instrument-panel vocabulary.

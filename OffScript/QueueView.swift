@@ -185,12 +185,37 @@ private struct QueueTunerHeader: View {
 
 private struct QueueLeadStrip: View {
     @Environment(\.modelContext) private var modelContext
+    @ObservedObject private var player = PlaybackController.shared
     let item: QueueItem
+
+    private var isCurrentlyPlaying: Bool {
+        player.currentEpisode?.id == item.episode.id
+    }
+
+    private var hasResumePosition: Bool {
+        item.episode.playedPosition > 0 && !item.episode.isPlayed
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                TunerLabel(text: "● NEXT UP", color: .offscriptSignalYellow)
+                Group {
+                    if isCurrentlyPlaying {
+                        TunerLabel(text: "● NOW PLAYING", color: .offscriptFnMode)
+                    } else if hasResumePosition {
+                        TunerLabel(text: "● NEXT UP · IN PROGRESS", color: .offscriptSignalYellow)
+                    } else {
+                        TunerLabel(text: "● NEXT UP", color: .offscriptSignalYellow)
+                    }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(
+                    isCurrentlyPlaying
+                        ? "Now playing \(item.episode.title)"
+                        : (hasResumePosition
+                            ? "Next up, in progress: \(item.episode.title)"
+                            : "Next up: \(item.episode.title)")
+                )
                 Spacer()
                 if let dur = item.episode.duration {
                     TunerLabel(text: EpisodeDurationFormatter.short(dur).uppercased(), color: .offscriptSoftPaper)
@@ -231,13 +256,29 @@ private struct QueueLeadStrip: View {
                         queueLogger.error("Failed to start queued episode: \(error.localizedDescription, privacy: .public)")
                     }
                 } label: {
-                    TunerLabel(text: "→ PLAY", color: .offscriptSignalYellow, size: 11)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                    TunerLabel(
+                        text: isCurrentlyPlaying ? "● PLAYING" : (hasResumePosition ? "→ RESUME" : "→ PLAY"),
+                        color: isCurrentlyPlaying ? .offscriptFnMode : .offscriptSignalYellow,
+                        size: 11
+                    )
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .overlay(Rectangle().stroke(isCurrentlyPlaying ? Color.offscriptFnMode : Color.offscriptSignalYellow, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Play next queued episode \(item.episode.title)")
+                .disabled(isCurrentlyPlaying)
+                .accessibilityLabel(
+                    isCurrentlyPlaying
+                        ? "Currently playing"
+                        : (hasResumePosition ? "Resume \(item.episode.title)" : "Play \(item.episode.title)")
+                )
+                .accessibilityHint(
+                    isCurrentlyPlaying
+                        ? "This episode is already playing."
+                        : (hasResumePosition
+                            ? "Resumes playback from your saved position."
+                            : "Starts playback from the beginning.")
+                )
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
