@@ -427,7 +427,8 @@ private extension ContentView {
             }
         }
 
-        try? modelContext.save()
+        do { try modelContext.save() }
+        catch { appLogger.error("Debug sample seed save failed: \(error.localizedDescription, privacy: .public)") }
     }
 
     private func debugLargeLibraryNeedsReset(
@@ -449,13 +450,17 @@ private extension ContentView {
     }
 
     private func resetDebugLibrary() {
-        for episode in (try? modelContext.fetch(FetchDescriptor<Episode>())) ?? [] {
-            modelContext.delete(episode)
+        do {
+            for episode in try modelContext.fetch(FetchDescriptor<Episode>()) {
+                modelContext.delete(episode)
+            }
+            for podcast in try modelContext.fetch(FetchDescriptor<Podcast>()) {
+                modelContext.delete(podcast)
+            }
+            try modelContext.save()
+        } catch {
+            appLogger.error("Debug library reset failed: \(error.localizedDescription, privacy: .public)")
         }
-        for podcast in (try? modelContext.fetch(FetchDescriptor<Podcast>())) ?? [] {
-            modelContext.delete(podcast)
-        }
-        try? modelContext.save()
     }
 
     private func seedLargeDebugLibrary(showCount: Int, episodesPerShow: Int) {
@@ -492,7 +497,8 @@ private extension ContentView {
                 modelContext.insert(episode)
             }
         }
-        try? modelContext.save()
+        do { try modelContext.save() }
+        catch { appLogger.error("Debug large-library seed save failed: \(error.localizedDescription, privacy: .public)") }
     }
 
     /// Read launch args / UserDefaults that may arrive as Int, NSNumber,
