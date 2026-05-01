@@ -46,6 +46,11 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home retune and Library sync now use explicit Tuner header keys instead of native pull-to-refresh chrome**, removing another app-controlled Liquid Glass surface while keeping refresh actions discoverable.
 - **Podcast and episode detail pushes now use inline Tuner back keys** so Library and Home drill-down flows no longer fall back to native iOS back-button chrome.
 
+### Changed — Library performance
+- **Podcast detail episode-list scrolling now caches stripped HTML at 5,000 entries / 16MB** (up from 500 / 2MB), so a 200+ episode show no longer thrashes `NSAttributedString` HTML parsing on every scroll-recycle (#169).
+- **Podcast detail rows now skip rendering the summary `Text` when the stripped form is empty**, eliminating the per-row `strippingHTML` cost on scroll for feeds whose summaries are HTML-only boilerplate (`<p>&nbsp;</p>` etc.) (#169).
+- **`PodcastDetailView.loadEpisodes` now emits an `OffScriptPerformanceLog` signpost** (`podcast.detail.loadEpisodes`) tagged with podcast title, requested limit, row count, total matching count, and `hasMore`, so future scroll regressions are measurable in Instruments and OSLog (#169).
+
 ### Changed — recommendation quality
 - **Home recommendations now fetch targeted candidates from explicitly liked and completed shows outside the global recency window**, so large high-volume libraries cannot bury older high-signal follow-ups before scoring.
 - **Home recommendations now compose multiple local evidence signals instead of stopping at the first matching rule**, so explicit topic feedback and “more from this show” reinforce one authored recommendation rather than competing as generic ranking buckets.

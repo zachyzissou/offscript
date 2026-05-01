@@ -2236,6 +2236,11 @@ struct PodcastDetailView: View {
             visibleLimit = 100
         }
 
+        let interval = OffScriptPerformanceLog.begin(
+            "podcast.detail.loadEpisodes",
+            metadata: "podcast=\(podcast.title) limit=\(visibleLimit) reset=\(resetLimit)"
+        )
+
         do {
             let query = episodeSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             var descriptor = episodeFetchDescriptor(searchQuery: query)
@@ -2245,12 +2250,14 @@ struct PodcastDetailView: View {
             episodes = Array(fetched.prefix(visibleLimit))
             hasMoreEpisodes = fetched.count > visibleLimit
             loadError = nil
+            OffScriptPerformanceLog.end(interval, metadata: "rows=\(episodes.count) total=\(matchingEpisodeCount) more=\(hasMoreEpisodes)")
         } catch {
             episodes = []
             matchingEpisodeCount = 0
             hasMoreEpisodes = false
             loadError = error.localizedDescription
             libraryLogger.error("Podcast detail load failed: \(error.localizedDescription, privacy: .public)")
+            OffScriptPerformanceLog.end(interval, metadata: "error=\(error.localizedDescription)")
         }
     }
 
@@ -2527,12 +2534,21 @@ private struct PodcastEpisodeTunerRow: View {
 
                         TunerLabel(text: metadata, color: .offscriptSoftPaper, size: 8)
 
+                        // Skip the row's summary `Text` entirely when the
+                        // stripped form is empty — feeds with HTML-only
+                        // boilerplate (`<p>&nbsp;</p>`) used to render an
+                        // invisible Text on every row, paying the
+                        // `strippingHTML` cost on each scroll-recycle for
+                        // no visible output (#169).
                         if let summary = episode.summary {
-                            Text(summary.strippingHTML)
-                                .font(.system(size: 12.5))
-                                .foregroundStyle(Color.offscriptPaperWhite.opacity(0.7))
-                                .lineLimit(2)
-                                .multilineTextAlignment(.leading)
+                            let stripped = summary.strippingHTML
+                            if !stripped.isEmpty {
+                                Text(stripped)
+                                    .font(.system(size: 12.5))
+                                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.7))
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
