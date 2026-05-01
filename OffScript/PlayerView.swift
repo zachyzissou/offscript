@@ -228,24 +228,50 @@ struct PlayerView: View {
     /// Inline error strip rendered above the transport row when an
     /// AVPlayerItem fails to load or stalls. Sharp Tuner rectangle in
     /// record-red so it reads as fault state without dominating the
-    /// player.
+    /// player. The `↻ RETRY` key recreates the AVPlayerItem and resumes
+    /// from the saved position — recovers from a transient network
+    /// stall (e.g. cellular drop) without making the user dismiss the
+    /// error and re-seek manually.
     private func playbackErrorStrip(message: String) -> some View {
-        HStack(spacing: 8) {
-            TunerLabel(text: "● PLAYBACK ERROR", color: .offscriptFnRecord, size: 9)
-            Text(message)
-                .font(.system(size: 12.5))
-                .foregroundStyle(Color.offscriptPaperWhite)
-                .lineLimit(2)
-            Spacer()
-            Button { player.clearPlaybackError() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Color.offscriptSoftPaper)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                TunerLabel(text: "● PLAYBACK ERROR", color: .offscriptFnRecord, size: 9)
+                Text(message)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                    .lineLimit(2)
+                Spacer()
+                Button { player.clearPlaybackError() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color.offscriptSoftPaper)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss playback error")
+                .accessibilityIdentifier("PlayerErrorDismiss")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Dismiss error")
+
+            if let episode = player.currentEpisode {
+                Button {
+                    // Reload the episode (rebuilds AVPlayerItem, restores
+                    // saved position) and resume playback. Handles the
+                    // common cellular-stall case in one tap instead of
+                    // dismiss → reseek.
+                    player.play(episode, in: nil)
+                } label: {
+                    TunerLabel(text: "↻ RETRY", color: .offscriptSignalYellow, size: 11)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .frame(minHeight: 44)
+                        .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Retry playback of \(episode.title)")
+                .accessibilityIdentifier("PlayerErrorRetry")
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
