@@ -5,6 +5,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ## [Unreleased]
 
 ### Added — UI QA swarm coverage
+- **Search topic chips, recent-search rows, the clear-recents key, and discovery result row buttons (`+ ADD TO LIBRARY`, `→ WEBSITE`) now expose explicit VoiceOver labels** that include the topic / search term / podcast title, so the search surface no longer surfaces ambiguous "Button" / `arrow.up.left` SF Symbol-name labels (#127).
 - **Large-library UI smoke coverage now seeds a deterministic 258-show library** and launches directly into Library, giving the 250+ show scrolling case a repeatable simulator test instead of a manual-only complaint.
 - **Settings UI coverage now opens the config panel against a deterministic 258-show library** and verifies simulator iCloud status stays recoverable instead of crashing.
 - **Debug large-library seeding now resets stale simulator data when an explicit library size is requested**, so visual audits and UI tests are not polluted by previous sample stores.
