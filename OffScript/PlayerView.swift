@@ -605,7 +605,7 @@ struct PlayerView: View {
                     }
                 } label: {
                     TunerLabel(text: "× CANCEL", color: .offscriptFnRecord, size: 10)
-                        .frame(maxWidth: .infinity, minHeight: 34)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord.opacity(0.7), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
@@ -619,7 +619,7 @@ struct PlayerView: View {
                     }
                 } label: {
                     TunerLabel(text: "\(minutes) MIN", color: .offscriptPaperWhite, size: 10)
-                        .frame(maxWidth: .infinity, minHeight: 34)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
@@ -636,7 +636,7 @@ struct PlayerView: View {
                 }
             } label: {
                 TunerLabel(text: "END OF EP", color: .offscriptSignalYellow, size: 10)
-                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .overlay(Rectangle().stroke(Color.offscriptSignalYellow.opacity(0.7), lineWidth: 1))
             }
             .buttonStyle(.plain)
