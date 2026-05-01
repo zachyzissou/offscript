@@ -143,7 +143,13 @@ final class DownloadService: NSObject, ObservableObject {
         guard let modelContext else { return }
         objectWillChange.send()
         let descriptor = FetchDescriptor<Episode>(predicate: #Predicate<Episode> { $0.isDownloaded == true })
-        guard let downloaded = try? modelContext.fetch(descriptor) else { return }
+        let downloaded: [Episode]
+        do {
+            downloaded = try modelContext.fetch(descriptor)
+        } catch {
+            downloadLogger.error("deleteAllDownloads fetch failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
         for episode in downloaded {
             deleteDownload(for: episode)
         }
@@ -248,7 +254,13 @@ final class DownloadService: NSObject, ObservableObject {
             predicate: #Predicate<Episode> { $0.downloadStateRawValue == queuedState },
             sortBy: [SortDescriptor(\Episode.downloadRequestedAt)]
         )
-        guard let queuedEpisodes = try? modelContext.fetch(descriptor) else { return }
+        let queuedEpisodes: [Episode]
+        do {
+            queuedEpisodes = try modelContext.fetch(descriptor)
+        } catch {
+            downloadLogger.error("resumeQueuedDownloadsIfNeeded fetch failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
 
         let availableSlots = max(maximumConcurrentDownloads - activeDownloadCount, 0)
         for episode in queuedEpisodes.prefix(availableSlots) {
@@ -268,7 +280,13 @@ final class DownloadService: NSObject, ObservableObject {
                     || $0.downloadStateRawValue == downloadingState
             }
         )
-        guard let storedEpisodes = try? modelContext.fetch(descriptor) else { return }
+        let storedEpisodes: [Episode]
+        do {
+            storedEpisodes = try modelContext.fetch(descriptor)
+        } catch {
+            downloadLogger.error("reconcilePersistedDownloads fetch failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
 
         for episode in storedEpisodes {
             switch episode.downloadState {

@@ -37,8 +37,11 @@ enum BackgroundFeedRefresh {
         let descriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate<Podcast> { $0.isSubscribed == true }
         )
-        guard let podcasts = try? context.fetch(descriptor) else {
-            logger.warning("Background refresh: failed to fetch podcasts")
+        let podcasts: [Podcast]
+        do {
+            podcasts = try context.fetch(descriptor)
+        } catch {
+            logger.warning("Background refresh: failed to fetch podcasts: \(error.localizedDescription, privacy: .public)")
             return
         }
 
