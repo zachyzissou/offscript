@@ -1,6 +1,9 @@
 import AuthenticationServices
 import CloudKit
 import Foundation
+import OSLog
+
+private let appleIdentityLogger = Logger(subsystem: "com.offscript", category: "AppleIdentity")
 
 enum AppleCredentialValidationState: Equatable {
     case signedOut
@@ -158,23 +161,36 @@ enum CloudKitAccountService {
     }
 
     private static var embeddedProvisioningProfileEntitlements: [String: Any]? {
-        guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
-              let data = try? Data(contentsOf: url),
-              let rawProfile = String(data: data, encoding: .isoLatin1),
+        guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision") else {
+            return nil
+        }
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            appleIdentityLogger.warning("embedded.mobileprovision read failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+        guard let rawProfile = String(data: data, encoding: .isoLatin1),
               let plistStart = rawProfile.range(of: "<plist"),
               let plistEnd = rawProfile.range(of: "</plist>", options: .backwards) else {
             return nil
         }
 
         let plistText = String(rawProfile[plistStart.lowerBound..<plistEnd.upperBound])
-        guard let plistData = plistText.data(using: .utf8),
-              let profile = try? PropertyListSerialization.propertyList(
+        guard let plistData = plistText.data(using: .utf8) else { return nil }
+        let plistObject: Any
+        do {
+            plistObject = try PropertyListSerialization.propertyList(
                 from: plistData,
                 options: [],
                 format: nil
-              ) as? [String: Any] else {
+            )
+        } catch {
+            appleIdentityLogger.warning("embedded.mobileprovision plist parse failed: \(error.localizedDescription, privacy: .public)")
             return nil
         }
+        guard let profile = plistObject as? [String: Any] else { return nil }
         return profile["Entitlements"] as? [String: Any]
     }
 }

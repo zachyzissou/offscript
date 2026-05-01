@@ -113,7 +113,13 @@ final class BackgroundTranscriptionService {
             sortBy: [SortDescriptor(\Episode.downloadCompletedAt, order: .reverse)]
         )
         descriptor.fetchLimit = 25
-        guard let downloaded = try? context.fetch(descriptor) else { return nil }
+        let downloaded: [Episode]
+        do {
+            downloaded = try context.fetch(descriptor)
+        } catch {
+            bgTranscribeLogger.error("nextCandidate fetch failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
 
         for episode in downloaded {
             // Filter on duration in-memory — duration is optional so it can't
