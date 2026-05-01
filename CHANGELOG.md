@@ -5,6 +5,8 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ## [Unreleased]
 
 ### Added — UI QA swarm coverage
+- **Settings UI coverage now opens the config panel from the Library tab** in addition to the existing Home entry point, locking in the Library Settings open path that the build 51 crash report flagged (#114).
+- **Settings UI coverage now drives a present → dismiss → re-present cycle** to surface SwiftUI sheet lifecycle crashes that only appear after a Settings sheet has been opened, dismissed, and reopened (#114).
 - **Large-library UI smoke coverage now seeds a deterministic 258-show library** and launches directly into Library, giving the 250+ show scrolling case a repeatable simulator test instead of a manual-only complaint.
 - **Settings UI coverage now opens the config panel against a deterministic 258-show library** and verifies simulator iCloud status stays recoverable instead of crashing.
 - **Debug large-library seeding now resets stale simulator data when an explicit library size is requested**, so visual audits and UI tests are not polluted by previous sample stores.
