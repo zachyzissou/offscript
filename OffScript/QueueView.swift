@@ -294,6 +294,8 @@ private struct QueueTunerHeader: View {
 
 // MARK: - Lead strip
 
+// QueueLeadStrip's PLAY/RESUME + × REMOVE keys meet 44pt min-height
+// per HIG; matches the rest of the app's Tuner action-key vocabulary.
 private struct QueueLeadStrip: View {
     @Environment(\.modelContext) private var modelContext
     @ObservedObject private var player = PlaybackController.shared
@@ -374,7 +376,9 @@ private struct QueueLeadStrip: View {
                     )
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
+                    .frame(minHeight: 44)
                     .overlay(Rectangle().stroke(isCurrentlyPlaying ? Color.offscriptFnMode : Color.offscriptSignalYellow, lineWidth: 1))
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(isCurrentlyPlaying)
@@ -400,7 +404,9 @@ private struct QueueLeadStrip: View {
                     TunerLabel(text: "× REMOVE", color: .offscriptFnRecord, size: 11)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
+                        .frame(minHeight: 44)
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Remove \(item.episode.title) from queue")

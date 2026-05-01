@@ -27,6 +27,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home recommendations now have a dedicated “More From Shows You Chose” lane** so explicit like/more-like-this show intent is not mislabeled as passive completion affinity.
 
 ### Changed — Tuner UI conformance
+- **QueueLeadStrip `→ PLAY` / `→ RESUME` and `× REMOVE` keys now meet 44pt tap target.** Were ~32pt visible. Same `frame(minHeight: 44) + contentShape(Rectangle())` pattern applied across the app.
 - **Episode detail `↻ RETRY DOWNLOAD` key now meets 44pt tap target.** Was ~30pt (padding + 10pt label).
 - **Settings recommendation-mode chips (Balanced / Lean Discovery / Stay Tuned) now meet 44pt tap target and announce the active mode to VoiceOver.** Were ~28pt visible. Added `frame(minHeight: 44)` and `accessibilityAddTraits(.isSelected)` so the highlighted chip is explicit to a11y users (background color alone wasn't enough).
 - **Settings `↻ REBUILD SIGNAL` and `× SIGN OUT` (entry) keys now meet the 44pt tap target floor.** Both were ~30pt visible (padding + 10pt label). Added `frame(minHeight: 44) + contentShape(Rectangle())`. The matching ↻ RETRY DOWNLOAD on episode detail and × DISMISS on the import strip already pass; this brings the two remaining Settings ones up to the same standard.
