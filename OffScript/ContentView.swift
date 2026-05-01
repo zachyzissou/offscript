@@ -536,7 +536,8 @@ private extension ContentView {
         guard let episodes = try? modelContext.fetch(descriptor), let leadEpisode = episodes.first else { return }
 
         for episode in episodes.dropFirst().prefix(2) where !episode.isQueued {
-            try? QueueService.add(episode, in: modelContext)
+            do { try QueueService.add(episode, in: modelContext) }
+            catch { appLogger.error("Debug-boot queue seed failed: \(error.localizedDescription, privacy: .public)") }
         }
 
         let targetDuration = leadEpisode.duration ?? 2_400

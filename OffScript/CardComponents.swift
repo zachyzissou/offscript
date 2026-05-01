@@ -114,7 +114,8 @@ struct EpisodeVerticalCard: View {
                     // Tuner queue key — hairline square
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            try? QueueService.add(episode, in: modelContext)
+                            do { try QueueService.add(episode, in: modelContext) }
+                            catch { cardLogger.error("Queue add failed: \(error.localizedDescription, privacy: .public)") }
                         }
                     } label: {
                         Image(systemName: episode.isQueued ? "checkmark" : "plus")
