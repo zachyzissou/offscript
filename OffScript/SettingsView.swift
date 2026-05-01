@@ -493,12 +493,16 @@ struct SettingsView: View {
 
     // MARK: recommendations
 
+    // RecommendationMode chips meet 44pt min-height and announce
+    // .isSelected to VoiceOver so the active mode is communicated
+    // explicitly (background color alone isn't enough for a11y).
     private var recommendationSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             TunerLabel(text: "RECOMMENDATIONS · TUNER", color: .offscriptSignalYellow)
 
             HStack(spacing: 8) {
                 ForEach(AppSettings.RecommendationMode.allCases, id: \.rawValue) { mode in
+                    let isSelected = recommendationMode == mode
                     Button {
                         withAnimation(.easeInOut(duration: 0.18)) {
                             recommendationMode = mode
@@ -507,16 +511,18 @@ struct SettingsView: View {
                     } label: {
                         TunerLabel(
                             text: mode.label,
-                            color: recommendationMode == mode ? .offscriptStudioBlack : .offscriptSignalYellow,
+                            color: isSelected ? .offscriptStudioBlack : .offscriptSignalYellow,
                             size: 9
                         )
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .padding(.vertical, 10)
-                        .background(recommendationMode == mode ? Color.offscriptSignalYellow : Color.clear)
+                        .background(isSelected ? Color.offscriptSignalYellow : Color.clear)
                         .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(mode.label) recommendation mode")
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
             }
 
