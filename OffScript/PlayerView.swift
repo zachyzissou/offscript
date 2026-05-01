@@ -395,6 +395,43 @@ struct PlayerView: View {
                         TunerLabel(text: EpisodeDurationFormatter.short(dur).uppercased(), color: .offscriptSoftPaper)
                     }
                 }
+
+                // Action row — play the up-next episode immediately or
+                // drop it from the queue without playing. Without these
+                // the only paths to act on the up-next item were (a)
+                // letting the current episode finish or (b) bouncing to
+                // the Queue tab, both worse for in-flight listening.
+                HStack(spacing: 8) {
+                    Button {
+                        playNext(nextItem)
+                    } label: {
+                        TunerLabel(text: "→ PLAY", color: .offscriptSignalYellow, size: 10)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .frame(minHeight: 44)
+                            .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Play \(nextItem.episode.title) now")
+                    .accessibilityIdentifier("PlayerUpNextPlay")
+
+                    Button {
+                        dropNext(nextItem)
+                    } label: {
+                        TunerLabel(text: "× DROP", color: .offscriptFnRecord, size: 10)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .frame(minHeight: 44)
+                            .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remove \(nextItem.episode.title) from up next")
+                    .accessibilityIdentifier("PlayerUpNextDrop")
+
+                    Spacer()
+                }
             }
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -402,6 +439,28 @@ struct PlayerView: View {
                 Rectangle().fill(Color.offscriptHairline).frame(height: 1),
                 alignment: .top
             )
+        }
+    }
+
+    /// Pop the up-next item from the queue and start playing it. Mirrors
+    /// the auto-advance path that fires when the current episode finishes,
+    /// just driven by a user tap instead of `popNextEpisode` from the
+    /// playback completion handler.
+    private func playNext(_ item: QueueItem) {
+        let episode = item.episode
+        do {
+            try QueueService.remove(item, in: modelContext)
+        } catch {
+            playerLogger.error("Failed to remove queue item before play-next: \(error.localizedDescription, privacy: .public)")
+        }
+        player.play(episode, in: modelContext)
+    }
+
+    private func dropNext(_ item: QueueItem) {
+        do {
+            try QueueService.remove(item, in: modelContext)
+        } catch {
+            playerLogger.error("Failed to drop up-next item: \(error.localizedDescription, privacy: .public)")
         }
     }
 
