@@ -35,67 +35,70 @@ struct HomeView: View {
     var body: some View {
         Group {
             if isActive {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        HomeTunerHeader(
-                            isRetuning: isRetuning,
-                            onRetune: {
-                                Task { await loadSections(manual: true) }
-                            },
-                            onOpenSettings: onOpenSettings
-                        )
+                GeometryReader { geometry in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            HomeTunerHeader(
+                                isRetuning: isRetuning,
+                                onRetune: {
+                                    Task { await loadSections(manual: true) }
+                                },
+                                onOpenSettings: onOpenSettings,
+                                topSafeArea: geometry.safeAreaInsets.top
+                            )
 
-                        if let errorMessage {
-                            HomeErrorRow(message: errorMessage)
-                        }
-
-                        if isLoading {
-                            HomeSkeletonStack()
-                        } else if sections.isEmpty {
-                            // Cold start — show curated starter picks instead of a
-                            // dead-end "go search" empty state. Once the user has
-                            // three subscriptions and recommendations have any data
-                            // to work with, `sections` populates and this hides.
-                            HomeStarterRail()
-                        } else {
-                            let episodeSections = sections.filter { !$0.isDiscoverySection }
-                            let discoverySections = sections.filter(\.isDiscoverySection)
-                            let leadScoredEpisode = RecommendationService.headlineCandidate(from: episodeSections)
-
-                            if let leadScoredEpisode {
-                                HeroTunerCard(
-                                    episode: leadScoredEpisode.episode,
-                                    reason: leadScoredEpisode.explanation,
-                                    signals: leadScoredEpisode.signalTrace
-                                )
-                                .padding(.horizontal, OffScriptTheme.pagePadding)
-                                .padding(.bottom, 6)
+                            if let errorMessage {
+                                HomeErrorRow(message: errorMessage)
                             }
 
-                            let railSections = Self.sections(episodeSections, excluding: leadScoredEpisode?.episode.id)
-                            ForEach(Array(railSections.enumerated()), id: \.element.id) { _, section in
-                                TunerRail(
-                                    title: section.title.uppercased(),
-                                    episodes: section.episodes,
-                                    reasonProvider: { section.explanation(for: $0) },
-                                    signalProvider: { section.signalTrace(for: $0) }
-                                )
-                            }
+                            if isLoading {
+                                HomeSkeletonStack()
+                            } else if sections.isEmpty {
+                                // Cold start — show curated starter picks instead of a
+                                // dead-end "go search" empty state. Once the user has
+                                // three subscriptions and recommendations have any data
+                                // to work with, `sections` populates and this hides.
+                                HomeStarterRail()
+                            } else {
+                                let episodeSections = sections.filter { !$0.isDiscoverySection }
+                                let discoverySections = sections.filter(\.isDiscoverySection)
+                                let leadScoredEpisode = RecommendationService.headlineCandidate(from: episodeSections)
 
-                            ForEach(discoverySections) { section in
-                                TunerDiscoveryRail(section: section)
-                            }
-
-                            if isLoadingDiscovery {
-                                HomeDiscoveryLoadingStrip()
+                                if let leadScoredEpisode {
+                                    HeroTunerCard(
+                                        episode: leadScoredEpisode.episode,
+                                        reason: leadScoredEpisode.explanation,
+                                        signals: leadScoredEpisode.signalTrace
+                                    )
                                     .padding(.horizontal, OffScriptTheme.pagePadding)
+                                    .padding(.bottom, 6)
+                                }
+
+                                let railSections = Self.sections(episodeSections, excluding: leadScoredEpisode?.episode.id)
+                                ForEach(Array(railSections.enumerated()), id: \.element.id) { _, section in
+                                    TunerRail(
+                                        title: section.title.uppercased(),
+                                        episodes: section.episodes,
+                                        reasonProvider: { section.explanation(for: $0) },
+                                        signalProvider: { section.signalTrace(for: $0) }
+                                    )
+                                }
+
+                                ForEach(discoverySections) { section in
+                                    TunerDiscoveryRail(section: section)
+                                }
+
+                                if isLoadingDiscovery {
+                                    HomeDiscoveryLoadingStrip()
+                                        .padding(.horizontal, OffScriptTheme.pagePadding)
+                                }
                             }
                         }
+                        .padding(.top, geometry.safeAreaInsets.top + 4)
+                        .padding(.bottom, 28)
                     }
-                    .padding(.top, OffScriptTheme.rootContentTopPadding)
-                    .padding(.bottom, 28)
+                    .accessibilityIdentifier("HomeScreen")
                 }
-                .accessibilityIdentifier("HomeScreen")
             } else {
                 Color.offscriptStudioBlack
                     .ignoresSafeArea()
@@ -259,9 +262,23 @@ private struct HomeTunerHeader: View {
     let isRetuning: Bool
     let onRetune: () -> Void
     let onOpenSettings: () -> Void
+    let topSafeArea: CGFloat
 
     private var dayString: String {
         Date.now.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+    }
+
+    // Dynamic Island occupies roughly the center 126pt width on iPhone 14 Pro/15 Pro.
+    // We squish the eyebrow text when it would overlap with that center zone.
+    private var eyebrowSquishScale: CGFloat {
+        // On devices with Dynamic Island, topSafeArea is ~59pt.
+        // On devices without (notch-only or home button), it's ~47pt or 0pt.
+        // Apply squish effect only when topSafeArea > 50pt (Dynamic Island present).
+        guard topSafeArea > 50 else { return 1.0 }
+
+        // Subtle compression: scale down to 0.88 (12% reduction).
+        // This makes the text "squish" to avoid the Dynamic Island.
+        return 0.88
     }
 
     var body: some View {
@@ -272,11 +289,17 @@ private struct HomeTunerHeader: View {
                 // to wrap and collide with the "Home" title rendered just
                 // below it. lineLimit(1) keeps each on one row; truncation
                 // is preferable to overlap.
+                //
+                // Dynamic Island interaction: When the device has a Dynamic Island
+                // (topSafeArea > 50pt), we apply a subtle horizontal scale
+                // compression to make the text "squish" and stay out of the way.
                 TunerLabel(text: "TODAY · \(dayString.uppercased())", color: .offscriptSoftPaper)
                     .lineLimit(1)
+                    .scaleEffect(x: eyebrowSquishScale, y: 1.0, anchor: .leading)
                 Spacer()
                 TunerLabel(text: "OFFSCRIPT · CHANNEL FEED", color: .offscriptFnInfo)
                     .lineLimit(1)
+                    .scaleEffect(x: eyebrowSquishScale, y: 1.0, anchor: .trailing)
             }
 
             HStack(alignment: .firstTextBaseline) {
