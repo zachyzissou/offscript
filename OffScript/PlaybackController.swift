@@ -652,11 +652,21 @@ final class PlaybackController: ObservableObject {
         nowPlayingArtworkURL = url
         nowPlayingArtworkTask?.cancel()
         nowPlayingArtworkTask = Task.detached(priority: .utility) { [url] in
+            // Failure here is non-fatal (the lock screen falls back to the
+            // app icon) but CLAUDE.md bans bare `try?` and we want a log
+            // line on persistent failures so an offline-only user with a
+            // missing artwork URL can be diagnosed from sysdiagnose.
             let data: Data?
-            if url.isFileURL {
-                data = try? Data(contentsOf: url)
-            } else {
-                data = try? await URLSession.shared.data(from: url).0
+            do {
+                if url.isFileURL {
+                    data = try Data(contentsOf: url)
+                } else {
+                    data = try await URLSession.shared.data(from: url).0
+                }
+            } catch {
+                Logger(subsystem: "com.offscript", category: "Playback")
+                    .info("Now-playing artwork load failed for \(url.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                return
             }
             guard !Task.isCancelled else { return }
             guard let data, let image = UIImage(data: data) else { return }
