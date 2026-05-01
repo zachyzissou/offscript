@@ -15,7 +15,11 @@ struct SearchView: View {
     @State private var isSearchActive = false
     @State private var results: [PodcastSearchResult] = []
     @State private var isSearching = false
-    @State private var importingID: String?
+    /// Per-row in-flight import set keyed by `PodcastSearchResult.id`.
+    /// A `Set` (not a single value) so concurrent imports across rows
+    /// don't reset each other's `○ ADDING…` state when a second row is
+    /// tapped while the first is still staging/hydrating.
+    @State private var importingIDs: Set<String> = []
     @State private var errorMessage: String?
     /// Per-row import error keyed by `PodcastSearchResult.id` so a single
     /// failed `+ ADD TO LIBRARY` tap renders an actionable RETRY on the
@@ -193,7 +197,7 @@ struct SearchView: View {
                         result: result,
                         rank: index + 1,
                         isAdded: subscribedFeedURLs.contains(result.feedURL.absoluteString),
-                        isImporting: importingID == result.id,
+                        isImporting: importingIDs.contains(result.id),
                         importError: importErrors[result.id],
                         onAdd: { Task { await add(result) } }
                     )
@@ -247,18 +251,40 @@ struct SearchView: View {
 
     @MainActor
     private func add(_ result: PodcastSearchResult) async {
-        importingID = result.id
-        defer { importingID = nil }
+        importingIDs.insert(result.id)
+        defer { importingIDs.remove(result.id) }
         // Clear any prior failure for this row before a retry so the
         // button doesn't render the stale `✗ FAILED · RETRY` state
         // while the new attempt is in flight.
         importErrors[result.id] = nil
 
+        // Stage the subscription synchronously so the row flips to
+        // `● IN LIBRARY` immediately, then await the hydration sync so
+        // an async feed-fetch failure (e.g. airplane mode mid-import)
+        // can surface as a row-scoped FAILED state instead of being
+        // swallowed by `subscribeThenHydrate`'s detached `try?` Task.
+        let podcast: Podcast
         do {
-            _ = try syncService.subscribeThenHydrate(from: result, into: modelContext)
+            podcast = try syncService.subscribeThenHydrate(
+                from: result,
+                into: modelContext,
+                startHydration: false
+            )
             storeRecentSearch(result.title)
         } catch {
-            searchLogger.error("Import failed for ‘\(result.title, privacy: .public)’: \(error.localizedDescription, privacy: .public)")
+            searchLogger.error("Stage failed for ‘\(result.title, privacy: .public)’: \(error.localizedDescription, privacy: .public)")
+            importErrors[result.id] = error.localizedDescription
+            return
+        }
+
+        do {
+            try await syncService.sync(
+                podcast: podcast,
+                in: modelContext,
+                options: .singleAddBootstrap(episodeLimit: 12)
+            )
+        } catch {
+            searchLogger.error("Hydrate failed for ‘\(result.title, privacy: .public)’: \(error.localizedDescription, privacy: .public)")
             // Row-scoped error state — the row button now communicates the
             // failure and offers a retry without the user re-typing the
             // query or hunting for which row failed in a long results list.
@@ -454,9 +480,15 @@ private struct SearchResultRow: View {
     /// `offscriptFnRecord` accent and the failure detail renders below
     /// the action row, so a long results list still tells the user
     /// which row failed and gives them a one-tap recovery path.
-    var importError: String? = nil
+    let importError: String?
     let onAdd: () -> Void
     @State private var safariURL: IdentifiableURL?
+
+    /// Leading inset of the row's text/action column — 28pt rank gutter
+    /// + 12pt gap + 64pt artwork + 12pt gap. Centralized so the summary
+    /// padding, action-row spacer, and inline error strip stay aligned
+    /// under one knob (Copilot review on #199).
+    private static let contentColumnLeadingInset: CGFloat = 28 + 12 + 64 + 12
 
     private var hasImportError: Bool { importError != nil && !isImporting && !isAdded }
     private var actionLabel: String {
@@ -508,11 +540,11 @@ private struct SearchResultRow: View {
                     .font(.system(size: 12.5))
                     .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
                     .lineLimit(2)
-                    .padding(.leading, 28 + 12 + 64 + 12) // align under text column
+                    .padding(.leading, Self.contentColumnLeadingInset) // align under text column
             }
 
             HStack(spacing: 8) {
-                Spacer().frame(width: 28 + 12 + 64 + 12)
+                Spacer().frame(width: Self.contentColumnLeadingInset)
                 Button {
                     onAdd()
                 } label: {
@@ -562,7 +594,7 @@ private struct SearchResultRow: View {
 
             if hasImportError, let importError {
                 HStack(alignment: .top, spacing: 8) {
-                    Spacer().frame(width: 28 + 12 + 64 + 12)
+                    Spacer().frame(width: Self.contentColumnLeadingInset)
                     VStack(alignment: .leading, spacing: 4) {
                         TunerLabel(text: "● IMPORT FAILED", color: .offscriptFnRecord, size: 8)
                         Text(importError)
