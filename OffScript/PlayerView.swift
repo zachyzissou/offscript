@@ -445,13 +445,16 @@ struct PlayerView: View {
     /// Pop the up-next item from the queue and start playing it. Mirrors
     /// the auto-advance path that fires when the current episode finishes,
     /// just driven by a user tap instead of `popNextEpisode` from the
-    /// playback completion handler.
+    /// playback completion handler. Abort playback if the queue removal
+    /// throws — otherwise the episode stays in the queue and will
+    /// auto-replay when the current one finishes.
     private func playNext(_ item: QueueItem) {
         let episode = item.episode
         do {
             try QueueService.remove(item, in: modelContext)
         } catch {
-            playerLogger.error("Failed to remove queue item before play-next: \(error.localizedDescription, privacy: .public)")
+            playerLogger.error("Failed to remove queue item before play-next; aborting playback: \(error.localizedDescription, privacy: .public)")
+            return
         }
         player.play(episode, in: modelContext)
     }
