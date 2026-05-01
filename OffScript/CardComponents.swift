@@ -309,6 +309,9 @@ struct EpisodeCompactCard: View {
                         catch { cardLogger.error("Queue add failed: \(error.localizedDescription, privacy: .public)") }
                         withAnimation(.easeInOut(duration: 0.16)) { showsActions = false }
                     }
+                    .accessibilityLabel(episode.isQueued
+                        ? "\(episode.title) already queued"
+                        : "Add \(episode.title) to queue")
 
                     tunerInlineAction(
                         title: episode.isPlayed ? "○ UNPLAYED" : "✓ PLAYED",
@@ -317,6 +320,9 @@ struct EpisodeCompactCard: View {
                         togglePlayedState()
                         withAnimation(.easeInOut(duration: 0.16)) { showsActions = false }
                     }
+                    .accessibilityLabel(episode.isPlayed
+                        ? "Mark \(episode.title) as unplayed"
+                        : "Mark \(episode.title) as played")
                     Spacer(minLength: 0)
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
