@@ -676,10 +676,9 @@ private struct TunerDiscoveryRail: View {
                 .frame(width: 168, height: 36, alignment: .topLeading)
 
             TunerRailReasonTag(text: displayReason, color: .offscriptFnInfo)
-            RecommendationSignalTraceView(signals: scored.signalTrace, limit: 1, color: .offscriptSoftPaper)
 
             // Spacer absorbs any leftover variance from the reason tag
-            // (1 vs 2 lines) and the trace row so the action key always
+            // (1 vs 2 lines) so the action key always
             // sits on the same bottom baseline as siblings.
             Spacer(minLength: 0)
 
@@ -787,7 +786,6 @@ private struct HeroTunerCard: View {
 
                 // Reason as a TunerTag with signal yellow accent
                 TunerTag(text: displayReason, color: .offscriptSignalYellow, dim: true, wraps: true)
-                RecommendationSignalTraceView(signals: signals)
                 HomePreferenceStatusRow(message: feedbackStatusMessage)
 
                 // Mono metadata — date · duration. The "X LEFT" remaining
@@ -1060,7 +1058,6 @@ private struct TunerRailCard: View {
                         .frame(width: 168, alignment: .leading)
 
                     TunerRailReasonTag(text: displayReason, color: .offscriptSignalYellow)
-                    RecommendationSignalTraceView(signals: signals, limit: 1, color: .offscriptSoftPaper)
 
                     TunerLabel(text: metadata, color: .offscriptSoftPaper, size: 8)
                 }
