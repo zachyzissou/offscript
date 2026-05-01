@@ -150,6 +150,27 @@ final class OffScriptUITests: XCTestCase {
     }
 
     @MainActor
+    func testQueueShowsEmptyStateOnFreshLaunch() throws {
+        // #126 acceptance: Queue UI under empty/small/large states needs
+        // pinned coverage. The empty state lives in QueueView.emptyState
+        // and reads `● QUEUE EMPTY` + "Nothing queued yet" + an EXPLORE
+        // SHOWS escape hatch. A user with no subscriptions on a fresh
+        // install lands here, so it has to be readable and the EXPLORE
+        // key has to route somewhere useful.
+        let app = makeApp(hasSeenOnboarding: true, debugLaunchTab: 2)
+        app.launch()
+
+        XCTAssertTrue(app.screen("QueueScreen").waitForExistence(timeout: 12))
+
+        XCTAssertTrue(app.staticTexts["● QUEUE EMPTY"].waitForExistence(timeout: 6),
+                      "Queue empty-state eyebrow missing. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertTrue(app.staticTexts["Nothing queued yet"].waitForExistence(timeout: 4),
+                      "Queue empty-state headline missing. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertTrue(app.staticTexts.containing(labelContaining: "EXPLORE SHOWS").waitForExistence(timeout: 4),
+                      "Queue empty-state escape hatch missing. Hierarchy:\n\(app.debugDescription)")
+    }
+
+    @MainActor
     func testSettingsPanelOpensWithLargeLibrarySeed() throws {
         let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 258, debugEpisodesPerShow: 3)
         app.launch()
