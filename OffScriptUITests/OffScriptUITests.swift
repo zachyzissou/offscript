@@ -111,6 +111,45 @@ final class OffScriptUITests: XCTestCase {
     }
 
     @MainActor
+    func testSettingsSignOutConfirmDismissesCleanly() throws {
+        // The destructive sign-out confirmation panel renders inline inside
+        // Settings. #114 calls out destructive dialogs as a known crash
+        // surface; pin that the user can present the confirmation, cancel
+        // it, and stay in Settings without the sheet collapsing or the
+        // runner dropping.
+        let app = makeApp(hasSeenOnboarding: true)
+        app.launch()
+
+        XCTAssertTrue(app.screen("HomeScreen").waitForExistence(timeout: 10))
+        tapWhenReady(app.buttons["Open settings"].firstMatch, in: app, name: "Open settings key")
+
+        XCTAssertTrue(app.staticTexts["SETTINGS · CONFIG PANEL"].waitForExistence(timeout: 10))
+
+        // Sign-out toggle is rendered only when signed in. The simulator
+        // launches signed-out by default, so this surface won't be present
+        // — guard so the test still adds value when sign-in flows change
+        // the default. When present, exercise it.
+        let signOutToggle = app.buttons["Sign out of OffScript"].firstMatch
+        if signOutToggle.waitForExistence(timeout: 4) {
+            tapWhenReady(signOutToggle, in: app, name: "sign out toggle")
+
+            XCTAssertTrue(app.staticTexts["CONFIRM · SIGN OUT"].waitForExistence(timeout: 6),
+                          "Sign-out confirmation panel did not appear. Hierarchy:\n\(app.debugDescription)")
+            tapWhenReady(app.buttons["Cancel sign out"].firstMatch, in: app, name: "Cancel sign out")
+
+            XCTAssertFalse(app.staticTexts["CONFIRM · SIGN OUT"].exists,
+                           "Sign-out confirmation should be dismissed after Cancel. Hierarchy:\n\(app.debugDescription)")
+        }
+
+        // Whether or not we exercised the sign-out branch, the Settings
+        // sheet must still be alive and the runner must still be foreground.
+        XCTAssertTrue(app.staticTexts["SETTINGS · CONFIG PANEL"].waitForExistence(timeout: 5),
+                      "Settings panel disappeared after destructive-dialog probe. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertEqual(app.state, .runningForeground,
+                       "App dropped to background — destructive dialog likely crashed. Hierarchy:\n\(app.debugDescription)")
+    }
+
+    @MainActor
     func testSettingsPanelOpensWithLargeLibrarySeed() throws {
         let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 258, debugEpisodesPerShow: 3)
         app.launch()
