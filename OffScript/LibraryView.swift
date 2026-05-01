@@ -2555,11 +2555,27 @@ private struct PodcastDetailTunerHeader: View {
     @State private var showUnsubscribeConfirmation = false
     @State private var safariURL: IdentifiableURL?
 
+    /// Same definition as LibraryDirectoryRow.hasSyncFailure (#206).
+    /// Either a failure count > 0 or a `failed` syncStatus flips the
+    /// chip on so the user knows the feed went bad without having to
+    /// flip Library scope to NEEDS SYNC.
+    private var hasSyncFailure: Bool {
+        podcast.syncFailureCount > 0 || podcast.syncStatus == "failed"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 8) {
                 TunerLabel(text: "CHANNEL · DETAIL", color: .offscriptSignalYellow)
                 Spacer()
+                if hasSyncFailure {
+                    // Mirror the Library directory `● SYNC FAILED`
+                    // chip (#206). Surfacing it on the detail header
+                    // tells the user the feed went bad even when the
+                    // subscription is technically still active.
+                    TunerLabel(text: "● SYNC FAILED", color: .offscriptFnRecord)
+                        .accessibilityIdentifier("PodcastDetailSyncFailed")
+                }
                 TunerLabel(text: podcast.isSubscribed ? "● SUBSCRIBED" : "○ UNSUBSCRIBED",
                            color: podcast.isSubscribed ? .offscriptFnMode : .offscriptSoftPaper)
             }

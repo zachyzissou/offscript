@@ -27,6 +27,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home recommendations now have a dedicated “More From Shows You Chose” lane** so explicit like/more-like-this show intent is not mislabeled as passive completion affinity.
 
 ### Changed — Tuner UI conformance
+- **Podcast detail header now flags `● SYNC FAILED`** when the feed has a non-zero failure count or `syncStatus == "failed"`. Mirrors the Library directory row chip from #206 — even when a user has navigated into a podcast detail page, they can see at a glance that the feed is unhealthy without flipping back to the Library scope filter.
 - **Library directory empty state now exposes a `× CLEAR FILTER` recovery key** when an active scope (NEEDS SYNC, etc.) or search query collapsed the list to zero. Mirrors the PodcastDetail clear-filter affordance shipped in #208 — one-tap reset to scope `.all` and empty query instead of having to scroll back up to find the right control.
 - **Playback rate picker now offers a `0.75×` slow option** in both the per-podcast Player picker and the Settings default-rate picker. Useful for language learners, dense or technical content, and accessibility — the previous floor was `1.0×`.
 - **Player `WHAT'S NEXT · ON YOUR FREQUENCY` rows now expose a `+` queue key alongside `▶` play** so a listener can stack a suggested episode without interrupting current playback. Mirrors the play+queue affordance pair on Library / PodcastDetail episode rows. Hides when the suggestion is already queued so the row doesn't render a no-op.
