@@ -132,11 +132,7 @@ final class OffScriptUITests: XCTestCase {
 
         XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 12))
 
-        let importKey = app.buttons["Import podcasts"].firstMatch
-        XCTAssertTrue(importKey.waitForExistence(timeout: 8), "Library Import key missing. Hierarchy:\n\(app.debugDescription)")
-        for _ in 0..<3 where !importKey.isHittable { app.swipeDown() }
-        XCTAssertTrue(importKey.isHittable, "Library Import key not hittable. Hierarchy:\n\(app.debugDescription)")
-        importKey.tap()
+        tapWhenReady(app.buttons["Import podcasts"].firstMatch, in: app, name: "Library Import key")
 
         let importHeader = app.staticTexts["IMPORT · ADD CHANNELS"]
         XCTAssertTrue(importHeader.waitForExistence(timeout: 10), "Import sheet did not appear. Hierarchy:\n\(app.debugDescription)")
