@@ -1122,7 +1122,14 @@ struct LibraryView: View {
                 TunerLabel(text: "● BUILDING DIRECTORY INDEX", color: .offscriptSignalYellow, size: 8)
                     .padding(.top, 2)
             } else if snapshot.isEmpty {
-                LibraryDirectoryEmptyState(query: effectiveDirectoryQuery, scope: directoryScope)
+                LibraryDirectoryEmptyState(
+                    query: effectiveDirectoryQuery,
+                    scope: directoryScope,
+                    onClear: {
+                        directoryQuery = ""
+                        directoryScope = .all
+                    }
+                )
             } else {
                 if isLoadingFullDirectoryCounts && directoryNeedsFullCounts {
                     TunerLabel(text: "● LOADING DIRECTORY COUNTS", color: .offscriptSignalYellow, size: 8)
@@ -2010,14 +2017,37 @@ private struct LibraryAlphabetRail: View {
 private struct LibraryDirectoryEmptyState: View {
     let query: String
     let scope: LibraryDirectoryScope
+    var onClear: (() -> Void)? = nil
+
+    private var hasActiveFilter: Bool {
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || scope != .all
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             TunerLabel(text: "○ NO DIRECTORY MATCH", color: .offscriptSoftPaper)
             Text(message)
                 .font(.system(size: 13))
                 .foregroundStyle(Color.offscriptPaperWhite.opacity(0.72))
                 .fixedSize(horizontal: false, vertical: true)
+
+            // Recovery key — without this, a user who narrowed scope
+            // to NEEDS SYNC and got 0 results had to scroll up and
+            // manually flip back to ALL. One-tap reset matches the
+            // PodcastDetail × CLEAR FILTER affordance.
+            if hasActiveFilter, let onClear {
+                Button(action: onClear) {
+                    TunerLabel(text: "× CLEAR FILTER", color: .offscriptSignalYellow, size: 10)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .frame(minHeight: 44)
+                        .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear directory filter and search")
+                .accessibilityIdentifier("LibraryDirectoryClearFilter")
+            }
         }
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
