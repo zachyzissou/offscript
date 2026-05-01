@@ -23,6 +23,15 @@ These live in [`CLAUDE.md`](CLAUDE.md), but the most important ones:
 - **Stay in-app.** Never open external URLs without `SFSafariViewController`.
 - **Build the actual project** before declaring something fixed. SourceKit's "Cannot find type in scope" for cross-file types is a false positive — use `xcodebuild` or the Xcode MCP `BuildProject`.
 
+## Verifying changes
+
+[`docs/TEST_MATRIX.md`](docs/TEST_MATRIX.md) is the canonical map of what
+is automated, what needs a simulator launch argument, and what only counts
+on a real device. Use it to plan a regression sweep, scope a PR's
+verification section, or sign off a release. Do not claim a real-device
+flow (background playback, Sign in with Apple, iCloud, widgets, Live
+Activity) is verified from simulator-only evidence.
+
 ## Releasing
 
 OffScript ships through **Xcode Cloud** — Apple's CI/CD that runs inside App

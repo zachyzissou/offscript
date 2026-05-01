@@ -5,6 +5,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ## [Unreleased]
 
 ### Added — UI QA swarm coverage
+- **Repository now has a canonical [`docs/TEST_MATRIX.md`](docs/TEST_MATRIX.md)** mapping every major surface (onboarding, import/export, library, search, queue, player, background playback, settings, identity/iCloud, recommendations, widgets/Live Activity, release/TestFlight visibility) to its automated test, simulator manual command (with launch arguments), and real-device-only flow — so agents and sub-agents can plan regression sweeps and PR verification without relying on conversational memory (#116).
 - **Large-library UI smoke coverage now seeds a deterministic 258-show library** and launches directly into Library, giving the 250+ show scrolling case a repeatable simulator test instead of a manual-only complaint.
 - **Settings UI coverage now opens the config panel against a deterministic 258-show library** and verifies simulator iCloud status stays recoverable instead of crashing.
 - **Debug large-library seeding now resets stale simulator data when an explicit library size is requested**, so visual audits and UI tests are not polluted by previous sample stores.
