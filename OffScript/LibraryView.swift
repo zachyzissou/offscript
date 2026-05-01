@@ -2241,6 +2241,7 @@ private struct PodcastShelfRow: View {
             Image(systemName: "chevron.right")
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(Color.offscriptSignalYellow)
+                .accessibilityHidden(true)
         }
         .padding(.vertical, isCompact ? 7 : 10)
     }
