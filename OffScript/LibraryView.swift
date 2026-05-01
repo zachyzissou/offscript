@@ -1077,6 +1077,7 @@ struct LibraryView: View {
                                 .equatable()
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Open \(row.title) channel")
 
                         case .rowSeparator, .sectionSeparator:
                             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
@@ -1758,6 +1759,7 @@ private struct LibraryDirectoryControls: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
+        .accessibilityLabel(title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
@@ -2137,6 +2139,7 @@ struct PodcastDetailView: View {
                                 }
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Load 100 more episodes")
                             .overlay(
                                 Rectangle().fill(Color.offscriptHairline).frame(height: 1),
                                 alignment: .top
@@ -2366,6 +2369,7 @@ private struct PodcastDetailTunerHeader: View {
                             .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Open \(podcast.title) website")
                 }
                 Spacer()
             }
@@ -2405,6 +2409,7 @@ private struct PodcastDetailTunerHeader: View {
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Cancel unsubscribe")
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
@@ -2497,6 +2502,7 @@ private struct PodcastEpisodeTunerRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Play \(episode.title)")
 
                 Button {
                     do { try QueueService.add(episode, in: modelContext) }
@@ -2512,6 +2518,7 @@ private struct PodcastEpisodeTunerRow: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(episode.isQueued)
+                .accessibilityLabel(episode.isQueued ? "\(episode.title) already queued" : "Add \(episode.title) to queue")
 
                 Spacer()
             }
@@ -2562,6 +2569,7 @@ private struct FilterRow: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Filter episodes by \(filter.title)")
                     .accessibilityAddTraits(selection == filter ? .isSelected : [])
                 }
             }
