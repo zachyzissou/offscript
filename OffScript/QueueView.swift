@@ -471,9 +471,9 @@ private struct QueueItemRow: View {
             .accessibilityLabel("Play \(item.episode.title)")
 
             queueIconButton(systemName: "chevron.up", color: .offscriptSoftPaper, disabled: !canMoveUp, action: onMoveUp)
-                .accessibilityLabel("Move up")
+                .accessibilityLabel("Move \(item.episode.title) up in queue")
             queueIconButton(systemName: "chevron.down", color: .offscriptSoftPaper, disabled: !canMoveDown, action: onMoveDown)
-                .accessibilityLabel("Move down")
+                .accessibilityLabel("Move \(item.episode.title) down in queue")
 
             if let onRemove {
                 Button(action: onRemove) {
@@ -486,7 +486,7 @@ private struct QueueItemRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Remove from queue")
+                .accessibilityLabel("Remove \(item.episode.title) from queue")
             }
         }
         .padding(.vertical, 10)
