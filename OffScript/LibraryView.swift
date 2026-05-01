@@ -3021,7 +3021,7 @@ private struct LibraryBatchImportStrip: View {
                                        color: .offscriptFnInfo)
                         }
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Importing \(importer.completedCount) of \(importer.totalCount) feeds in background")
+                        .accessibilityLabel("Importing \(importer.completedCount) of \(importer.totalCount) \(importer.totalCount == 1 ? "feed" : "feeds") in background")
 
                         // Cancel key — once a long OPML batch is running
                         // there was no way to abort it short of force-
