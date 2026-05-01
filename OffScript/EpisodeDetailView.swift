@@ -346,7 +346,9 @@ struct EpisodeDetailView: View {
                         TunerLabel(text: "↻ RETRY DOWNLOAD", color: .offscriptFnRecord, size: 10)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 9)
+                            .frame(minHeight: 44)
                             .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Retry download for \(episode.title)")
