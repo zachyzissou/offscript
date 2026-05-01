@@ -464,6 +464,11 @@ private struct HomeStarterRail: View {
             }
             .buttonStyle(.plain)
             .disabled(isAdded || isImporting)
+            .accessibilityLabel(
+                isAdded
+                    ? "\(pick.title) is already in your library"
+                    : (isImporting ? "Adding \(pick.title) to library" : "Add \(pick.title) to library")
+            )
         }
         .padding(.vertical, 10)
     }
@@ -806,6 +811,9 @@ private struct HeroTunerCard: View {
                 HStack(spacing: 8) {
                     tunerKey(
                         title: episode.playedPosition > 0 ? "→ RESUME" : "→ PLAY",
+                        accessibilityLabel: episode.playedPosition > 0
+                            ? "Resume \(episode.title)"
+                            : "Play \(episode.title)",
                         color: .offscriptSignalYellow
                     ) {
                         PlaybackController.shared.play(episode, in: modelContext)
@@ -813,6 +821,9 @@ private struct HeroTunerCard: View {
 
                     tunerKey(
                         title: episode.isQueued ? "✓ QUEUED" : "+ QUEUE",
+                        accessibilityLabel: episode.isQueued
+                            ? "\(episode.title) is already queued"
+                            : "Add \(episode.title) to queue",
                         color: episode.isQueued ? .offscriptSoftPaper : .offscriptPaperWhite,
                         disabled: episode.isQueued
                     ) {
@@ -842,10 +853,10 @@ private struct HeroTunerCard: View {
 
                 if showsFeedbackActions {
                     HStack(spacing: 8) {
-                        preferenceKey("LIKE", color: .offscriptSignalYellow) { registerAndCollapse(.like) }
-                        preferenceKey("MORE", color: .offscriptFnInfo) { registerAndCollapse(.moreLikeThis) }
-                        preferenceKey("LESS", color: .offscriptSoftPaper) { registerAndCollapse(.lessLikeThis) }
-                        preferenceKey("HIDE", color: .offscriptFnRecord) { registerAndCollapse(.notInterested) }
+                        preferenceKey("LIKE", accessibilityLabel: "Like \(episode.title)", color: .offscriptSignalYellow) { registerAndCollapse(.like) }
+                        preferenceKey("MORE", accessibilityLabel: "More episodes like \(episode.title)", color: .offscriptFnInfo) { registerAndCollapse(.moreLikeThis) }
+                        preferenceKey("LESS", accessibilityLabel: "Fewer episodes like \(episode.title)", color: .offscriptSoftPaper) { registerAndCollapse(.lessLikeThis) }
+                        preferenceKey("HIDE", accessibilityLabel: "Hide \(episode.title) from recommendations", color: .offscriptFnRecord) { registerAndCollapse(.notInterested) }
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
                 }
@@ -864,6 +875,7 @@ private struct HeroTunerCard: View {
     @ViewBuilder
     private func tunerKey(
         title: String,
+        accessibilityLabel: String,
         color: Color,
         disabled: Bool = false,
         action: @escaping () -> Void
@@ -876,6 +888,7 @@ private struct HeroTunerCard: View {
         }
         .buttonStyle(.plain)
         .disabled(disabled)
+        .accessibilityLabel(accessibilityLabel)
     }
 
     private var metadata: String {
@@ -915,7 +928,12 @@ private struct HeroTunerCard: View {
         }
     }
 
-    private func preferenceKey(_ title: String, color: Color, action: @escaping () -> Void) -> some View {
+    private func preferenceKey(
+        _ title: String,
+        accessibilityLabel: String,
+        color: Color,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             TunerLabel(text: title, color: color, size: 9)
                 .padding(.horizontal, 10)
@@ -925,6 +943,7 @@ private struct HeroTunerCard: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
     }
 
     private func statusMessage(for action: PreferenceSignal.Action) -> String {
