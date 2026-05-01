@@ -332,7 +332,11 @@ private struct TunerTabBar: View {
                     .frame(width: 28, height: 22)
 
                 if tab == .queue, queueBadge > 0 {
-                    Text("\(min(queueBadge, 99))")
+                    // 99+ overflow rather than capping silently at "99" —
+                    // a heavy listener with 150+ queued episodes would
+                    // otherwise see a flat "99" on the tab bar that
+                    // disagrees with the QueueView's "150 STACKED".
+                    Text(queueBadge > 99 ? "99+" : "\(queueBadge)")
                         .font(.system(size: 8, weight: .bold, design: .monospaced))
                         .foregroundStyle(Color.offscriptStudioBlack)
                         .padding(.horizontal, 4)
