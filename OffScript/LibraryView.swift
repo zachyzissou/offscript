@@ -1612,27 +1612,61 @@ private struct LibraryTunerHeader: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Import podcasts")
 
+                // Sync + Tune match the IMPORT key's icon+label hairline-
+                // rectangle pattern so the right-aligned trio reads as one
+                // uniform key bank instead of one big button next to two
+                // small icon-only squares (#187). ViewThatFits drops the
+                // labels under width pressure (large Dynamic Type, narrow
+                // devices) without breaking the layout.
                 Button(action: onSync) {
-                    Image(systemName: isSyncing ? "waveform.path" : "arrow.clockwise")
-                        .font(.system(size: 13, weight: .semibold))
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 7) {
+                            Image(systemName: isSyncing ? "waveform.path" : "arrow.clockwise")
+                                .font(.system(size: 12, weight: .semibold))
+                            TunerLabel(
+                                text: "SYNC",
+                                color: isSyncing ? .offscriptFnInfo : .offscriptSignalYellow,
+                                size: 9
+                            )
+                        }
                         .foregroundStyle(isSyncing ? Color.offscriptFnInfo : Color.offscriptSignalYellow)
-                        .frame(width: 36, height: 30)
+                        .padding(.horizontal, 10)
+                        .frame(height: 30)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+
+                        Image(systemName: isSyncing ? "waveform.path" : "arrow.clockwise")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(isSyncing ? Color.offscriptFnInfo : Color.offscriptSignalYellow)
+                            .frame(width: 36, height: 30)
+                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                    }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(isSyncing)
                 .accessibilityLabel(isSyncing ? "Syncing library" : "Sync library")
 
                 Button(action: onOpenSettings) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 13, weight: .semibold))
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 7) {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.system(size: 12, weight: .semibold))
+                            TunerLabel(text: "TUNE", color: .offscriptSignalYellow, size: 9)
+                        }
                         .foregroundStyle(Color.offscriptSignalYellow)
-                        .frame(width: 36, height: 30)
+                        .padding(.horizontal, 10)
+                        .frame(height: 30)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.offscriptSignalYellow)
+                            .frame(width: 36, height: 30)
+                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                    }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open settings")
