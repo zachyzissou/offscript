@@ -17,6 +17,11 @@ struct SearchView: View {
     @State private var isSearching = false
     @State private var importingID: String?
     @State private var errorMessage: String?
+    /// Per-row import error keyed by `PodcastSearchResult.id` so a single
+    /// failed `+ ADD TO LIBRARY` tap renders an actionable RETRY on the
+    /// row that failed instead of vanishing into the global error strip
+    /// (#123 — search subscribe-flow error states).
+    @State private var importErrors: [String: String] = [:]
     @FocusState private var searchFieldFocused: Bool
 
     private let searchService = PodcastSearchService()
@@ -189,6 +194,7 @@ struct SearchView: View {
                         rank: index + 1,
                         isAdded: subscribedFeedURLs.contains(result.feedURL.absoluteString),
                         isImporting: importingID == result.id,
+                        importError: importErrors[result.id],
                         onAdd: { Task { await add(result) } }
                     )
                     if index < results.count - 1 {
@@ -243,14 +249,20 @@ struct SearchView: View {
     private func add(_ result: PodcastSearchResult) async {
         importingID = result.id
         defer { importingID = nil }
+        // Clear any prior failure for this row before a retry so the
+        // button doesn't render the stale `✗ FAILED · RETRY` state
+        // while the new attempt is in flight.
+        importErrors[result.id] = nil
 
         do {
             _ = try syncService.subscribeThenHydrate(from: result, into: modelContext)
-            errorMessage = nil
             storeRecentSearch(result.title)
         } catch {
             searchLogger.error("Import failed for ‘\(result.title, privacy: .public)’: \(error.localizedDescription, privacy: .public)")
-            errorMessage = "Couldn’t import \(result.title): \(error.localizedDescription)"
+            // Row-scoped error state — the row button now communicates the
+            // failure and offers a retry without the user re-typing the
+            // query or hunting for which row failed in a long results list.
+            importErrors[result.id] = error.localizedDescription
         }
     }
 
@@ -437,8 +449,27 @@ private struct SearchResultRow: View {
     let rank: Int
     let isAdded: Bool
     let isImporting: Bool
+    /// Optional row-scoped import error message. When non-nil, the
+    /// `+ ADD TO LIBRARY` key flips to `✗ FAILED · RETRY` in the
+    /// `offscriptFnRecord` accent and the failure detail renders below
+    /// the action row, so a long results list still tells the user
+    /// which row failed and gives them a one-tap recovery path.
+    var importError: String? = nil
     let onAdd: () -> Void
     @State private var safariURL: IdentifiableURL?
+
+    private var hasImportError: Bool { importError != nil && !isImporting && !isAdded }
+    private var actionLabel: String {
+        if isAdded { return "✓ ADDED" }
+        if isImporting { return "○ ADDING…" }
+        if hasImportError { return "✗ FAILED · RETRY" }
+        return "+ ADD TO LIBRARY"
+    }
+    private var actionColor: Color {
+        if isAdded { return .offscriptFnMode }
+        if hasImportError { return .offscriptFnRecord }
+        return .offscriptSignalYellow
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -486,16 +517,13 @@ private struct SearchResultRow: View {
                     onAdd()
                 } label: {
                     TunerLabel(
-                        text: isAdded ? "✓ ADDED" : (isImporting ? "○ ADDING…" : "+ ADD TO LIBRARY"),
-                        color: isAdded ? .offscriptFnMode : .offscriptSignalYellow,
+                        text: actionLabel,
+                        color: actionColor,
                         size: 10
                     )
                     .padding(.horizontal, 12)
                     .padding(.vertical, 9)
-                    .overlay(Rectangle().stroke(
-                        isAdded ? Color.offscriptFnMode : Color.offscriptSignalYellow,
-                        lineWidth: 1
-                    ))
+                    .overlay(Rectangle().stroke(actionColor, lineWidth: 1))
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
@@ -504,7 +532,15 @@ private struct SearchResultRow: View {
                 .accessibilityLabel(
                     isAdded
                         ? "\(result.title) is already in your library"
-                        : (isImporting ? "Adding \(result.title) to library" : "Add \(result.title) to library")
+                        : (isImporting
+                            ? "Adding \(result.title) to library"
+                            : (hasImportError
+                                ? "Retry adding \(result.title) to library"
+                                : "Add \(result.title) to library"))
+                )
+                .accessibilityHint(hasImportError ? (importError ?? "") : "")
+                .accessibilityIdentifier(
+                    hasImportError ? "SearchResultRow.RetryAdd.\(result.id)" : "SearchResultRow.Add.\(result.id)"
                 )
 
                 if let host = result.websiteURL {
@@ -522,6 +558,21 @@ private struct SearchResultRow: View {
                     .accessibilityLabel("Open \(result.title) website")
                 }
                 Spacer()
+            }
+
+            if hasImportError, let importError {
+                HStack(alignment: .top, spacing: 8) {
+                    Spacer().frame(width: 28 + 12 + 64 + 12)
+                    VStack(alignment: .leading, spacing: 4) {
+                        TunerLabel(text: "● IMPORT FAILED", color: .offscriptFnRecord, size: 8)
+                        Text(importError)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Color.offscriptPaperWhite.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                }
+                .accessibilityElement(children: .combine)
             }
         }
         .padding(.vertical, 10)
