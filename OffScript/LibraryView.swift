@@ -2150,7 +2150,7 @@ private struct TunerLibraryCard: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(episode.isQueued)
-                .accessibilityLabel(episode.isQueued ? "Already queued" : "Add \(episode.title) to queue")
+                .accessibilityLabel(episode.isQueued ? "\(episode.title) already queued" : "Add \(episode.title) to queue")
 
                 Spacer()
             }
