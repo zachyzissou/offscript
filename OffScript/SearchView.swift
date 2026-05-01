@@ -12,7 +12,6 @@ struct SearchView: View {
     let hidesRootNavigationBar: Bool
     @AppStorage("offscript.recentSearches") private var recentSearchesStorage = ""
     @State private var query = ""
-    @State private var isSearchActive = false
     @State private var results: [PodcastSearchResult] = []
     @State private var isSearching = false
     /// Per-row in-flight import set keyed by `PodcastSearchResult.id`.
