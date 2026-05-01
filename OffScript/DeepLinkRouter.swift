@@ -34,6 +34,17 @@ extension Notification.Name {
 ///                                        → switch the tab bar selection
 @MainActor
 enum DeepLinkRouter {
+    /// Pending podcast deep link picked up by `LibraryView.onAppear` on
+    /// the first appearance after a tab switch. The notification path
+    /// alone races with the lazy-load of `LibraryView` — when the user
+    /// hits an `offscript://podcast/<uuid>` URL on a cold launch and
+    /// Library hasn't been instantiated yet, the `.offscriptOpenPodcast`
+    /// notification fires before the view's `onReceive` is wired.
+    /// Stashing the UUID here lets the view consume it on first appear
+    /// regardless of timing; the value is cleared on consumption so a
+    /// later tab return doesn't re-trigger navigation.
+    static var pendingPodcastDeepLink: UUID?
+
     /// Pushed by ContentView's `.onOpenURL`. Reads the URL into a route,
     /// hydrates from SwiftData if needed, then mutates shared singletons
     /// (PlaybackController, navigation state) to drive UI.
@@ -139,10 +150,16 @@ enum DeepLinkRouter {
             return
         }
 
-        // Switch to the Library tab first so the LibraryView NavigationStack
-        // is on screen when the open-podcast notification lands. The
-        // notification carries the UUID — LibraryView listens and binds
-        // to its existing `selectedPodcastID` state.
+        // Stash the UUID before posting so a cold-launch deep link that
+        // beats LibraryView's lazy instantiation can still be consumed
+        // via `onAppear`. Posted notification still drives the warm path
+        // where Library is already loaded.
+        pendingPodcastDeepLink = id
+
+        // Switch to the Library tab so the LibraryView NavigationStack is
+        // on screen. LibraryView listens for the notification *and*
+        // consumes the pending UUID on first appear, so timing between
+        // the tab swap and the open-podcast notification doesn't matter.
         NotificationCenter.default.post(
             name: .offscriptSwitchTab,
             object: nil,
