@@ -407,7 +407,13 @@ struct EpisodeDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(feedbackGiven != nil)
-                .accessibilityLabel(feedbackGiven == .like ? "Liked" : "Like \(episode.title)")
+                .accessibilityLabel(
+                    feedbackGiven == .like
+                        ? "Liked"
+                        : (feedbackGiven == .lessLikeThis
+                            ? "Feedback already given: marked not for me"
+                            : "Like \(episode.title)")
+                )
 
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -433,7 +439,13 @@ struct EpisodeDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(feedbackGiven != nil)
-                .accessibilityLabel(feedbackGiven == .lessLikeThis ? "Marked not for me" : "Not for me — show fewer episodes like \(episode.title)")
+                .accessibilityLabel(
+                    feedbackGiven == .lessLikeThis
+                        ? "Marked not for me"
+                        : (feedbackGiven == .like
+                            ? "Feedback already given: liked"
+                            : "Not for me — show fewer episodes like \(episode.title)")
+                )
 
                 Spacer()
             }
