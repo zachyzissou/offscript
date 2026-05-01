@@ -33,10 +33,40 @@ private struct RephraseResult {
 enum RecommendationExplainer {
     private static var cache: [UUID: String] = [:]
 
+    /// The result of running the deterministic explainer: the user-visible
+    /// copy string plus the source bucket the explainer ultimately picked.
+    /// Callers that walk a rail and want to vary copy across adjacent cards
+    /// pass the previous result's `chosenSource` as the next call's
+    /// `avoidingSource` — see `TunerDiscoveryRail.rotatedReasons` (#179).
+    struct AuthoredReason: Equatable {
+        let copy: String
+        let chosenSource: String?
+    }
+
     /// Deterministic copy pass for the synchronous UI path. This uses the
     /// same signal trace that produced the score, so Home and Player can show
     /// authored WHY copy without waiting on FoundationModels availability.
-    static func authoredReason(fallback: String, signals: [RecommendationSignal]) -> String {
+    ///
+    /// Convenience overload — returns just the copy string. Use
+    /// `authoredReasonWithSource(...)` when you need to thread the chosen
+    /// source through to a sibling call.
+    static func authoredReason(
+        fallback: String,
+        signals: [RecommendationSignal],
+        avoidingSource: String? = nil
+    ) -> String {
+        authoredReasonWithSource(fallback: fallback, signals: signals, avoidingSource: avoidingSource).copy
+    }
+
+    /// Same as `authoredReason(...)` but returns both the user-visible copy
+    /// and the source bucket the explainer picked. Single source of truth
+    /// for the bucket-selection logic, so a rail caller can thread the
+    /// chosen source forward without re-deriving it.
+    static func authoredReasonWithSource(
+        fallback: String,
+        signals: [RecommendationSignal],
+        avoidingSource: String? = nil
+    ) -> AuthoredReason {
         var lookup: [String: String] = [:]
         for signal in signals {
             let key = signal.label.lowercased()
@@ -47,7 +77,18 @@ enum RecommendationExplainer {
         let sources = signals
             .filter { $0.label.caseInsensitiveCompare("source") == .orderedSame }
             .map { $0.value.lowercased() }
-        let source = authoredSource(from: sources)
+        let avoid = avoidingSource?.lowercased()
+        let source = authoredSource(from: sources, excluding: avoid)
+        let copy = renderCopy(fallback: fallback, sources: sources, lookup: lookup, source: source)
+        return AuthoredReason(copy: copy, chosenSource: source)
+    }
+
+    private static func renderCopy(
+        fallback: String,
+        sources: [String],
+        lookup: [String: String],
+        source: String?
+    ) -> String {
 
         if sources.contains("explicit signal"),
            sources.contains("show intent"),
@@ -179,7 +220,10 @@ enum RecommendationExplainer {
         }
     }
 
-    private static func authoredSource(from sources: [String]) -> String? {
+    /// Picks the highest-priority source bucket present in `sources`, with an
+    /// optional `excluding` parameter that skips a specific bucket so the
+    /// discovery rail can vary copy across adjacent cards.
+    static func authoredSource(from sources: [String], excluding: String? = nil) -> String? {
         let priority = [
             "queue",
             "resume",
@@ -202,7 +246,15 @@ enum RecommendationExplainer {
             "available",
             "discovery"
         ]
-        return priority.first { sources.contains($0) } ?? sources.first
+        guard let excluded = excluding else {
+            return priority.first(where: sources.contains) ?? sources.first
+        }
+        if let chosen = priority.first(where: { sources.contains($0) && $0 != excluded }) {
+            return chosen
+        }
+        // Every priority match (if any) was the excluded bucket. Fall back
+        // to the first non-excluded raw source, then the first raw source.
+        return sources.first(where: { $0 != excluded }) ?? sources.first
     }
 
     private static func joinedList(_ value: String) -> String {
