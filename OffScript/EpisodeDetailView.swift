@@ -265,7 +265,7 @@ struct EpisodeDetailView: View {
             }
             .buttonStyle(.plain)
             .disabled(episode.isQueued)
-            .accessibilityLabel(episode.isQueued ? "Already queued" : "Add \(episode.title) to queue")
+            .accessibilityLabel(episode.isQueued ? "\(episode.title) already queued" : "Add \(episode.title) to queue")
 
             // QUEUE NEXT — promotes the episode to position 0 so it
             // plays right after the current one finishes. Distinct
