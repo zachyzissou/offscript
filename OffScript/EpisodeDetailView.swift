@@ -1,5 +1,8 @@
+import OSLog
 import SwiftData
 import SwiftUI
+
+private let episodeDetailLogger = Logger(subsystem: "com.offscript", category: "EpisodeDetail")
 
 // MARK: - EpisodeDetailView (Tuner spec sheet)
 //
@@ -226,7 +229,10 @@ struct EpisodeDetailView: View {
             )
 
             Button {
-                withAnimation { try? QueueService.add(episode, in: modelContext) }
+                withAnimation {
+                    do { try QueueService.add(episode, in: modelContext) }
+                    catch { episodeDetailLogger.error("Queue add failed: \(error.localizedDescription, privacy: .public)") }
+                }
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: episode.isQueued ? "checkmark" : "plus")
