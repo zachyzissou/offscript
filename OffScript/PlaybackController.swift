@@ -651,25 +651,37 @@ final class PlaybackController: ObservableObject {
         guard nowPlayingArtworkURL != url else { return }
         nowPlayingArtworkURL = url
         nowPlayingArtworkTask?.cancel()
+        let logger = self.logger
         nowPlayingArtworkTask = Task.detached(priority: .utility) { [url] in
             // Failure here is non-fatal (the lock screen falls back to the
             // app icon) but CLAUDE.md bans bare `try?` and we want a log
             // line on persistent failures so an offline-only user with a
             // missing artwork URL can be diagnosed from sysdiagnose.
-            let data: Data?
+            // URLSession.shared.data(from:) doesn't treat HTTP 4xx/5xx as
+            // a thrown error — explicitly check the status so a 404
+            // artwork URL gets logged with its status code instead of
+            // being silently treated as success-with-empty-data.
+            let data: Data
             do {
                 if url.isFileURL {
                     data = try Data(contentsOf: url)
                 } else {
-                    data = try await URLSession.shared.data(from: url).0
+                    let (fetched, response) = try await URLSession.shared.data(for: URLRequest(url: url))
+                    if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                        logger.info("Now-playing artwork load got HTTP \(http.statusCode, privacy: .public) for \(url.absoluteString, privacy: .public)")
+                        return
+                    }
+                    data = fetched
                 }
             } catch {
-                Logger(subsystem: "com.offscript", category: "Playback")
-                    .info("Now-playing artwork load failed for \(url.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                logger.info("Now-playing artwork load failed for \(url.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 return
             }
             guard !Task.isCancelled else { return }
-            guard let data, let image = UIImage(data: data) else { return }
+            guard let image = UIImage(data: data) else {
+                logger.info("Now-playing artwork load returned non-image bytes for \(url.absoluteString, privacy: .public)")
+                return
+            }
             let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
             await MainActor.run {
                 guard PlaybackController.shared.nowPlayingArtworkURL == url else { return }
