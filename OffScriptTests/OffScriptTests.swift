@@ -550,7 +550,67 @@ struct OffScriptTests {
         #expect(sections.first?.episodes.first?.id == queued.id)
         #expect(sections.first?.explanation(for: queued).contains("queue") == true)
         #expect(sections.first?.signalTrace(for: queued).contains(RecommendationSignal(label: "source", value: "queue")) == true)
-        #expect(sections.flatMap(\.episodes).contains(where: { $0.id == fresh.id }) == false)
+        // Fresh-but-unanchored episodes still surface in the From Your
+        // Subscriptions catch-all rail so a thin-signal user with imported
+        // shows isn't shown only Apple Podcasts discovery. They must not
+        // appear above Signal Lock or in Signal Lock itself, though.
+        #expect(sections.first?.episodes.contains(where: { $0.id == fresh.id }) == false)
+        let freshSection = sections.first(where: { $0.episodes.contains(where: { $0.id == fresh.id }) })
+        #expect(freshSection?.title == "From Your Subscriptions")
+    }
+
+    @Test
+    @MainActor
+    func homeRecommendationsSurfaceSubscriptionFreshnessWhenSignalIsThin() throws {
+        // Reproduces the "feels like Apple Podcasts" case (#191): user
+        // has subscriptions but no completion / explicit-feedback signal
+        // in the last 90 days. Without the From Your Subscriptions
+        // fallback, the rec rails come back empty and Discovery /
+        // Tuned Genres dominate the screen. With the fallback, the
+        // user's actual subscribed-show episodes surface as a real
+        // Home rail.
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        AppSettings.preferredGenres = []
+        defer { AppSettings.preferredGenres = originalGenres }
+
+        let subscribedShow = Podcast(
+            title: "Imported Show",
+            feedURL: URL(string: "https://example.com/imported.xml")!,
+            isSubscribed: true
+        )
+        let unsubscribedShow = Podcast(
+            title: "Unsubscribed Drift",
+            feedURL: URL(string: "https://example.com/drift.xml")!,
+            isSubscribed: false
+        )
+        let subEpisode = Episode(
+            title: "Latest From Your Subs",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/sub.mp3")!,
+            podcast: subscribedShow
+        )
+        let outsideEpisode = Episode(
+            title: "Outsider — never tuned",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/outside.mp3")!,
+            podcast: unsubscribedShow
+        )
+
+        context.insert(subscribedShow)
+        context.insert(unsubscribedShow)
+        context.insert(subEpisode)
+        context.insert(outsideEpisode)
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+
+        let fromYourSubs = sections.first(where: { $0.title == "From Your Subscriptions" })
+        #expect(fromYourSubs != nil, "From Your Subscriptions rail should populate when subscribed shows have unplayed episodes")
+        #expect(fromYourSubs?.episodes.contains(where: { $0.id == subEpisode.id }) == true)
+        #expect(fromYourSubs?.episodes.contains(where: { $0.id == outsideEpisode.id }) == false)
     }
 
     @Test
@@ -602,7 +662,12 @@ struct OffScriptTests {
         #expect(sections.first?.explanation(for: olderFromAffinity) == "You keep finishing Finished Show")
         #expect(sections.first?.signalTrace(for: olderFromAffinity).contains(RecommendationSignal(label: "source", value: "completion")) == true)
         #expect(sections.first?.signalTrace(for: olderFromAffinity).contains(RecommendationSignal(label: "show", value: "Finished Show")) == true)
-        #expect(sections.flatMap(\.episodes).contains(where: { $0.id == freshRandom.id }) == false)
+        // freshRandom is from a subscribed show with no taste signal, so
+        // it surfaces in From Your Subscriptions (the catch-all rail) but
+        // never above completion-affinity in the signal-driven rails.
+        let freshRandomSection = sections.first(where: { $0.episodes.contains(where: { $0.id == freshRandom.id }) })
+        #expect(freshRandomSection == nil || freshRandomSection?.title == "From Your Subscriptions")
+        #expect(sections.first?.episodes.contains(where: { $0.id == freshRandom.id }) == false)
     }
 
     @Test
@@ -986,7 +1051,12 @@ struct OffScriptTests {
 
     @Test
     @MainActor
-    func homeRecommendationsDoNotReturnRecencyOnlyCandidates() throws {
+    func homeRecommendationsRouteRecencyOnlyCandidatesToSubscriptionFallbackOnly() throws {
+        // Replaces the old "no recency-only candidates" contract: cold-
+        // start episodes from a subscribed show now surface ONLY in the
+        // From Your Subscriptions catch-all rail (so a fresh-install user
+        // doesn't see only Apple Podcasts discovery), and never in any
+        // signal-driven rail.
         let container = try makeContainer()
         let context = container.mainContext
         let originalGenres = AppSettings.preferredGenres
@@ -1007,7 +1077,17 @@ struct OffScriptTests {
 
         let sections = try RecommendationService().homeSections(context: context, limit: 3)
 
-        #expect(sections.isEmpty)
+        let containingSection = sections.first(where: { $0.episodes.contains(where: { $0.id == episode.id }) })
+        #expect(containingSection?.title == "From Your Subscriptions")
+
+        let signalDrivenTitles: Set<String> = [
+            "Signal Lock", "Resume Thread", "More From Shows You Chose",
+            "Shows You Finish", "Topic Continuation", "Tuned Genres", "Short Window"
+        ]
+        for section in sections where signalDrivenTitles.contains(section.title) {
+            #expect(section.episodes.contains(where: { $0.id == episode.id }) == false,
+                    "\(section.title) must not surface recency-only candidates")
+        }
     }
 
     @Test
