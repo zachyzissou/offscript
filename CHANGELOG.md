@@ -27,6 +27,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home recommendations now have a dedicated “More From Shows You Chose” lane** so explicit like/more-like-this show intent is not mislabeled as passive completion affinity.
 
 ### Changed — Tuner UI conformance
+- **HeroTunerCard `…` more-actions key now reads as `More actions for <title>`** (was generic `More actions`) and meets 44pt tap target (was 32pt visible).
 - **EpisodeCompactCard's `+ QUEUE` and `✓ PLAYED` inline actions now expose title-aware VoiceOver labels** — `Add <title> to queue` / `Mark <title> as played`. Without this they read only the mono visible text without episode context.
 - **CardComponents queue button now uses title-aware VoiceOver label** — last surface still using generic `Already queued`. Now reads `<title> already queued` consistent with #224's pass.
 - **LibraryImportSheet `BACK` button now reads as `Back to import menu`** instead of `ChevronLeft, BACK` two-stop readback. Also bumped to 44pt min height.
