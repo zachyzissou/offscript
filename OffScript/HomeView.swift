@@ -517,10 +517,14 @@ private struct HomeStarterRail: View {
                     )
                     .padding(.horizontal, 12)
                     .padding(.vertical, 9)
+                    // 44pt min-height so the starter-pick + ADD key
+                    // meets HIG's tap target (was ~30pt).
+                    .frame(minHeight: 44)
                     .overlay(Rectangle().stroke(
                         actionColor(isAdded: isAdded, hasImportError: hasImportError),
                         lineWidth: 1
                     ))
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(isAdded || isImporting)
@@ -796,11 +800,12 @@ private struct TunerDiscoveryRail: View {
                     color: isAdded ? .offscriptFnMode : .offscriptSignalYellow,
                     size: 10
                 )
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, minHeight: 44)
                 .padding(.vertical, 9)
                 .overlay(
                     Rectangle().stroke(isAdded ? Color.offscriptFnMode : Color.offscriptSignalYellow, lineWidth: 1)
                 )
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(isAdded || isImporting)
