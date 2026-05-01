@@ -165,6 +165,11 @@ struct SettingsView: View {
                 .minimumScaleFactor(0.65)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Combine the value+label pair into one accessibility element
+        // so VoiceOver reads "12 SUBSCRIBED" once instead of "12,
+        // SUBSCRIBED" as two separate stops.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(value) \(label.lowercased())")
     }
 
     private var divider: some View {
