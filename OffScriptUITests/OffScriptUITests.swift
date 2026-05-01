@@ -56,6 +56,61 @@ final class OffScriptUITests: XCTestCase {
     }
 
     @MainActor
+    func testSettingsPanelOpensFromLibrary() throws {
+        // Settings has its own button in LibraryTunerHeader. Build 51 saw a
+        // Settings crash specifically when opened from Library, so the
+        // Library entry point gets its own smoke beyond the Home one above.
+        let app = makeApp(hasSeenOnboarding: true, debugLaunchTab: 1)
+        app.launch()
+
+        XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 12))
+
+        let openSettings = app.buttons["Open settings"].firstMatch
+        XCTAssertTrue(openSettings.waitForExistence(timeout: 8), "Library Open settings button missing. Hierarchy:\n\(app.debugDescription)")
+        for _ in 0..<4 where !openSettings.isHittable {
+            app.swipeDown()
+        }
+        XCTAssertTrue(openSettings.isHittable, "Library Open settings button not hittable. Hierarchy:\n\(app.debugDescription)")
+        openSettings.tap()
+
+        let settingsLabel = app.staticTexts["SETTINGS · CONFIG PANEL"]
+        XCTAssertTrue(settingsLabel.waitForExistence(timeout: 10), "Settings panel did not appear from Library. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertTrue(app.buttons["Close settings"].waitForExistence(timeout: 5))
+
+        app.buttons["Close settings"].tap()
+        XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 8), "Closing Settings did not return to Library. Hierarchy:\n\(app.debugDescription)")
+    }
+
+    @MainActor
+    func testSettingsPanelDismissAndReopenCycleStaysStable() throws {
+        // Build 51 reports were on the Settings sheet itself, but a recurring
+        // class of SwiftUI sheet crashes shows up only after a present →
+        // dismiss → re-present cycle (state-restoration races, double
+        // dismiss). Run that cycle and assert the panel is still healthy.
+        let app = makeApp(hasSeenOnboarding: true)
+        app.launch()
+
+        XCTAssertTrue(app.screen("HomeScreen").waitForExistence(timeout: 10))
+
+        for cycle in 0..<3 {
+            let openSettings = app.buttons["Open settings"].firstMatch
+            XCTAssertTrue(openSettings.waitForExistence(timeout: 8), "Open settings missing on cycle \(cycle). Hierarchy:\n\(app.debugDescription)")
+            openSettings.tap()
+
+            let settingsLabel = app.staticTexts["SETTINGS · CONFIG PANEL"]
+            XCTAssertTrue(settingsLabel.waitForExistence(timeout: 8), "Settings did not appear on cycle \(cycle). Hierarchy:\n\(app.debugDescription)")
+
+            let closeSettings = app.buttons["Close settings"]
+            XCTAssertTrue(closeSettings.waitForExistence(timeout: 5))
+            closeSettings.tap()
+
+            XCTAssertTrue(app.screen("HomeScreen").waitForExistence(timeout: 8), "Home did not return on cycle \(cycle). Hierarchy:\n\(app.debugDescription)")
+        }
+
+        XCTAssertEqual(app.state, .runningForeground, "App was not running in the foreground after Settings reopen cycles — likely a crash in the Settings sheet lifecycle.")
+    }
+
+    @MainActor
     func testSettingsPanelOpensWithLargeLibrarySeed() throws {
         let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 258, debugEpisodesPerShow: 3)
         app.launch()

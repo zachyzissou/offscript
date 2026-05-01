@@ -106,6 +106,7 @@ struct QueueView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Clear all \(orderedItems.count) queued episodes")
                 }
             }
 
@@ -236,6 +237,7 @@ private struct QueueLeadStrip: View {
                         .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Play next queued episode \(item.episode.title)")
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -249,6 +251,7 @@ private struct QueueLeadStrip: View {
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Remove \(item.episode.title) from queue")
 
                 Spacer()
             }
