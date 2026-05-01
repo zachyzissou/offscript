@@ -27,6 +27,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home recommendations now have a dedicated “More From Shows You Chose” lane** so explicit like/more-like-this show intent is not mislabeled as passive completion affinity.
 
 ### Changed — Tuner UI conformance
+- **Settings stats block (SUBSCRIBED / EPISODES / UNPLAYED / QUEUED + EXPLICIT / COMPLETED / TAGS) now reads as a single VoiceOver element per stat** — `12 subscribed` instead of `12, SUBSCRIBED` as two separate stops. Combines the value and label via `.accessibilityElement(children: .ignore)`.
 - **PodcastDetail `+ LOAD 100 MORE` pager key now meets 44pt tap target.** Was ~34pt visible.
 - **Player chapter row (`tap-to-seek`) now meets 44pt tap target.** Was ~33pt visible. Same `frame(minHeight: 44)` fix.
 - **EpisodeTranslationView `→ TRANSLATE TO …` key now meets 44pt tap target.** Was ~30pt visible. Same `frame(minHeight: 44) + contentShape(Rectangle())` pattern.
