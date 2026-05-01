@@ -347,6 +347,7 @@ struct PlayerView: View {
                     .monospacedDigit()
             }
             .padding(.vertical, 10)
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

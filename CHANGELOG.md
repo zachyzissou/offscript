@@ -27,6 +27,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home recommendations now have a dedicated “More From Shows You Chose” lane** so explicit like/more-like-this show intent is not mislabeled as passive completion affinity.
 
 ### Changed — Tuner UI conformance
+- **Player chapter row (`tap-to-seek`) now meets 44pt tap target.** Was ~33pt visible. Same `frame(minHeight: 44)` fix.
 - **EpisodeTranslationView `→ TRANSLATE TO …` key now meets 44pt tap target.** Was ~30pt visible. Same `frame(minHeight: 44) + contentShape(Rectangle())` pattern.
 - **Speech transcription panel action button now meets 44pt tap target.** Was ~30pt visible. Same `frame(minHeight: 44) + contentShape(Rectangle())` fix applied across the app.
 - **Home now responds to pull-to-refresh** with the same `loadSections(manual:)` path as the existing retune key in HomeTunerHeader. Mirrors the Library / PodcastDetail pull-to-refresh shipped in #239 so the standard iOS swipe-down works on every list-of-content surface in the app.
