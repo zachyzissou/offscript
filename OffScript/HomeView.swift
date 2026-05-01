@@ -970,8 +970,11 @@ private struct HeroTunerCard: View {
                             .foregroundStyle(Color.offscriptSignalYellow)
                             .frame(width: 38, height: 32)
                             .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
-                    .accessibilityLabel("More actions")
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("More actions for \(episode.title)")
                     .accessibilityHint(showsFeedbackActions ? "Double-tap to hide feedback actions." : "Double-tap to show feedback actions.")
                 }
                 .padding(.top, 4)
