@@ -33,18 +33,40 @@ private struct RephraseResult {
 enum RecommendationExplainer {
     private static var cache: [UUID: String] = [:]
 
+    /// The result of running the deterministic explainer: the user-visible
+    /// copy string plus the source bucket the explainer ultimately picked.
+    /// Callers that walk a rail and want to vary copy across adjacent cards
+    /// pass the previous result's `chosenSource` as the next call's
+    /// `avoidingSource` — see `TunerDiscoveryRail.rotatedReasons` (#179).
+    struct AuthoredReason: Equatable {
+        let copy: String
+        let chosenSource: String?
+    }
+
     /// Deterministic copy pass for the synchronous UI path. This uses the
     /// same signal trace that produced the score, so Home and Player can show
     /// authored WHY copy without waiting on FoundationModels availability.
     ///
-    /// Pass `avoidingSource` to skip a specific source bucket when the caller
-    /// has already rendered a card with that bucket — used by the Home
-    /// discovery rail to vary copy across adjacent cards (#179).
+    /// Convenience overload — returns just the copy string. Use
+    /// `authoredReasonWithSource(...)` when you need to thread the chosen
+    /// source through to a sibling call.
     static func authoredReason(
         fallback: String,
         signals: [RecommendationSignal],
         avoidingSource: String? = nil
     ) -> String {
+        authoredReasonWithSource(fallback: fallback, signals: signals, avoidingSource: avoidingSource).copy
+    }
+
+    /// Same as `authoredReason(...)` but returns both the user-visible copy
+    /// and the source bucket the explainer picked. Single source of truth
+    /// for the bucket-selection logic, so a rail caller can thread the
+    /// chosen source forward without re-deriving it.
+    static func authoredReasonWithSource(
+        fallback: String,
+        signals: [RecommendationSignal],
+        avoidingSource: String? = nil
+    ) -> AuthoredReason {
         var lookup: [String: String] = [:]
         for signal in signals {
             let key = signal.label.lowercased()
@@ -55,7 +77,18 @@ enum RecommendationExplainer {
         let sources = signals
             .filter { $0.label.caseInsensitiveCompare("source") == .orderedSame }
             .map { $0.value.lowercased() }
-        let source = authoredSource(from: sources, excluding: avoidingSource?.lowercased())
+        let avoid = avoidingSource?.lowercased()
+        let source = authoredSource(from: sources, excluding: avoid)
+        let copy = renderCopy(fallback: fallback, sources: sources, lookup: lookup, source: source)
+        return AuthoredReason(copy: copy, chosenSource: source)
+    }
+
+    private static func renderCopy(
+        fallback: String,
+        sources: [String],
+        lookup: [String: String],
+        source: String?
+    ) -> String {
 
         if sources.contains("explicit signal"),
            sources.contains("show intent"),
@@ -213,13 +246,15 @@ enum RecommendationExplainer {
             "available",
             "discovery"
         ]
-        if let chosen = priority.first(where: { sources.contains($0) && $0 != excluding }) {
+        guard let excluded = excluding else {
+            return priority.first(where: sources.contains) ?? sources.first
+        }
+        if let chosen = priority.first(where: { sources.contains($0) && $0 != excluded }) {
             return chosen
         }
-        // Either every priority match was excluded, or no priority match
-        // exists. Fall back to the next non-excluded source, then the first
-        // raw source if even that is empty.
-        return sources.first(where: { $0 != excluding }) ?? sources.first
+        // Every priority match (if any) was the excluded bucket. Fall back
+        // to the first non-excluded raw source, then the first raw source.
+        return sources.first(where: { $0 != excluded }) ?? sources.first
     }
 
     private static func joinedList(_ value: String) -> String {

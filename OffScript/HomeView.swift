@@ -652,22 +652,21 @@ private struct TunerDiscoveryRail: View {
     /// by the same source bucket (e.g. `latest episode`) doesn't read as
     /// a Mad Libs template (#179). When two adjacent cards' top-priority
     /// source matches, the second card falls back to its next-best signal.
+    /// `authoredReasonWithSource` returns both the rendered copy and the
+    /// bucket the explainer ultimately picked, so this loop has a single
+    /// source of truth for the selection — no duplicate logic to drift.
     static func rotatedReasons(for results: [ScoredDiscoveryResult]) -> [String] {
         var output: [String] = []
         output.reserveCapacity(results.count)
         var previousSource: String?
         for scored in results {
-            let sources = scored.signalTrace
-                .filter { $0.label.caseInsensitiveCompare("source") == .orderedSame }
-                .map { $0.value.lowercased() }
-            let chosen = RecommendationExplainer.authoredSource(from: sources, excluding: previousSource)
-            let reason = RecommendationExplainer.authoredReason(
+            let result = RecommendationExplainer.authoredReasonWithSource(
                 fallback: scored.explanation,
                 signals: scored.signalTrace,
                 avoidingSource: previousSource
             )
-            output.append(reason)
-            previousSource = chosen
+            output.append(result.copy)
+            previousSource = result.chosenSource
         }
         return output
     }
