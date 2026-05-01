@@ -577,6 +577,7 @@ private struct TunerScrubber: View {
     let onSeek: (Double) -> Void
 
     @State private var dragValue: Double?
+    @State private var bubbleWidth: CGFloat = Self.fallbackBubbleWidth
 
     private var displayValue: Double {
         min(max(dragValue ?? value, 0), max(duration, 1))
@@ -590,6 +591,7 @@ private struct TunerScrubber: View {
         GeometryReader { proxy in
             let width = max(proxy.size.width, 1)
             let thumbX = min(max(width * progress, 0), width)
+            let isDragging = dragValue != nil
 
             ZStack(alignment: .leading) {
                 Rectangle()
@@ -611,20 +613,47 @@ private struct TunerScrubber: View {
                     .fill(Color.offscriptSignalYellow)
                     .frame(width: 6, height: 22)
                     .offset(x: min(max(thumbX - 3, 0), width - 6))
+
+                // Position bubble — only visible during a drag (#195).
+                // Tracks the finger's X position so the user can read
+                // the target timestamp before releasing instead of
+                // guessing where the seek will land.
+                if isDragging {
+                    Self.positionBubble(timestamp: Self.timestamp(displayValue))
+                        .background(
+                            GeometryReader { bubbleProxy in
+                                Color.clear.preference(
+                                    key: ScrubberBubbleWidthPreferenceKey.self,
+                                    value: bubbleProxy.size.width
+                                )
+                            }
+                        )
+                        .offset(x: Self.bubbleOffset(thumbX: thumbX, width: width, bubbleWidth: bubbleWidth))
+                        .offset(y: -36)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        .accessibilityHidden(true)
+                }
             }
             .frame(height: 44)
             .contentShape(Rectangle())
+            .onPreferenceChange(ScrubberBubbleWidthPreferenceKey.self) { bubbleWidth = $0 }
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { gesture in
+                        // Track the finger 1:1 — animating per-frame here makes
+                        // the thumb/bubble lag behind the gesture and introduces
+                        // jank under high-frequency updates.
                         dragValue = seekValue(for: gesture.location.x, width: width)
                     }
                     .onEnded { gesture in
                         let newValue = seekValue(for: gesture.location.x, width: width)
-                        dragValue = nil
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            dragValue = nil
+                        }
                         onSeek(newValue)
                     }
             )
+            .animation(.easeOut(duration: 0.12), value: isDragging)
         }
         .frame(height: 44)
         .accessibilityElement(children: .ignore)
@@ -646,6 +675,56 @@ private struct TunerScrubber: View {
     private func seekValue(for locationX: CGFloat, width: CGFloat) -> Double {
         let ratio = min(max(Double(locationX / max(width, 1)), 0), 1)
         return ratio * max(duration, 1)
+    }
+
+    /// Tuner-vocabulary timestamp bubble — sharp hairline rectangle, mono
+    /// signal-yellow text on flat black. Width is intrinsic (fixedSize)
+    /// so it hugs the formatted timestamp.
+    private static func positionBubble(timestamp: String) -> some View {
+        TunerLabel(text: timestamp, color: .offscriptSignalYellow, size: 11)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.offscriptStudioBlack)
+            .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+            .fixedSize()
+    }
+
+    /// Fallback bubble width used as the seed for the measured-width state
+    /// before the first `onPreferenceChange` callback fires. The real width
+    /// is measured at runtime so Dynamic Type scaling on `TunerLabel` is
+    /// honoured (Copilot review on #195 / PR #198).
+    private static let fallbackBubbleWidth: CGFloat = 64
+
+    private static func bubbleOffset(thumbX: CGFloat, width: CGFloat, bubbleWidth: CGFloat) -> CGFloat {
+        let half = bubbleWidth / 2
+        let centered = thumbX - half
+        let maxOffset = max(0, width - bubbleWidth)
+        return min(max(centered, 0), maxOffset)
+    }
+
+    /// Scrubber-precision timestamp: H:MM:SS for hour-plus episodes,
+    /// M:SS otherwise. Distinct from `EpisodeDurationFormatter.short`
+    /// which rounds to minutes — a scrubber needs second-level precision
+    /// so the readout actually changes as the finger moves. Truncates
+    /// (not rounds) to match the POS / REM labels rendered by `time(_:)`
+    /// elsewhere in this file, so the bubble doesn't disagree with the
+    /// static readouts by ±1s near second boundaries.
+    static func timestamp(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let secs = total % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, secs)
+        }
+        return String(format: "%d:%02d", minutes, secs)
+    }
+}
+
+private struct ScrubberBubbleWidthPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
