@@ -3155,6 +3155,98 @@ struct OffScriptTests {
         #expect(episode.downloadErrorMessage?.contains("interrupted") == true)
     }
 
+    @Test
+    @MainActor
+    func podcastDeepLinkPostsSwitchTabAndOpenPodcastForExistingPodcast() throws {
+        // #201 — `offscript://podcast/<uuid>` was previously logged-and-dropped.
+        // Verifies the router (1) verifies the UUID exists in store, (2) posts
+        // .offscriptSwitchTab to library, (3) posts .offscriptOpenPodcast with
+        // the podcastID userInfo, and (4) stashes the pending UUID for
+        // cold-launch consumption via LibraryView.onAppear.
+        let container = try makeContainer()
+        let context = container.mainContext
+        let podcast = Podcast(
+            title: "Deep Link Test Show",
+            author: "Tester",
+            summary: nil,
+            feedURL: URL(string: "https://example.com/deeplink.xml")!,
+            websiteURL: nil,
+            artworkURL: nil,
+            isSubscribed: true
+        )
+        context.insert(podcast)
+        try context.save()
+
+        var receivedSwitchTab: String?
+        var receivedOpenID: UUID?
+        let switchObserver = NotificationCenter.default.addObserver(
+            forName: .offscriptSwitchTab, object: nil, queue: .main
+        ) { note in
+            receivedSwitchTab = note.userInfo?["tab"] as? String
+        }
+        let openObserver = NotificationCenter.default.addObserver(
+            forName: .offscriptOpenPodcast, object: nil, queue: .main
+        ) { note in
+            receivedOpenID = note.userInfo?["podcastID"] as? UUID
+        }
+        defer {
+            NotificationCenter.default.removeObserver(switchObserver)
+            NotificationCenter.default.removeObserver(openObserver)
+            DeepLinkRouter.pendingPodcastDeepLink = nil
+        }
+
+        DeepLinkRouter.pendingPodcastDeepLink = nil
+        let url = URL(string: "offscript://podcast/\(podcast.id.uuidString)")!
+        DeepLinkRouter.handle(url, in: context)
+
+        // The notifications post on .main; pump the loop briefly so the
+        // observers fire synchronously inside the test.
+        let runLoop = RunLoop.current
+        let deadline = Date().addingTimeInterval(0.5)
+        while runLoop.run(mode: .default, before: Date().addingTimeInterval(0.05)),
+              receivedOpenID == nil,
+              Date() < deadline {}
+
+        #expect(receivedSwitchTab == "library")
+        #expect(receivedOpenID == podcast.id)
+        #expect(DeepLinkRouter.pendingPodcastDeepLink == podcast.id)
+    }
+
+    @Test
+    @MainActor
+    func podcastDeepLinkIgnoresUnknownUUID() throws {
+        // Stale Spotlight donations to deleted podcasts shouldn't switch
+        // tabs and push an empty detail view. Verifies the router
+        // short-circuits when the UUID isn't in store.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        var receivedSwitchTab: String?
+        var receivedOpenID: UUID?
+        let switchObserver = NotificationCenter.default.addObserver(
+            forName: .offscriptSwitchTab, object: nil, queue: .main
+        ) { note in receivedSwitchTab = note.userInfo?["tab"] as? String }
+        let openObserver = NotificationCenter.default.addObserver(
+            forName: .offscriptOpenPodcast, object: nil, queue: .main
+        ) { note in receivedOpenID = note.userInfo?["podcastID"] as? UUID }
+        defer {
+            NotificationCenter.default.removeObserver(switchObserver)
+            NotificationCenter.default.removeObserver(openObserver)
+            DeepLinkRouter.pendingPodcastDeepLink = nil
+        }
+
+        DeepLinkRouter.pendingPodcastDeepLink = nil
+        let url = URL(string: "offscript://podcast/\(UUID().uuidString)")!
+        DeepLinkRouter.handle(url, in: context)
+
+        let runLoop = RunLoop.current
+        _ = runLoop.run(mode: .default, before: Date().addingTimeInterval(0.2))
+
+        #expect(receivedSwitchTab == nil)
+        #expect(receivedOpenID == nil)
+        #expect(DeepLinkRouter.pendingPodcastDeepLink == nil)
+    }
+
     private func makeContainer() throws -> ModelContainer {
         let schema = Schema([
             Podcast.self,

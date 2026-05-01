@@ -836,6 +836,14 @@ struct LibraryView: View {
         .onAppear {
             guard isActive else { return }
             activateLibraryTab()
+            // Consume any pending `offscript://podcast/<uuid>` deep link
+            // that fired before `LibraryView` was instantiated. The
+            // notification path covers the warm case (Library already
+            // loaded); this `.onAppear` consumption covers the cold one.
+            if let pending = DeepLinkRouter.pendingPodcastDeepLink {
+                selectedPodcastID = pending
+                DeepLinkRouter.pendingPodcastDeepLink = nil
+            }
         }
         .onChange(of: isActive) { _, active in
             if active {
@@ -881,6 +889,19 @@ struct LibraryView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .offscriptActiveTabChanged)) { note in
             handleActiveTabChanged(note)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .offscriptOpenPodcast)) { note in
+            // `offscript://podcast/<uuid>` deep link landed. `DeepLinkRouter`
+            // already verified the UUID exists in store and posted the
+            // tab-switch to Library before this notification, so we can
+            // bind directly to the existing `selectedPodcastID` state and
+            // let `.navigationDestination` push the detail view.
+            guard let podcastID = note.userInfo?["podcastID"] as? UUID else {
+                libraryLogger.warning(".offscriptOpenPodcast missing or wrong-typed podcastID userInfo: \(String(describing: note.userInfo), privacy: .public)")
+                return
+            }
+            selectedPodcastID = podcastID
+            DeepLinkRouter.pendingPodcastDeepLink = nil
         }
         // Settings + Import buttons render inline in LibraryTunerHeader, not
         // as toolbar items — iOS 26 wraps toolbar buttons in glass chrome.

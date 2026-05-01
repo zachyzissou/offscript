@@ -12,6 +12,11 @@ extension Notification.Name {
     static let offscriptActiveTabChanged = Notification.Name("offscript.activeTabChanged")
     static let offscriptRecommendationFeedbackChanged = Notification.Name("offscript.recommendationFeedbackChanged")
     static let offscriptLibrarySubscriptionsChanged = Notification.Name("offscript.librarySubscriptionsChanged")
+    /// Posted by `DeepLinkRouter` when an `offscript://podcast/<uuid>` URL
+    /// resolves to a real podcast. `LibraryView` listens and pushes
+    /// `PodcastDetailView` via its existing `selectedPodcastID` binding.
+    /// `userInfo["podcastID"]: UUID`.
+    static let offscriptOpenPodcast = Notification.Name("offscript.openPodcast")
 }
 
 /// Centralized handler for `offscript://` URLs coming from:
@@ -29,6 +34,17 @@ extension Notification.Name {
 ///                                        → switch the tab bar selection
 @MainActor
 enum DeepLinkRouter {
+    /// Pending podcast deep link picked up by `LibraryView.onAppear` on
+    /// the first appearance after a tab switch. The notification path
+    /// alone races with the lazy-load of `LibraryView` — when the user
+    /// hits an `offscript://podcast/<uuid>` URL on a cold launch and
+    /// Library hasn't been instantiated yet, the `.offscriptOpenPodcast`
+    /// notification fires before the view's `onReceive` is wired.
+    /// Stashing the UUID here lets the view consume it on first appear
+    /// regardless of timing; the value is cleared on consumption so a
+    /// later tab return doesn't re-trigger navigation.
+    static var pendingPodcastDeepLink: UUID?
+
     /// Pushed by ContentView's `.onOpenURL`. Reads the URL into a route,
     /// hydrates from SwiftData if needed, then mutates shared singletons
     /// (PlaybackController, navigation state) to drive UI.
@@ -117,9 +133,42 @@ enum DeepLinkRouter {
     }
 
     private static func handlePodcast(id: UUID, in context: ModelContext) {
-        // Podcast deep linking still TODO — needs navigation state to push
-        // PodcastDetailView from outside the LibraryView NavigationStack.
-        // Logged so we know if anyone's hitting these URLs in the wild.
-        deepLinkLogger.info("Podcast deep link received but navigation not yet wired: \(id, privacy: .public)")
+        // Verify the podcast exists in SwiftData before routing — a stale
+        // Spotlight donation pointing at a deleted podcast would otherwise
+        // switch to Library and push an empty detail view.
+        var descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        do {
+            guard try context.fetch(descriptor).first != nil else {
+                deepLinkLogger.warning("Podcast deep link missed — id \(id, privacy: .public) not in store")
+                return
+            }
+        } catch {
+            deepLinkLogger.error("Podcast deep-link fetch failed for \(id, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        // Stash the UUID before posting so a cold-launch deep link that
+        // beats LibraryView's lazy instantiation can still be consumed
+        // via `onAppear`. Posted notification still drives the warm path
+        // where Library is already loaded.
+        pendingPodcastDeepLink = id
+
+        // Switch to the Library tab so the LibraryView NavigationStack is
+        // on screen. LibraryView listens for the notification *and*
+        // consumes the pending UUID on first appear, so timing between
+        // the tab swap and the open-podcast notification doesn't matter.
+        NotificationCenter.default.post(
+            name: .offscriptSwitchTab,
+            object: nil,
+            userInfo: ["tab": "library"]
+        )
+        NotificationCenter.default.post(
+            name: .offscriptOpenPodcast,
+            object: nil,
+            userInfo: ["podcastID": id]
+        )
     }
 }
