@@ -27,6 +27,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home recommendations now have a dedicated “More From Shows You Chose” lane** so explicit like/more-like-this show intent is not mislabeled as passive completion affinity.
 
 ### Changed — Tuner UI conformance
+- **TunerReadout (Episode detail's `DUR / POS / STATE` hero readouts) now reads as one VoiceOver element per readout** — `Duration 38 minutes` instead of separate `Duration`, `38`, `minutes` stops. Combines tag + value + optional unit via `accessibilityElement(children: .ignore)`. Same pattern as the Library and Settings stats fixes from #245 and #246.
 - **Library header stats (SHOWS / VISIBLE / UNPLAYED / IN PROGRESS) now read as one VoiceOver element per stat** — same fix as the Settings stats row from #245.
 - **Settings stats block (SUBSCRIBED / EPISODES / UNPLAYED / QUEUED + EXPLICIT / COMPLETED / TAGS) now reads as a single VoiceOver element per stat** — `12 subscribed` instead of `12, SUBSCRIBED` as two separate stops. Combines the value and label via `.accessibilityElement(children: .ignore)`.
 - **PodcastDetail `+ LOAD 100 MORE` pager key now meets 44pt tap target.** Was ~34pt visible.

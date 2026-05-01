@@ -613,6 +613,10 @@ struct TunerReadout: View {
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: true)
         }
+        // Combine tag + value (+ unit) so VoiceOver reads
+        // "Duration 38 minutes" once instead of three stops.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(tag) \(value)\(unit.map { " \($0)" } ?? "")")
     }
 }
 
