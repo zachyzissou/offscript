@@ -2390,6 +2390,8 @@ struct PodcastDetailView: View {
                                         .padding(.vertical, 12)
                                     Spacer()
                                 }
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Load 100 more episodes")
