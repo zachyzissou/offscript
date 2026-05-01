@@ -104,28 +104,37 @@ struct OnboardingFlowView: View {
                 TunerLabel(text: "A RECEIVER FOR WHAT YOU ACTUALLY LIKE", size: 10)
                     .staggeredEntrance(index: 2, delay: 0.10)
 
-                Text("No algorithm pushing you somewhere. No paid placements. Just a tuner that listens to what you listen to and lines up the next thing — quietly, on this device.")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(Color.offscriptPaperWhite)
-                    .lineSpacing(4)
+                // Manifesto paragraph compressed so the numbered list
+                // below reads as the primary content peak (#194 — testers
+                // were skipping the small numbered rows because the
+                // wordmark + paragraph above ate all the visual weight).
+                Text("No algorithm pushing. Just a tuner that listens to what you listen to and lines up the next thing — on this device.")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
+                    .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .staggeredEntrance(index: 3, delay: 0.10)
 
-                // Numbered manifesto
+                // Numbered manifesto — bumped to semibold body type so
+                // testers actually read the four product promises. Each
+                // row is the real "how this works" content; before it
+                // scanned as small print next to the giant OFF / SCRIPT.
+                // wordmark.
                 VStack(spacing: 0) {
                     ForEach(Array(manifesto.enumerated()), id: \.offset) { i, line in
                         HStack(alignment: .firstTextBaseline, spacing: 14) {
                             Text(String(format: "%02d", i + 1))
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .font(.system(size: 14, weight: .semibold, design: .monospaced))
                                 .tracking(0.6)
                                 .foregroundStyle(Color.offscriptSignalYellow)
                                 .monospacedDigit()
                             Text(line)
-                                .font(.system(size: 13, weight: .regular))
+                                .font(.system(size: 17, weight: .semibold))
                                 .foregroundStyle(Color.offscriptPaperWhite)
+                                .fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 0)
                         }
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 14)
                         .overlay(
                             Rectangle().fill(Color.offscriptHairline).frame(height: 1),
                             alignment: .bottom
