@@ -52,6 +52,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Discovery genre matches now stay low-confidence until backed by local evidence** such as latest-episode tag overlap, topic matches, show affinity, or feed freshness, and genre-only WHY copy no longer claims local evidence.
 
 ### Fixed — onboarding, import, and sync UI honesty
+- **Search and discovery import errors now surface the underlying `error.localizedDescription`** instead of generic "Search failed. Check your connection and try again." / "Couldn't import … yet." copy, so users can tell whether a failure is network, parsing, or feed-side rather than guessing (supersedes #158).
 - **Podcast detail rows now show chronological "Episode N" labels instead of inverting newest-first display indices** so the first episode in a show reads as Episode 001 and the newest reads as the highest number, with feed-supplied `<itunes:episode>` values preferred when available and filtered subsets falling back to a `—` placeholder rather than a misleading partial-list rank (#145).
 - **Onboarding background hydration now yields and waits briefly after local subscription completion** so the first Home render is not immediately contending with starter-feed apply/save work on the main SwiftData context.
 - **Settings and Sign in with Apple now log identity, iCloud, signal-profile, and Keychain OSStatus breadcrumbs** so TestFlight Settings crashes and Apple sign-in failures can be correlated to the failing subsystem.

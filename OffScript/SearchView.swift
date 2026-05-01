@@ -235,7 +235,7 @@ struct SearchView: View {
             storeRecentSearch(trimmed)
         } catch {
             searchLogger.error("Search failed for query '\(trimmed, privacy: .public)': \(error.localizedDescription, privacy: .public)")
-            errorMessage = "Search failed. Check your connection and try again."
+            errorMessage = "Apple Podcasts Search failed: \(error.localizedDescription)"
         }
     }
 
@@ -250,7 +250,7 @@ struct SearchView: View {
             storeRecentSearch(result.title)
         } catch {
             searchLogger.error("Import failed for ‘\(result.title, privacy: .public)’: \(error.localizedDescription, privacy: .public)")
-            errorMessage = "Couldn’t import \(result.title) yet."
+            errorMessage = "Couldn’t import \(result.title): \(error.localizedDescription)"
         }
     }
 
