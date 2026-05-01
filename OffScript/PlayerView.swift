@@ -561,7 +561,7 @@ struct PlayerView: View {
 
                 if isSpeedPickerExpanded {
                     TunerRatePicker(
-                        rates: [Float(1.0), 1.1, 1.25, 1.5, 1.75, 2.0, 2.5],
+                        rates: [Float(0.75), 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5],
                         selectedRate: player.playbackRate,
                         accessibilityActionPrefix: "Set playback speed to"
                     ) { rate in
