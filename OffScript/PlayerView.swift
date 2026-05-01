@@ -965,6 +965,29 @@ private struct PlayerSuggestionRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Play \(scored.episode.title)")
+
+            // Queue key — lets the user stack a What's Next suggestion
+            // without interrupting current playback. Mirrors the
+            // play+queue affordance pair on Library / PodcastDetail
+            // episode rows. Hidden when the suggestion is already
+            // queued so the row doesn't render a no-op.
+            if !scored.episode.isQueued {
+                Button {
+                    do { try QueueService.add(scored.episode, in: modelContext) }
+                    catch { playerLogger.error("WhatsNext queue add failed: \(error.localizedDescription, privacy: .public)") }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.offscriptPaperWhite)
+                        .frame(width: 30, height: 30)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add \(scored.episode.title) to queue")
+                .accessibilityIdentifier("PlayerWhatsNextQueue")
+            }
         }
         .padding(.vertical, 8)
     }
