@@ -2289,13 +2289,35 @@ struct PodcastDetailView: View {
                 }
 
                 if episodes.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 10) {
                         TunerLabel(text: "● NO EPISODES MATCH FILTER", color: .offscriptSoftPaper)
                         Text(episodeSearchQuery.isEmpty
                              ? "Change the filter or sync this feed again later."
                              : "No episodes match \"\(episodeSearchQuery)\".")
                             .font(.system(size: 13.5))
                             .foregroundStyle(Color.offscriptPaperWhite)
+
+                        // Inline recovery key — tapping the filter back to
+                        // ALL or clearing the search query is otherwise a
+                        // two-step manual undo (find the filter row, find
+                        // the right chip). Surface it inline so the user
+                        // doesn't have to re-orient.
+                        if filter != .all || !episodeSearchQuery.isEmpty {
+                            Button {
+                                filter = .all
+                                episodeSearchQuery = ""
+                            } label: {
+                                TunerLabel(text: "× CLEAR FILTER", color: .offscriptSignalYellow, size: 10)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .frame(minHeight: 44)
+                                    .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear episode filter and search")
+                            .accessibilityIdentifier("PodcastDetailClearFilter")
+                        }
                     }
                     .padding(.vertical, 12)
                     .overlay(
