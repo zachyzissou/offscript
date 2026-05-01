@@ -36,7 +36,15 @@ enum RecommendationExplainer {
     /// Deterministic copy pass for the synchronous UI path. This uses the
     /// same signal trace that produced the score, so Home and Player can show
     /// authored WHY copy without waiting on FoundationModels availability.
-    static func authoredReason(fallback: String, signals: [RecommendationSignal]) -> String {
+    ///
+    /// Pass `avoidingSource` to skip a specific source bucket when the caller
+    /// has already rendered a card with that bucket — used by the Home
+    /// discovery rail to vary copy across adjacent cards (#179).
+    static func authoredReason(
+        fallback: String,
+        signals: [RecommendationSignal],
+        avoidingSource: String? = nil
+    ) -> String {
         var lookup: [String: String] = [:]
         for signal in signals {
             let key = signal.label.lowercased()
@@ -47,7 +55,7 @@ enum RecommendationExplainer {
         let sources = signals
             .filter { $0.label.caseInsensitiveCompare("source") == .orderedSame }
             .map { $0.value.lowercased() }
-        let source = authoredSource(from: sources)
+        let source = authoredSource(from: sources, excluding: avoidingSource?.lowercased())
 
         if sources.contains("explicit signal"),
            sources.contains("show intent"),
@@ -179,7 +187,10 @@ enum RecommendationExplainer {
         }
     }
 
-    private static func authoredSource(from sources: [String]) -> String? {
+    /// Picks the highest-priority source bucket present in `sources`, with an
+    /// optional `excluding` parameter that skips a specific bucket so the
+    /// discovery rail can vary copy across adjacent cards.
+    static func authoredSource(from sources: [String], excluding: String? = nil) -> String? {
         let priority = [
             "queue",
             "resume",
@@ -202,7 +213,13 @@ enum RecommendationExplainer {
             "available",
             "discovery"
         ]
-        return priority.first { sources.contains($0) } ?? sources.first
+        if let chosen = priority.first(where: { sources.contains($0) && $0 != excluding }) {
+            return chosen
+        }
+        // Either every priority match was excluded, or no priority match
+        // exists. Fall back to the next non-excluded source, then the first
+        // raw source if even that is empty.
+        return sources.first(where: { $0 != excluding }) ?? sources.first
     }
 
     private static func joinedList(_ value: String) -> String {

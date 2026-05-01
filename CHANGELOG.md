@@ -56,6 +56,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **`PodcastDetailView.loadEpisodes` now emits an `OffScriptPerformanceLog` signpost** (`podcast.detail.loadEpisodes`) tagged with podcast title, requested limit, row count, total matching count, and `hasMore`, so future scroll regressions are measurable in Instruments and OSLog (#169).
 
 ### Changed — recommendation quality
+- **Discovery rail reason copy now varies across adjacent cards by avoiding the previous card's chosen RecommendationExplainer source bucket** — a rail of three cards all backed by `latest episode` no longer reads as `LATEST EPISODES OVERLAP YOUR <noun> SIGNAL` repeated three times. The second/third card falls back to the next-strongest signal in its trace (e.g. tag match → topic overlap → show affinity), so the rail reads as authored signal instead of a template loop (#179).
 - **Home recommendations now fetch targeted candidates from explicitly liked and completed shows outside the global recency window**, so large high-volume libraries cannot bury older high-signal follow-ups before scoring.
 - **Home recommendations now compose multiple local evidence signals instead of stopping at the first matching rule**, so explicit topic feedback and “more from this show” reinforce one authored recommendation rather than competing as generic ranking buckets.
 - **Recommendation reason copy now has deterministic rail-length clipping for combined evidence**, keeping long show/topic explanations inside Tuner cards.

@@ -1497,6 +1497,49 @@ struct OffScriptTests {
     }
 
     @Test
+    func recommendationExplainerSwapsTemplateWhenAvoidingPriorSource() {
+        // Two adjacent rail cards both backed by the latest-episode signal
+        // would render the same "Latest episodes overlap your X signal"
+        // template. The avoidingSource overload routes the second card
+        // to the next-best source on its trace.
+        let signals: [RecommendationSignal] = [
+            RecommendationSignal(label: "source", value: "latest episode"),
+            RecommendationSignal(label: "source", value: "tag match"),
+            RecommendationSignal(label: "tags", value: "audio craft")
+        ]
+
+        let primary = RecommendationExplainer.authoredReason(
+            fallback: "fallback",
+            signals: signals
+        )
+        let avoiding = RecommendationExplainer.authoredReason(
+            fallback: "fallback",
+            signals: signals,
+            avoidingSource: "latest episode"
+        )
+
+        #expect(primary == "Latest episodes overlap your audio craft signal")
+        #expect(avoiding == "Tuned to your saved audio craft signal")
+    }
+
+    @Test
+    func recommendationExplainerSourceExclusionFallsBackToFirstAvailable() {
+        // When the avoided source is the only priority match, fall back to
+        // any remaining source from the trace rather than returning nil.
+        let result = RecommendationExplainer.authoredSource(
+            from: ["latest episode", "editor"],
+            excluding: "latest episode"
+        )
+        #expect(result == "editor")
+    }
+
+    @Test
+    func recommendationExplainerSourceExclusionReturnsNilOnEmptyTrace() {
+        let result = RecommendationExplainer.authoredSource(from: [], excluding: "latest episode")
+        #expect(result == nil)
+    }
+
+    @Test
     func recommendationExplainerKeepsUnknownFallbacks() {
         let fallback = "Special editorial pick"
 

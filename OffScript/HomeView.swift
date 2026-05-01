@@ -629,8 +629,9 @@ private struct TunerDiscoveryRail: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    ForEach(section.discoveryResults) { scored in
-                        discoveryCard(scored)
+                    let rotated = Self.rotatedReasons(for: section.discoveryResults)
+                    ForEach(Array(section.discoveryResults.enumerated()), id: \.element.id) { idx, scored in
+                        discoveryCard(scored, displayReason: rotated[idx])
                     }
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -646,15 +647,36 @@ private struct TunerDiscoveryRail: View {
         }
     }
 
-    private func discoveryCard(_ scored: ScoredDiscoveryResult) -> some View {
+    /// Pre-pass that varies the chosen RecommendationExplainer source
+    /// across adjacent rail cards so a discovery rail of cards all backed
+    /// by the same source bucket (e.g. `latest episode`) doesn't read as
+    /// a Mad Libs template (#179). When two adjacent cards' top-priority
+    /// source matches, the second card falls back to its next-best signal.
+    static func rotatedReasons(for results: [ScoredDiscoveryResult]) -> [String] {
+        var output: [String] = []
+        output.reserveCapacity(results.count)
+        var previousSource: String?
+        for scored in results {
+            let sources = scored.signalTrace
+                .filter { $0.label.caseInsensitiveCompare("source") == .orderedSame }
+                .map { $0.value.lowercased() }
+            let chosen = RecommendationExplainer.authoredSource(from: sources, excluding: previousSource)
+            let reason = RecommendationExplainer.authoredReason(
+                fallback: scored.explanation,
+                signals: scored.signalTrace,
+                avoidingSource: previousSource
+            )
+            output.append(reason)
+            previousSource = chosen
+        }
+        return output
+    }
+
+    private func discoveryCard(_ scored: ScoredDiscoveryResult, displayReason: String) -> some View {
         let result = scored.result
         let key = result.feedURL.normalizedFeedKey
         let isAdded = addedIDs.contains(key) || subscribedFeedURLs.contains(key)
         let isImporting = importingID == key
-        let displayReason = RecommendationExplainer.authoredReason(
-            fallback: scored.explanation,
-            signals: scored.signalTrace
-        )
 
         return VStack(alignment: .leading, spacing: 8) {
             OffScriptArtworkView(url: result.artworkURL, cornerRadius: 3)
