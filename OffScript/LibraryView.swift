@@ -98,6 +98,12 @@ nonisolated struct LibraryDirectoryRow: Equatable, Identifiable, Sendable {
     let unplayedCount: Int
     let inProgressCount: Int
     let isLastInSection: Bool
+    /// Surface sync failures inline on the directory row so a podcast
+    /// whose feed went 404 (host moved, feed renamed) is visibly
+    /// flagged without the user having to flip to the `needsSync`
+    /// scope or open the detail.
+    var syncStatus: String = "idle"
+    var syncFailureCount: Int = 0
 }
 
 nonisolated struct LibraryDirectoryPodcast: Identifiable, Hashable, Sendable {
@@ -488,7 +494,9 @@ nonisolated enum LibraryDirectoryOrganizer {
                         channelNumber: numbersByPodcastID[podcast.id] ?? (index + 1),
                         unplayedCount: unplayedCounts[podcast.id] ?? 0,
                         inProgressCount: inProgressCounts[podcast.id] ?? 0,
-                        isLastInSection: index == podcasts.count - 1
+                        isLastInSection: index == podcasts.count - 1,
+                        syncStatus: podcast.syncStatus,
+                        syncFailureCount: podcast.syncFailureCount
                     )
                 }
             )
@@ -2083,6 +2091,17 @@ private struct PodcastShelfRow: View {
     let inProgressCount: Int
     let isCompact: Bool
 
+    /// Surface a `● SYNC FAILED` chip on the row when the feed has
+    /// failed to refresh — without it, a podcast whose feed went 404
+    /// (host moved, feed renamed, episode source dropped) looks
+    /// identical to a healthy one in the directory until the user
+    /// opens it. The `needsSync` filter scope already collects these,
+    /// but the chip flags them inline so users notice without
+    /// changing scope.
+    private var hasSyncFailure: Bool {
+        row.syncFailureCount > 0 || row.syncStatus == "failed"
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Text(String(format: "%02d", channelNumber))
@@ -2111,6 +2130,10 @@ private struct PodcastShelfRow: View {
                         TunerLabel(text: "● \(inProgressCount) IN PROGRESS", color: .offscriptFnInfo, size: 8)
                     }
                     TunerLabel(text: "\(unplayedCount) UNPLAYED", color: .offscriptSoftPaper, size: 8)
+                    if hasSyncFailure {
+                        TunerLabel(text: "● SYNC FAILED", color: .offscriptFnRecord, size: 8)
+                            .accessibilityIdentifier("PodcastShelfRow.SyncFailed")
+                    }
                 }
             }
 
