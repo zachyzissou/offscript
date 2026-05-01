@@ -61,6 +61,7 @@ The app reads these `UserDefaults`-style launch arguments (set via
 | `-offscript.debugSeedSampleData` | `YES` / `NO` | Seeds 3 podcasts × 3 episodes for populated-state audits. |
 | `-offscript.debugSeedLibrarySize` | int (≥ 1) | Seeds a deterministic `N`-show library (`A Channel 001` … `Z Channel NNN`). Triggers automatic stale-store reset. |
 | `-offscript.debugSeedEpisodesPerShow` | int | Episode count per seeded show (paired with `debugSeedLibrarySize`). |
+| `-offscript.debugWipeLibrary` | `YES` / `NO` | Wipes the SwiftData store at launch (DEBUG builds only). Used by UI tests that need a guaranteed-empty Library/Queue tab regardless of prior simulator state. |
 | `-offscript.debugLaunchTab` | `0`-`3` | Launches directly into Home (0), Library (1), Queue (2), or Search (3). |
 | `-offscript.debugSelectedTab` | `0`-`3` | Same effect, persists selection across launches. |
 | `-offscript.debugBootPlayback` | `YES` / `NO` | Boots with a fake "now playing" state. |

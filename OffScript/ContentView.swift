@@ -358,8 +358,15 @@ private extension ContentView {
     /// (and optionally -offscript.debugSeedLibrarySize 250) to populate a
     /// deterministic library for visual/performance audits without onboarding.
     /// No-ops once data exists.
+    ///
+    /// Pass -offscript.debugWipeLibrary YES (without a seed arg) to wipe the
+    /// store at launch. Used by UI tests that need a guaranteed-empty
+    /// Library/Queue tab (#177).
     func configureDebugSeedDataIfNeeded() {
         let defaults = UserDefaults.standard
+        if defaults.bool(forKey: "offscript.debugWipeLibrary") {
+            resetDebugLibrary()
+        }
         let requestedLibrarySize = max(0, defaults.integer(forKey: "offscript.debugSeedLibrarySize"))
         guard defaults.bool(forKey: "offscript.debugSeedSampleData") || requestedLibrarySize > 0 else { return }
 
