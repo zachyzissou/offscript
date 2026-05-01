@@ -364,11 +364,16 @@ struct LibraryImportSheet: View {
             HStack(spacing: 6) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 10, weight: .semibold))
+                    .accessibilityHidden(true)
                 TunerLabel(text: "BACK", color: .offscriptSoftPaper, size: 10)
             }
             .foregroundStyle(Color.offscriptSoftPaper)
+            .padding(.vertical, 6)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Back to import menu")
     }
 
     @ViewBuilder
