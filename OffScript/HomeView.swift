@@ -646,6 +646,7 @@ private struct TunerDiscoveryRail: View {
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
             }
+            .tunerRailEdgeFade()
 
             if let errorMessage {
                 Text(errorMessage)
@@ -1050,6 +1051,7 @@ private struct TunerRail: View {
                 }
                 .padding(.horizontal, OffScriptTheme.pagePadding)
             }
+            .tunerRailEdgeFade()
         }
     }
 }

@@ -1806,6 +1806,7 @@ private struct LibraryDirectoryControls: View {
                     content()
                 }
             }
+            .tunerRailEdgeFade()
         }
     }
 
@@ -1972,6 +1973,7 @@ private struct TunerEpisodeRail: View {
                 }
             }
             .frame(maxWidth: .infinity)
+            .tunerRailEdgeFade()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -2693,6 +2695,7 @@ private struct FilterRow: View {
                 }
             }
         }
+        .tunerRailEdgeFade()
     }
 }
 

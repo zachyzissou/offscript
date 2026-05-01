@@ -722,6 +722,45 @@ extension View {
         modifier(OffScriptUtilitySurfaceModifier(radius: radius))
     }
 
+    /// Fades the leading and trailing edges of a horizontal rail into
+    /// `offscriptStudioBlack` so partially-visible cards or chips read as
+    /// "scroll for more" instead of clipping mid-content. Apply to the
+    /// outer container of any horizontal `ScrollView` (#180 / #188).
+    /// - Parameter width: pixel width of the fade band on each edge.
+    func tunerRailEdgeFade(width: CGFloat = 24) -> some View {
+        modifier(TunerRailEdgeFade(width: width))
+    }
+}
+
+/// Two-sided horizontal mask that fades the leading + trailing edges to
+/// transparent so the underlying `offscriptStudioBlack` page background
+/// shows through. Implemented as a SwiftUI `mask` so both the rail
+/// content (text, artwork, hairlines) and any per-card backgrounds get
+/// uniformly faded.
+private struct TunerRailEdgeFade: ViewModifier {
+    let width: CGFloat
+
+    func body(content: Content) -> some View {
+        content.mask(
+            GeometryReader { proxy in
+                let railWidth = max(proxy.size.width, 1)
+                let fadeRatio = min(max(width / railWidth, 0), 0.45)
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: .black, location: fadeRatio),
+                        .init(color: .black, location: 1 - fadeRatio),
+                        .init(color: .clear, location: 1)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            }
+        )
+    }
+}
+
+extension View {
     /// Keep SwiftUI sheet/full-screen hosts from falling back to iOS 26's
     /// translucent Liquid Glass presentation surface. App-controlled modals
     /// should read as the same flat OLED instrument panel as the main shell.
