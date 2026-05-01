@@ -3009,11 +3009,20 @@ private struct LibraryBatchImportStrip: View {
             case .running:
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 10) {
-                        TunerLabel(text: "● IMPORTING IN BACKGROUND",
-                                   color: .offscriptSignalYellow)
-                        Spacer()
-                        TunerLabel(text: "\(importer.completedCount)/\(importer.totalCount)",
-                                   color: .offscriptFnInfo)
+                        // Combined into a single VoiceOver element so
+                        // it reads "Importing 12 of 50 feeds in
+                        // background" instead of two separate stops.
+                        // Cancel button stays its own a11y element.
+                        HStack(spacing: 10) {
+                            TunerLabel(text: "● IMPORTING IN BACKGROUND",
+                                       color: .offscriptSignalYellow)
+                            Spacer()
+                            TunerLabel(text: "\(importer.completedCount)/\(importer.totalCount)",
+                                       color: .offscriptFnInfo)
+                        }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Importing \(importer.completedCount) of \(importer.totalCount) \(importer.totalCount == 1 ? "feed" : "feeds") in background")
+
                         // Cancel key — once a long OPML batch is running
                         // there was no way to abort it short of force-
                         // quitting the app. Existing work is preserved
