@@ -577,6 +577,7 @@ private struct TunerScrubber: View {
     let onSeek: (Double) -> Void
 
     @State private var dragValue: Double?
+    @State private var bubbleWidth: CGFloat = Self.fallbackBubbleWidth
 
     private var displayValue: Double {
         min(max(dragValue ?? value, 0), max(duration, 1))
@@ -619,7 +620,15 @@ private struct TunerScrubber: View {
                 // guessing where the seek will land.
                 if isDragging {
                     Self.positionBubble(timestamp: Self.timestamp(displayValue))
-                        .offset(x: Self.bubbleOffset(thumbX: thumbX, width: width))
+                        .background(
+                            GeometryReader { bubbleProxy in
+                                Color.clear.preference(
+                                    key: ScrubberBubbleWidthPreferenceKey.self,
+                                    value: bubbleProxy.size.width
+                                )
+                            }
+                        )
+                        .offset(x: Self.bubbleOffset(thumbX: thumbX, width: width, bubbleWidth: bubbleWidth))
                         .offset(y: -36)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                         .accessibilityHidden(true)
@@ -627,13 +636,14 @@ private struct TunerScrubber: View {
             }
             .frame(height: 44)
             .contentShape(Rectangle())
+            .onPreferenceChange(ScrubberBubbleWidthPreferenceKey.self) { bubbleWidth = $0 }
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { gesture in
-                        let next = seekValue(for: gesture.location.x, width: width)
-                        withAnimation(.easeOut(duration: 0.12)) {
-                            dragValue = next
-                        }
+                        // Track the finger 1:1 — animating per-frame here makes
+                        // the thumb/bubble lag behind the gesture and introduces
+                        // jank under high-frequency updates.
+                        dragValue = seekValue(for: gesture.location.x, width: width)
                     }
                     .onEnded { gesture in
                         let newValue = seekValue(for: gesture.location.x, width: width)
@@ -679,24 +689,28 @@ private struct TunerScrubber: View {
             .fixedSize()
     }
 
-    /// Approximate bubble width (widest typical timestamp ~58pt at 11pt
-    /// mono with horizontal padding). Used to clamp the bubble offset
-    /// so it doesn't extend past the rail's leading or trailing edges.
-    private static let approximateBubbleWidth: CGFloat = 64
+    /// Fallback bubble width used as the seed for the measured-width state
+    /// before the first `onPreferenceChange` callback fires. The real width
+    /// is measured at runtime so Dynamic Type scaling on `TunerLabel` is
+    /// honoured (Copilot review on #195 / PR #198).
+    private static let fallbackBubbleWidth: CGFloat = 64
 
-    private static func bubbleOffset(thumbX: CGFloat, width: CGFloat) -> CGFloat {
-        let half = approximateBubbleWidth / 2
+    private static func bubbleOffset(thumbX: CGFloat, width: CGFloat, bubbleWidth: CGFloat) -> CGFloat {
+        let half = bubbleWidth / 2
         let centered = thumbX - half
-        let maxOffset = max(0, width - approximateBubbleWidth)
+        let maxOffset = max(0, width - bubbleWidth)
         return min(max(centered, 0), maxOffset)
     }
 
     /// Scrubber-precision timestamp: H:MM:SS for hour-plus episodes,
     /// M:SS otherwise. Distinct from `EpisodeDurationFormatter.short`
     /// which rounds to minutes — a scrubber needs second-level precision
-    /// so the readout actually changes as the finger moves.
+    /// so the readout actually changes as the finger moves. Truncates
+    /// (not rounds) to match the POS / REM labels rendered by `time(_:)`
+    /// elsewhere in this file, so the bubble doesn't disagree with the
+    /// static readouts by ±1s near second boundaries.
     static func timestamp(_ seconds: Double) -> String {
-        let total = max(0, Int(seconds.rounded()))
+        let total = max(0, Int(seconds))
         let hours = total / 3600
         let minutes = (total % 3600) / 60
         let secs = total % 60
@@ -704,6 +718,13 @@ private struct TunerScrubber: View {
             return String(format: "%d:%02d:%02d", hours, minutes, secs)
         }
         return String(format: "%d:%02d", minutes, secs)
+    }
+}
+
+private struct ScrubberBubbleWidthPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
