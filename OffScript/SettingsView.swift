@@ -738,10 +738,15 @@ struct SettingsView: View {
                         showSignOutConfirmation = false
                     }
                 } label: {
-                    TunerLabel(text: "CANCEL", color: .offscriptSoftPaper, size: 10)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 9)
+                    // Same Tuner confirm vocabulary as Queue × CLEAR
+                    // ALL (#200), Settings × RESET (#229), and the
+                    // PodcastDetail × UNSUBSCRIBE (#230): equal-width
+                    // CANCEL / × CONFIRM at 44pt min-height with
+                    // paperWhite Cancel.
+                    TunerLabel(text: "CANCEL", color: .offscriptPaperWhite, size: 11)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Cancel sign out")
@@ -752,17 +757,17 @@ struct SettingsView: View {
                     }
                     signOut()
                 } label: {
-                    TunerLabel(text: "SIGN OUT", color: .offscriptFnRecord, size: 10)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 9)
+                    TunerLabel(text: "× SIGN OUT", color: .offscriptFnRecord, size: 11)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Confirm sign out")
             }
         }
         .padding(12)
-        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+        .overlay(Rectangle().stroke(Color.offscriptFnRecord.opacity(0.6), lineWidth: 1))
         .accessibilityElement(children: .contain)
     }
 
