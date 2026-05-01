@@ -4,6 +4,42 @@ import SwiftUI
 
 private let libraryLogger = Logger(subsystem: "com.offscript", category: "Library")
 
+/// Computes the chronological "Episode N" label for the podcast detail row.
+///
+/// Podcast detail rows display newest-first (matches platform convention),
+/// but the rank label must reflect the episode's chronological position
+/// in the full feed — otherwise the newest episode reads as Episode 001
+/// while the actual first episode in the show shows as the highest number,
+/// which is the bug filed in #145.
+///
+/// Resolution order:
+/// 1. The feed-supplied `<itunes:episode>` value when present.
+/// 2. The episode's chronological position in the full feed when the
+///    detail view is showing the unfiltered list (`filterShowsFullFeed`).
+///    Display index 0 (newest in a reverse-chronological list) maps to
+///    `totalEpisodeCount`; the oldest episode maps to 1.
+/// 3. `nil` when neither is available — the row renders a `—` placeholder
+///    rather than a misleading number derived from a filtered subset.
+nonisolated enum PodcastDetailRanker {
+    static func chronologicalRank(
+        explicitEpisodeNumber: Int?,
+        displayedIndex: Int,
+        totalEpisodeCount: Int,
+        filterShowsFullFeed: Bool
+    ) -> Int? {
+        if let explicit = explicitEpisodeNumber, explicit > 0 {
+            return explicit
+        }
+        guard filterShowsFullFeed,
+              totalEpisodeCount > 0,
+              displayedIndex >= 0,
+              displayedIndex < totalEpisodeCount else {
+            return nil
+        }
+        return totalEpisodeCount - displayedIndex
+    }
+}
+
 nonisolated enum LibraryDirectoryScope: String, CaseIterable, Identifiable, Sendable {
     case all
     case unplayed
@@ -1077,6 +1113,7 @@ struct LibraryView: View {
                                 .equatable()
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Open \(row.title) channel")
 
                         case .rowSeparator, .sectionSeparator:
                             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
@@ -1758,6 +1795,7 @@ private struct LibraryDirectoryControls: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
+        .accessibilityLabel(title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
@@ -2118,7 +2156,15 @@ struct PodcastDetailView: View {
                 } else {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(episodes.enumerated()), id: \.element.id) { idx, episode in
-                            PodcastEpisodeTunerRow(episode: episode, rank: idx + 1)
+                            PodcastEpisodeTunerRow(
+                                episode: episode,
+                                rank: PodcastDetailRanker.chronologicalRank(
+                                    explicitEpisodeNumber: episode.episodeNumber,
+                                    displayedIndex: idx,
+                                    totalEpisodeCount: matchingEpisodeCount,
+                                    filterShowsFullFeed: filter == .all
+                                )
+                            )
                             if idx < episodes.count - 1 {
                                 Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                             }
@@ -2137,6 +2183,7 @@ struct PodcastDetailView: View {
                                 }
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Load 100 more episodes")
                             .overlay(
                                 Rectangle().fill(Color.offscriptHairline).frame(height: 1),
                                 alignment: .top
@@ -2366,6 +2413,7 @@ private struct PodcastDetailTunerHeader: View {
                             .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Open \(podcast.title) website")
                 }
                 Spacer()
             }
@@ -2405,6 +2453,7 @@ private struct PodcastDetailTunerHeader: View {
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Cancel unsubscribe")
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
@@ -2431,11 +2480,16 @@ private struct PodcastDetailTunerHeader: View {
 private struct PodcastEpisodeTunerRow: View {
     @Environment(\.modelContext) private var modelContext
     let episode: Episode
-    let rank: Int
+    let rank: Int?
 
     private var progressValue: Double {
         guard let duration = episode.duration, duration > 0 else { return 0 }
         return episode.playedPosition / duration
+    }
+
+    private var rankLabel: String {
+        if let rank { return String(format: "%03d", rank) }
+        return "—"
     }
 
     var body: some View {
@@ -2444,10 +2498,10 @@ private struct PodcastEpisodeTunerRow: View {
                 EpisodeDetailView(episode: episode)
             } label: {
                 HStack(alignment: .top, spacing: 12) {
-                    Text(String(format: "%03d", rank))
+                    Text(rankLabel)
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .tracking(1.0)
-                        .foregroundStyle(Color.offscriptSignalYellow)
+                        .foregroundStyle(rank == nil ? Color.offscriptSoftPaper : Color.offscriptSignalYellow)
                         .frame(width: 32, alignment: .leading)
 
                     VStack(alignment: .leading, spacing: 4) {
@@ -2497,6 +2551,7 @@ private struct PodcastEpisodeTunerRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Play \(episode.title)")
 
                 Button {
                     do { try QueueService.add(episode, in: modelContext) }
@@ -2512,6 +2567,7 @@ private struct PodcastEpisodeTunerRow: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(episode.isQueued)
+                .accessibilityLabel(episode.isQueued ? "\(episode.title) already queued" : "Add \(episode.title) to queue")
 
                 Spacer()
             }
@@ -2562,6 +2618,7 @@ private struct FilterRow: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Filter episodes by \(filter.title)")
                     .accessibilityAddTraits(selection == filter ? .isSelected : [])
                 }
             }
