@@ -150,6 +150,23 @@ final class OffScriptUITests: XCTestCase {
     }
 
     @MainActor
+    func testLibraryShowsEmptyStateOnFreshLaunch() throws {
+        // #115 acceptance: Library empty/loading/error states must be
+        // clear. Uses the debugWipeLibrary launch arg (#177) to guarantee
+        // the simulator boots into an empty store regardless of prior
+        // seeded test runs.
+        let app = makeApp(hasSeenOnboarding: true, debugLaunchTab: 1, debugWipeLibrary: true)
+        app.launch()
+
+        XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 12))
+
+        XCTAssertTrue(app.staticTexts["● NO CHANNELS TUNED"].waitForExistence(timeout: 6),
+                      "Library empty-state eyebrow missing. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertTrue(app.staticTexts["Your library is empty"].waitForExistence(timeout: 4),
+                      "Library empty-state headline missing. Hierarchy:\n\(app.debugDescription)")
+    }
+
+    @MainActor
     func testQueueShowsEmptyStateOnFreshLaunch() throws {
         // #126 acceptance: Queue UI under empty/small/large states needs
         // pinned coverage. The empty state lives in QueueView.emptyState
@@ -386,7 +403,8 @@ final class OffScriptUITests: XCTestCase {
         hasSeenOnboarding: Bool,
         debugLibrarySize: Int = 0,
         debugEpisodesPerShow: Int = 0,
-        debugLaunchTab: Int = 0
+        debugLaunchTab: Int = 0,
+        debugWipeLibrary: Bool = false
     ) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += [
@@ -399,7 +417,9 @@ final class OffScriptUITests: XCTestCase {
             "-offscript.debugSeedEpisodesPerShow",
             String(debugEpisodesPerShow),
             "-offscript.debugLaunchTab",
-            String(debugLaunchTab)
+            String(debugLaunchTab),
+            "-offscript.debugWipeLibrary",
+            debugWipeLibrary ? "YES" : "NO"
         ]
         return app
     }
