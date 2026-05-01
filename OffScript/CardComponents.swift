@@ -380,6 +380,7 @@ struct EpisodeCompactCard: View {
             episode.playedPosition = episode.duration ?? episode.playedPosition
             episode.lastPlayedAt = .now
         }
-        try? modelContext.save()
+        do { try modelContext.save() }
+        catch { cardLogger.error("Played-state save failed: \(error.localizedDescription, privacy: .public)") }
     }
 }
