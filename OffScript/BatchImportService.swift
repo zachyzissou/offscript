@@ -125,6 +125,41 @@ final class BatchImportService: ObservableObject {
         entries = []
     }
 
+    /// Re-run a finished batch against just the failed entries. Common
+    /// case is a flaky network: 5 of 50 feeds 404'd transiently, the
+    /// user wants to retry only those without re-importing the full
+    /// OPML and re-skipping the 45 that already landed. Already-added
+    /// rows stay added; cancelled rows stay cancelled.
+    func retryFailed(modelContext: ModelContext) {
+        guard !isRunning else { return }
+        let failedEntries = entries.filter { entry in
+            if case .failed = progress[entry.feedURL] { return true }
+            return false
+        }
+        guard !failedEntries.isEmpty else { return }
+        // Reset just the failed rows back to pending so the strip's
+        // running progress reflects the retry-only count instead of
+        // re-counting the whole batch.
+        for entry in failedEntries {
+            progress[entry.feedURL] = .pending
+        }
+        // Replace `entries` with the retry-only set so totalCount /
+        // completedCount drive the progress rail correctly.
+        entries = failedEntries
+        activeModelContext = modelContext
+        phase = .running
+
+        do {
+            _ = try Self.stageSubscriptions(for: failedEntries, in: modelContext)
+        } catch {
+            batchImportLogger.error("OPML retry staging failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        task = Task { [weak self] in
+            await self?.runBatch(entries: failedEntries, modelContext: modelContext)
+        }
+    }
+
     // MARK: - Internals
 
     private func runBatch(entries: [OPMLFeedEntry], modelContext: ModelContext) async {

@@ -2868,6 +2868,7 @@ private struct LibrarySyncResultStrip: View {
 }
 
 private struct LibraryBatchImportStrip: View {
+    @Environment(\.modelContext) private var modelContext
     @ObservedObject private var importer = BatchImportService.shared
     var onFinished: () -> Void = {}
 
@@ -2919,6 +2920,22 @@ private struct LibraryBatchImportStrip: View {
                         .font(.system(size: 12.5))
                         .foregroundStyle(Color.offscriptPaperWhite)
                     Spacer()
+                    if failed > 0 {
+                        Button {
+                            importer.retryFailed(modelContext: modelContext)
+                        } label: {
+                            TunerLabel(text: "↻ RETRY \(failed)",
+                                       color: .offscriptSignalYellow, size: 9)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Retry \(failed) failed feed imports")
+                        .accessibilityIdentifier("LibraryBatchImportRetryFailed")
+                    }
                     Button {
                         importer.dismiss()
                     } label: {
