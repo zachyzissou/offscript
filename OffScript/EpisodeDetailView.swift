@@ -202,7 +202,9 @@ struct EpisodeDetailView: View {
                 PlaybackController.shared.play(episode, in: modelContext)
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "play.fill").font(.system(size: 10))
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 10))
+                        .accessibilityHidden(true)
                     Text(isCurrentlyPlaying ? "NOW PLAYING"
                          : episode.playedPosition > 0 ? "RESUME" : "PLAY")
                 }
@@ -217,6 +219,11 @@ struct EpisodeDetailView: View {
             }
             .buttonStyle(.plain)
             .disabled(isCurrentlyPlaying)
+            .accessibilityLabel(
+                isCurrentlyPlaying
+                    ? "Now playing \(episode.title)"
+                    : (episode.playedPosition > 0 ? "Resume \(episode.title)" : "Play \(episode.title)")
+            )
 
             Button {
                 withAnimation { try? QueueService.add(episode, in: modelContext) }
@@ -224,6 +231,7 @@ struct EpisodeDetailView: View {
                 HStack(spacing: 4) {
                     Image(systemName: episode.isQueued ? "checkmark" : "plus")
                         .font(.system(size: 9))
+                        .accessibilityHidden(true)
                     Text(episode.isQueued ? "QUEUED" : "QUEUE")
                 }
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
@@ -237,6 +245,7 @@ struct EpisodeDetailView: View {
             }
             .buttonStyle(.plain)
             .disabled(episode.isQueued)
+            .accessibilityLabel(episode.isQueued ? "Already queued" : "Add \(episode.title) to queue")
 
             DownloadButton(episode: episode)
 
@@ -288,6 +297,7 @@ struct EpisodeDetailView: View {
                             .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Retry download for \(episode.title)")
                 }
             }
             .padding(.vertical, 12)
@@ -382,6 +392,7 @@ struct EpisodeDetailView: View {
                     HStack(spacing: 6) {
                         Image(systemName: feedbackGiven == .like ? "hand.thumbsup.fill" : "hand.thumbsup")
                             .font(.system(size: 10))
+                            .accessibilityHidden(true)
                         Text("LIKE")
                     }
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -396,6 +407,7 @@ struct EpisodeDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(feedbackGiven != nil)
+                .accessibilityLabel(feedbackGiven == .like ? "Liked" : "Like \(episode.title)")
 
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -407,6 +419,7 @@ struct EpisodeDetailView: View {
                     HStack(spacing: 6) {
                         Image(systemName: feedbackGiven == .lessLikeThis ? "hand.thumbsdown.fill" : "hand.thumbsdown")
                             .font(.system(size: 10))
+                            .accessibilityHidden(true)
                         Text("NOT FOR ME")
                     }
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
@@ -420,6 +433,7 @@ struct EpisodeDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(feedbackGiven != nil)
+                .accessibilityLabel(feedbackGiven == .lessLikeThis ? "Marked not for me" : "Not for me — show fewer episodes like \(episode.title)")
 
                 Spacer()
             }

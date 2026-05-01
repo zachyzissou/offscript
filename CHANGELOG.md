@@ -5,6 +5,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ## [Unreleased]
 
 ### Added — UI QA swarm coverage
+- **Episode Detail action and feedback buttons now expose explicit VoiceOver labels** (`Play <title>` / `Resume <title>` / `Now playing <title>`, `Add <title> to queue` / `Already queued`, `Retry download for <title>`, `Like <title>` / `Liked`, `Not for me — show fewer episodes like <title>` / `Marked not for me`) and decorative SF Symbols inside those buttons are now hidden from accessibility, so VoiceOver reads one intentional label per action instead of the icon name plus the mono visible text (#127).
 - **Large-library UI smoke coverage now seeds a deterministic 258-show library** and launches directly into Library, giving the 250+ show scrolling case a repeatable simulator test instead of a manual-only complaint.
 - **Settings UI coverage now opens the config panel against a deterministic 258-show library** and verifies simulator iCloud status stays recoverable instead of crashing.
 - **Debug large-library seeding now resets stale simulator data when an explicit library size is requested**, so visual audits and UI tests are not polluted by previous sample stores.
