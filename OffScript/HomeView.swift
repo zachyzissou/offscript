@@ -664,15 +664,24 @@ private struct TunerDiscoveryRail: View {
             TunerLabel(text: result.author.uppercased(), color: .offscriptFnInfo, size: 8)
                 .lineLimit(1)
 
+            // Lock the title to a fixed 2-line slot so cards with 1-line
+            // and 2-line titles bottom-align identically across the rail.
+            // Without this, longer titles push the reason / SOURCE / +
+            // TUNE rows down, producing a staircased rail (#180).
             Text(result.title)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.offscriptPaperWhite)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
-                .frame(width: 168, alignment: .leading)
+                .frame(width: 168, height: 36, alignment: .topLeading)
 
             TunerRailReasonTag(text: displayReason, color: .offscriptFnInfo)
             RecommendationSignalTraceView(signals: scored.signalTrace, limit: 1, color: .offscriptSoftPaper)
+
+            // Spacer absorbs any leftover variance from the reason tag
+            // (1 vs 2 lines) and the trace row so the action key always
+            // sits on the same bottom baseline as siblings.
+            Spacer(minLength: 0)
 
             Button {
                 Task { await add(scored.result) }
@@ -690,9 +699,8 @@ private struct TunerDiscoveryRail: View {
             }
             .buttonStyle(.plain)
             .disabled(isAdded || isImporting)
-            .padding(.top, 2)
         }
-        .frame(width: 168, alignment: .leading)
+        .frame(width: 168, height: 348, alignment: .topLeading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(result.title) from \(result.author). \(displayReason)")
     }
