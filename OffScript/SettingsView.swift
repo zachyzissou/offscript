@@ -437,7 +437,9 @@ struct SettingsView: View {
                     TunerLabel(text: "↻ REBUILD SIGNAL", color: .offscriptSignalYellow, size: 10)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 9)
+                        .frame(minHeight: 44)
                         .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Rebuild signal profile from current listening history")
@@ -560,7 +562,9 @@ struct SettingsView: View {
                         TunerLabel(text: "× SIGN OUT", color: .offscriptFnRecord, size: 10)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 9)
+                            .frame(minHeight: 44)
                             .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 4)
