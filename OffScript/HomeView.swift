@@ -37,14 +37,6 @@ struct HomeView: View {
             if isActive {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
-                        HomeTunerHeader(
-                            isRetuning: isRetuning,
-                            onRetune: {
-                                Task { await loadSections(manual: true) }
-                            },
-                            onOpenSettings: onOpenSettings
-                        )
-
                         if let errorMessage {
                             HomeErrorRow(message: errorMessage)
                         }
@@ -94,6 +86,20 @@ struct HomeView: View {
                     }
                     .padding(.top, OffScriptTheme.rootContentTopPadding)
                     .padding(.bottom, 28)
+                }
+                // Pin HomeTunerHeader as a top inset (#161). The header
+                // grabs below the Dynamic Island / status bar; scrolling
+                // rail and hero content slides behind it. The black
+                // background occludes scrolled content cleanly so cards
+                // don't bleed through the eyebrow row.
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    HomeTunerHeader(
+                        isRetuning: isRetuning,
+                        onRetune: { Task { await loadSections(manual: true) } },
+                        onOpenSettings: onOpenSettings
+                    )
+                    .padding(.top, OffScriptTheme.rootContentTopPadding)
+                    .background(Color.offscriptStudioBlack)
                 }
                 .accessibilityIdentifier("HomeScreen")
             } else {
