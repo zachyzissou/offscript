@@ -66,6 +66,13 @@ final class PlaybackController: ObservableObject {
     @Published private(set) var sleepTimerEndDate: Date?
     private var sleepTimerTask: Task<Void, Never>?
 
+    /// When true, playback completion suppresses auto-advance to the next
+    /// queue item — the player pauses at the end of the current episode
+    /// instead. Distinct from `sleepTimerEndDate` so a user who set
+    /// "End of Episode" doesn't see a stale wall-clock countdown when
+    /// the episode is 38 minutes long.
+    @Published private(set) var isEndOfEpisodeSleepArmed: Bool = false
+
     private init() {
         configureAudioSession()
         observeTime()
@@ -170,6 +177,7 @@ final class PlaybackController: ObservableObject {
     /// passed during the suspension window.
     func setSleepTimer(minutes: Int) {
         cancelSleepTimer()
+        isEndOfEpisodeSleepArmed = false
         let endDate = Date().addingTimeInterval(TimeInterval(minutes * 60))
         sleepTimerEndDate = endDate
         sleepTimerTask = Task { @MainActor [weak self] in
@@ -191,6 +199,19 @@ final class PlaybackController: ObservableObject {
         sleepTimerTask?.cancel()
         sleepTimerTask = nil
         sleepTimerEndDate = nil
+        isEndOfEpisodeSleepArmed = false
+    }
+
+    /// Arm an end-of-episode sleep — playback completion suppresses
+    /// auto-advance and pauses at the end of the current episode
+    /// instead. Common podcast-app affordance for falling asleep to
+    /// one specific episode without committing to a wall-clock minute
+    /// budget.
+    func armEndOfEpisodeSleep() {
+        sleepTimerTask?.cancel()
+        sleepTimerTask = nil
+        sleepTimerEndDate = nil
+        isEndOfEpisodeSleepArmed = true
     }
 
     /// Force a sleep-timer evaluation. Call from the scene-active
@@ -424,7 +445,16 @@ final class PlaybackController: ObservableObject {
                     context.insert(event)
                     do { try context.save() } catch { self.logger.error("Failed to save playback completion event: \(error.localizedDescription, privacy: .public)") }
                 }
-                if UserDefaults.standard.object(forKey: "offscript.autoPlayNext") as? Bool ?? true {
+                // End-of-episode sleep wins over auto-advance — clear
+                // the flag and stop. Without this guard, an armed
+                // end-of-episode sleep would still auto-jump into the
+                // next queued episode and defeat the purpose.
+                if self.isEndOfEpisodeSleepArmed {
+                    self.isEndOfEpisodeSleepArmed = false
+                    self.player.pause()
+                    self.isPlaying = false
+                    self.updateNowPlayingPlaybackRate()
+                } else if UserDefaults.standard.object(forKey: "offscript.autoPlayNext") as? Bool ?? true {
                     self.skipToNextInQueue()
                 }
             }
