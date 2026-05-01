@@ -1509,60 +1509,72 @@ struct OffScriptTests {
     }
 
     @Test
-    func recommendationExplainerClipsLongShowAffinityReasons() {
-        let longShow = "The Comprehensive History of Long-Winded Audio Storytelling and the People Who Make It"
-        let reason = RecommendationExplainer.authoredReason(
-            fallback: "Matches your saved signal",
-            signals: [
-                RecommendationSignal(label: "source", value: "show affinity"),
-                RecommendationSignal(label: "show", value: longShow)
-            ]
+    func podcastDetailRankerPrefersFeedSuppliedEpisodeNumber() {
+        let rank = PodcastDetailRanker.chronologicalRank(
+            explicitEpisodeNumber: 42,
+            displayedIndex: 0,
+            totalEpisodeCount: 100,
+            filterShowsFullFeed: true
         )
-
-        #expect(reason.count <= 72)
-        #expect(reason.hasSuffix("…"))
-        #expect(reason.hasPrefix("More from The Comprehensive History"))
+        #expect(rank == 42)
     }
 
     @Test
-    func recommendationExplainerClipsLongTagOverlapReasons() {
-        let tags = "artificial intelligence infrastructure, developer workflows, distributed systems, observability"
-        let reason = RecommendationExplainer.authoredReason(
-            fallback: "Multiple topic matches",
-            signals: [
-                RecommendationSignal(label: "source", value: "topic overlap"),
-                RecommendationSignal(label: "tags", value: tags)
-            ]
+    func podcastDetailRankerNumbersOldestFirstOnFullFeed() {
+        let newest = PodcastDetailRanker.chronologicalRank(
+            explicitEpisodeNumber: nil,
+            displayedIndex: 0,
+            totalEpisodeCount: 250,
+            filterShowsFullFeed: true
         )
-
-        #expect(reason.count <= 72)
-        #expect(reason.hasSuffix("…"))
+        let oldest = PodcastDetailRanker.chronologicalRank(
+            explicitEpisodeNumber: nil,
+            displayedIndex: 249,
+            totalEpisodeCount: 250,
+            filterShowsFullFeed: true
+        )
+        #expect(newest == 250)
+        #expect(oldest == 1)
     }
 
     @Test
-    func recommendationExplainerClipsLongLatestEpisodeReasons() {
-        let tags = "artificial intelligence infrastructure, developer workflows, distributed systems"
-        let reason = RecommendationExplainer.authoredReason(
-            fallback: "Latest episodes overlap your saved signals",
-            signals: [
-                RecommendationSignal(label: "source", value: "latest episode"),
-                RecommendationSignal(label: "tags", value: tags)
-            ]
+    func podcastDetailRankerSuppressesNumberOnFilteredSubsets() {
+        let rank = PodcastDetailRanker.chronologicalRank(
+            explicitEpisodeNumber: nil,
+            displayedIndex: 0,
+            totalEpisodeCount: 12,
+            filterShowsFullFeed: false
         )
-
-        #expect(reason.count <= 72)
+        #expect(rank == nil)
     }
 
     @Test
-    func recommendationExplainerClipsLongFallbackForUnknownSources() {
-        let fallback = "An extremely lengthy editorial-style fallback string that would otherwise overflow rail card layouts on narrow iPhones"
-        let reason = RecommendationExplainer.authoredReason(
-            fallback: fallback,
-            signals: [RecommendationSignal(label: "source", value: "made-up-bucket")]
+    func podcastDetailRankerStillUsesExplicitNumberOnFilteredSubsets() {
+        let rank = PodcastDetailRanker.chronologicalRank(
+            explicitEpisodeNumber: 7,
+            displayedIndex: 0,
+            totalEpisodeCount: 3,
+            filterShowsFullFeed: false
         )
+        #expect(rank == 7)
+    }
 
-        #expect(reason.count <= 72)
-        #expect(reason.hasSuffix("…"))
+    @Test
+    func podcastDetailRankerHandlesEmptyAndOutOfRangeIndexes() {
+        let empty = PodcastDetailRanker.chronologicalRank(
+            explicitEpisodeNumber: nil,
+            displayedIndex: 0,
+            totalEpisodeCount: 0,
+            filterShowsFullFeed: true
+        )
+        let outOfRange = PodcastDetailRanker.chronologicalRank(
+            explicitEpisodeNumber: nil,
+            displayedIndex: 99,
+            totalEpisodeCount: 50,
+            filterShowsFullFeed: true
+        )
+        #expect(empty == nil)
+        #expect(outOfRange == nil)
     }
 
     @Test
