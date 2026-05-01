@@ -13,6 +13,13 @@ enum PodcastPlaybackPreferences {
     private static let podcastRatesKey = "offscript.podcastRates"
     private static let globalRateKey = "offscript.playbackRate.global"
 
+    /// Shared list of rates exposed by the Tuner rate pickers (Player
+    /// per-podcast picker and Settings default-rate row). Single source
+    /// of truth so the two surfaces can't drift — a future addition
+    /// (0.5× / 3.0×) is one edit instead of two. 0.75× was added for
+    /// language learners / dense content / accessibility.
+    static let supportedRates: [Float] = [0.75, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5]
+
     /// Resolve the per-podcast rate, returning nil when none is set so the
     /// caller can fall back to the global default. Bounded to [0.5, 3.0×]
     /// so a corrupted store never produces a silent / runaway player.
