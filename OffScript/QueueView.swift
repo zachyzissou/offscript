@@ -106,6 +106,7 @@ struct QueueView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Clear all \(orderedItems.count) queued episodes")
                 }
             }
 
@@ -291,6 +292,7 @@ private struct QueueLeadStrip: View {
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Remove \(item.episode.title) from queue")
 
                 Spacer()
             }

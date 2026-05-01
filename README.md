@@ -98,6 +98,9 @@ xcodebuild test -project OffScript.xcodeproj -scheme OffScript \
   -destination 'platform=iOS Simulator,OS=latest,name=iPhone 17 Pro'
 ```
 
+For the full automated/simulator/real-device coverage map plus launch
+argument reference, see [`docs/TEST_MATRIX.md`](docs/TEST_MATRIX.md).
+
 ---
 
 ## Shipping

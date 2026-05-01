@@ -235,7 +235,7 @@ struct SearchView: View {
             storeRecentSearch(trimmed)
         } catch {
             searchLogger.error("Search failed for query '\(trimmed, privacy: .public)': \(error.localizedDescription, privacy: .public)")
-            errorMessage = "Search failed. Check your connection and try again."
+            errorMessage = "Apple Podcasts Search failed: \(error.localizedDescription)"
         }
     }
 
@@ -250,7 +250,7 @@ struct SearchView: View {
             storeRecentSearch(result.title)
         } catch {
             searchLogger.error("Import failed for ‘\(result.title, privacy: .public)’: \(error.localizedDescription, privacy: .public)")
-            errorMessage = "Couldn’t import \(result.title) yet."
+            errorMessage = "Couldn’t import \(result.title): \(error.localizedDescription)"
         }
     }
 
@@ -334,6 +334,7 @@ private struct StarterTopicsSection: View {
                             .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Search for \(topic)")
                 }
             }
         }
@@ -357,6 +358,7 @@ private struct RecentSearchesSection: View {
                     TunerLabel(text: "× CLEAR", color: .offscriptFnRecord, size: 9)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Clear recent searches")
             }
 
             LazyVStack(spacing: 0) {
@@ -377,10 +379,12 @@ private struct RecentSearchesSection: View {
                             Image(systemName: "arrow.up.left")
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(Color.offscriptSoftPaper)
+                                .accessibilityHidden(true)
                         }
                         .padding(.vertical, 10)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Search again for \(item)")
                     if idx < items.count - 1 {
                         Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                     }
@@ -497,6 +501,11 @@ private struct SearchResultRow: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isImporting || isAdded)
+                .accessibilityLabel(
+                    isAdded
+                        ? "\(result.title) is already in your library"
+                        : (isImporting ? "Adding \(result.title) to library" : "Add \(result.title) to library")
+                )
 
                 if let host = result.websiteURL {
                     Button {
@@ -510,6 +519,7 @@ private struct SearchResultRow: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Open \(result.title) website")
                 }
                 Spacer()
             }
