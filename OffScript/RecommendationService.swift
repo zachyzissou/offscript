@@ -396,9 +396,88 @@ final class RecommendationService {
             allSections.append(HomeFeedSection(title: "Short Window", subtitle: "Compact episodes only when you asked for shorter listens.", scoredEpisodes: shortWindow))
         }
 
+        // From Your Subscriptions is the catch-all that fills the gap when
+        // a user has imported shows but no recent listening signal. Built
+        // from the subscribed-show pool directly (not via homeSignal) so
+        // episodes with zero taste signal still surface — otherwise the
+        // signal-thin Home reads as "Apple Podcasts catalog with TUNE
+        // buttons" because Discovery / Tuned Genres dominate. Runs LAST
+        // among the scoring rails so specific signal-driven rails always
+        // win when they have content (#191 follow-up).
+        let subscriptionFresh = Self.subscriptionFreshSection(
+            recentEpisodes: recentEpisodes,
+            profileByEpisodeID: profileByEpisodeID,
+            negativeShowWeights: negativeShowWeights,
+            negativeTagWeights: negativeTagWeights,
+            excluding: &usedEpisodeIDs,
+            dislikedEpisodeIDs: dislikedEpisodeIDs,
+            limit: limit
+        )
+        allSections.append(HomeFeedSection(
+            title: "From Your Subscriptions",
+            subtitle: "Latest unplayed episodes across the channels you've tuned to.",
+            scoredEpisodes: subscriptionFresh
+        ))
+
         allSections = allSections.filter { !$0.episodes.isEmpty }
 
         return allSections
+    }
+
+    private static func subscriptionFreshSection(
+        recentEpisodes: [Episode],
+        profileByEpisodeID: [UUID: EpisodeProfile],
+        negativeShowWeights: [String: Double],
+        negativeTagWeights: [String: Double],
+        excluding usedEpisodeIDs: inout Set<UUID>,
+        dislikedEpisodeIDs: Set<UUID>,
+        limit: Int
+    ) -> [ScoredEpisode] {
+        var picks: [ScoredEpisode] = []
+        // Negative show / tag signals must still suppress here — a user
+        // who tapped "Less Like This" on a show or topic shouldn't see
+        // those episodes resurface in the catch-all rail. Negative
+        // weights are negative numbers (e.g. lessLikeThis is -3.5,
+        // notInterested is -5.0), so we suppress when accumulated
+        // weight crosses -0.5 in the negative direction.
+        let suppressionThreshold: Double = -0.5
+        for episode in recentEpisodes {
+            guard picks.count < limit else { break }
+            guard !usedEpisodeIDs.contains(episode.id),
+                  !dislikedEpisodeIDs.contains(episode.id),
+                  !episode.isPlayed,
+                  episode.podcast.isSubscribed
+            else { continue }
+            let showTitle = episode.podcast.title
+            if let showWeight = negativeShowWeights[showTitle], showWeight <= suppressionThreshold {
+                continue
+            }
+            let profile = profileByEpisodeID[episode.id] ?? episode.profile
+            let normalizedTags = Self.normalizedTags(profile?.tags ?? [])
+            let hasNegativeTagOverlap = normalizedTags.contains(where: {
+                (negativeTagWeights[$0] ?? 0) <= suppressionThreshold
+            })
+            if hasNegativeTagOverlap {
+                continue
+            }
+            usedEpisodeIDs.insert(episode.id)
+            let explanation = "From your subscribed show \(showTitle)"
+            let signals: [RecommendationSignal] = [
+                RecommendationSignal(label: "source", value: "subscription"),
+                RecommendationSignal(label: "show", value: showTitle),
+                RecommendationSignal(label: "strength", value: "inferred")
+            ]
+            // Score is intentionally low — this rail is the catch-all,
+            // not a primary signal. Hero candidate selection should
+            // prefer real signal-driven picks over this.
+            picks.append(ScoredEpisode(
+                episode: episode,
+                score: 50,
+                explanation: explanation,
+                signalTrace: signals
+            ))
+        }
+        return picks
     }
 
     private func homeSignal(
