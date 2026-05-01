@@ -6,6 +6,8 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ### Added — UI QA swarm coverage
 - **Repository now has a canonical [`docs/TEST_MATRIX.md`](docs/TEST_MATRIX.md)** mapping every major surface (onboarding, import/export, library, search, queue, player, background playback, settings, identity/iCloud, recommendations, widgets/Live Activity, release/TestFlight visibility) to its automated test, simulator manual command (with launch arguments), and real-device-only flow — so agents and sub-agents can plan regression sweeps and PR verification without relying on conversational memory (#116).
+- **Settings UI coverage now opens the config panel from the Library tab** in addition to the existing Home entry point, locking in the Library Settings open path that the build 51 crash report flagged (#114).
+- **Settings UI coverage now drives a present → dismiss → re-present cycle** to surface SwiftUI sheet lifecycle crashes that only appear after a Settings sheet has been opened, dismissed, and reopened (#114).
 - **Large-library UI smoke coverage now seeds a deterministic 258-show library** and launches directly into Library, giving the 250+ show scrolling case a repeatable simulator test instead of a manual-only complaint.
 - **Settings UI coverage now opens the config panel against a deterministic 258-show library** and verifies simulator iCloud status stays recoverable instead of crashing.
 - **Debug large-library seeding now resets stale simulator data when an explicit library size is requested**, so visual audits and UI tests are not polluted by previous sample stores.
@@ -13,6 +15,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home recommendations now have a dedicated “More From Shows You Chose” lane** so explicit like/more-like-this show intent is not mislabeled as passive completion affinity.
 
 ### Changed — Tuner UI conformance
+- **Repository now has a [`docs/TUNER_CONFORMANCE.md`](docs/TUNER_CONFORMANCE.md) audit log** with a per-surface Tuner-conformance state table and an explicit "Intentional Native Exceptions" list (Sign in with Apple, share sheet, file importer, SFSafariViewController, MPNowPlayingInfoCenter, Live Activity / Dynamic Island), so future surface additions can be checked against a single source instead of re-deriving the rules per PR (#109).
 - **Root Home, Library, Queue, and Search tabs now hide native empty navigation bars** so the top-of-app spacing is governed by the iOS safe area plus the 2pt Tuner inset instead of an invisible reserved nav bar.
 - **Shared Tuner labels, tags, and readouts now scale through Dynamic Type metrics** while preserving the mono instrument-panel vocabulary.
 - **The custom Tuner tab shell now keeps visited tab stacks alive** so returning from Library to Home does not rebuild the Home recommendation feed on every tab switch.
@@ -36,11 +39,14 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home recommendations now fetch targeted candidates from explicitly liked and completed shows outside the global recency window**, so large high-volume libraries cannot bury older high-signal follow-ups before scoring.
 - **Home recommendations now compose multiple local evidence signals instead of stopping at the first matching rule**, so explicit topic feedback and “more from this show” reinforce one authored recommendation rather than competing as generic ranking buckets.
 - **Recommendation reason copy now has deterministic rail-length clipping for combined evidence**, keeping long show/topic explanations inside Tuner cards.
+- **All authored WHY copy paths now route through the same 72-character rail clip** so show-affinity, same-show, taste-tag, topic-overlap, recent-interest, liked-episode, now-playing, fresh, latest-episode, subscription, available, and unknown-fallback reasons can no longer overflow Home and Library rail cards (#118).
+- **Wrapping Tuner reason tags now truncate with a tail ellipsis** instead of relying on parent clipping, so the second line of a long recommendation reason ends cleanly inside the hairline border.
 - **Explicit “more like this” and like signals now carry substantially more weight than passive completions** so recommendations follow intentional user feedback instead of feeling like generic completion-based ranking.
 - **Episode Detail feedback now uses the same retune notification path as Home cards** so likes and `NOT FOR ME` taps refresh recommendations consistently across entry points.
 - **Discovery genre matches now stay low-confidence until backed by local evidence** such as latest-episode tag overlap, topic matches, show affinity, or feed freshness, and genre-only WHY copy no longer claims local evidence.
 
 ### Fixed — onboarding, import, and sync UI honesty
+- **Podcast detail rows now show chronological "Episode N" labels instead of inverting newest-first display indices** so the first episode in a show reads as Episode 001 and the newest reads as the highest number, with feed-supplied `<itunes:episode>` values preferred when available and filtered subsets falling back to a `—` placeholder rather than a misleading partial-list rank (#145).
 - **Onboarding background hydration now yields and waits briefly after local subscription completion** so the first Home render is not immediately contending with starter-feed apply/save work on the main SwiftData context.
 - **Settings and Sign in with Apple now log identity, iCloud, signal-profile, and Keychain OSStatus breadcrumbs** so TestFlight Settings crashes and Apple sign-in failures can be correlated to the failing subsystem.
 - **Onboarding Sign in with Apple no longer has an iOS 26 missing-window precondition crash path** and now logs Keychain OSStatus details when credential persistence fails.

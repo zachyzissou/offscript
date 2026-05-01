@@ -90,12 +90,12 @@ enum RecommendationExplainer {
             return "More from a show you chose"
         case "show affinity":
             if let show = lookup["show"], !show.isEmpty {
-                return "More from \(show), a show you already trust"
+                return clipped("More from \(show), a show you already trust", maxCharacters: 72)
             }
             return "Similar to shows you keep finishing"
         case "same show":
             if let show = lookup["show"], !show.isEmpty {
-                return "More from \(show)"
+                return clipped("More from \(show)", maxCharacters: 72)
             }
             return "More from the show already playing"
         case "tag match":
@@ -105,27 +105,27 @@ enum RecommendationExplainer {
             return "Tuned to your saved listening signals"
         case "taste tag":
             if let tags = lookup["tags"], !tags.isEmpty {
-                return "Covers your \(joinedList(tags)) signal\(isPluralList(tags) ? "s" : "")"
+                return clipped("Covers your \(joinedList(tags)) signal\(isPluralList(tags) ? "s" : "")", maxCharacters: 72)
             }
             return "Covers topics you keep choosing"
         case "topic overlap":
             if let tags = lookup["tags"], !tags.isEmpty {
-                return "Multiple topic matches: \(joinedList(tags))"
+                return clipped("Multiple topic matches: \(joinedList(tags))", maxCharacters: 72)
             }
             return "Multiple topic matches from your listens"
         case "recent interest":
             if let tag = lookup["tag"], !tag.isEmpty {
-                return "Fits your recent \(tag) signal"
+                return clipped("Fits your recent \(tag) signal", maxCharacters: 72)
             }
             return "Fits your recent listening signal"
         case "liked episode":
             if let tag = lookup["tag"], !tag.isEmpty {
-                return "Connects to \(tag) from episodes you liked"
+                return clipped("Connects to \(tag) from episodes you liked", maxCharacters: 72)
             }
             return "Connects to episodes you liked"
         case "now playing":
             if let tag = lookup["tag"], !tag.isEmpty {
-                return "Pairs with your current \(tag) listen"
+                return clipped("Pairs with your current \(tag) listen", maxCharacters: 72)
             }
             return "Pairs with what is playing now"
         case "genre":
@@ -141,7 +141,7 @@ enum RecommendationExplainer {
             return "A genre-lane pick with local evidence behind it"
         case "fresh":
             if let show = lookup["show"], !show.isEmpty {
-                return "Fresh from \(show)"
+                return clipped("Fresh from \(show)", maxCharacters: 72)
             }
             if let age = lookup["age"] {
                 return "Fresh episode, \(age) old"
@@ -154,28 +154,28 @@ enum RecommendationExplainer {
                 return "Quick \(window) listen"
             }
             if !fallback.localizedCaseInsensitiveContains("short-listen setting") {
-                return fallback
+                return clipped(fallback, maxCharacters: 72)
             }
             return "Fits your short-listen setting"
         case "latest episode":
             if let tags = lookup["tags"], !tags.isEmpty {
-                return "Latest episodes overlap your \(joinedList(tags)) signal"
+                return clipped("Latest episodes overlap your \(joinedList(tags)) signal", maxCharacters: 72)
             }
             return "Latest episodes overlap your saved signals"
         case "subscription":
             if let show = lookup["show"], !show.isEmpty {
-                return "From your subscribed show \(show)"
+                return clipped("From your subscribed show \(show)", maxCharacters: 72)
             }
             return "From a show in your library"
         case "available":
             if let show = lookup["show"], !show.isEmpty {
-                return "Available from \(show)"
+                return clipped("Available from \(show)", maxCharacters: 72)
             }
             return "Available from your library"
         case "discovery":
             return "Discovery match from your saved signals"
         default:
-            return fallback
+            return clipped(fallback, maxCharacters: 72)
         }
     }
 
