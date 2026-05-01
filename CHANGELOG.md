@@ -5,6 +5,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ## [Unreleased]
 
 ### Added — UI QA swarm coverage
+- **Episode Detail action and feedback buttons now expose explicit VoiceOver labels** (`Play <title>` / `Resume <title>` / `Now playing <title>`, `Add <title> to queue` / `Already queued`, `Retry download for <title>`, `Like <title>` / `Liked`, `Not for me — show fewer episodes like <title>` / `Marked not for me`) and decorative SF Symbols inside those buttons are now hidden from accessibility, so VoiceOver reads one intentional label per action instead of the icon name plus the mono visible text (#127).
 - **Repository now has a canonical [`docs/TEST_MATRIX.md`](docs/TEST_MATRIX.md)** mapping every major surface (onboarding, import/export, library, search, queue, player, background playback, settings, identity/iCloud, recommendations, widgets/Live Activity, release/TestFlight visibility) to its automated test, simulator manual command (with launch arguments), and real-device-only flow — so agents and sub-agents can plan regression sweeps and PR verification without relying on conversational memory (#116).
 - **Settings UI coverage now opens the config panel from the Library tab** in addition to the existing Home entry point, locking in the Library Settings open path that the build 51 crash report flagged (#114).
 - **Settings UI coverage now drives a present → dismiss → re-present cycle** to surface SwiftUI sheet lifecycle crashes that only appear after a Settings sheet has been opened, dismissed, and reopened (#114).
