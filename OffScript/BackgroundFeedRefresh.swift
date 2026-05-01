@@ -6,7 +6,7 @@ import SwiftData
 enum BackgroundFeedRefresh {
     static let taskIdentifier = "com.offscript.feed-refresh"
     private static let minimumInterval: TimeInterval = 30 * 60 // 30 minutes
-    private static let logger = Logger(subsystem: "OffScript", category: "BackgroundRefresh")
+    private static let logger = Logger(subsystem: "com.offscript", category: "BackgroundRefresh")
 
     // MARK: - Scheduling
 
