@@ -522,13 +522,13 @@ struct PlayerView: View {
                         }
                     } label: {
                         tunerControlLabel(text: sleepTimerLabel,
-                                          color: player.sleepTimerEndDate != nil
+                                          color: (player.sleepTimerEndDate != nil || player.isEndOfEpisodeSleepArmed)
                                             ? .offscriptSignalYellow
                                             : .offscriptPaperWhite)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Sleep timer")
-                    .accessibilityHint(player.sleepTimerEndDate != nil
+                    .accessibilityHint((player.sleepTimerEndDate != nil || player.isEndOfEpisodeSleepArmed)
                         ? "Active. Pick a new duration or cancel."
                         : "Pick a duration to pause playback.")
 
@@ -573,7 +573,7 @@ struct PlayerView: View {
 
     private var tunerSleepPicker: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 8)], spacing: 8) {
-            if player.sleepTimerEndDate != nil {
+            if player.sleepTimerEndDate != nil || player.isEndOfEpisodeSleepArmed {
                 Button {
                     player.cancelSleepTimer()
                     withAnimation(.easeInOut(duration: 0.16)) {
@@ -600,6 +600,24 @@ struct PlayerView: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            // End-of-episode option — pauses when the current episode
+            // finishes instead of running a wall-clock minute budget.
+            // Common in podcast apps for falling asleep to one specific
+            // episode without committing to a guess at remaining time.
+            Button {
+                player.armEndOfEpisodeSleep()
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isSleepPickerExpanded = false
+                }
+            } label: {
+                TunerLabel(text: "END OF EP", color: .offscriptSignalYellow, size: 10)
+                    .frame(maxWidth: .infinity, minHeight: 34)
+                    .overlay(Rectangle().stroke(Color.offscriptSignalYellow.opacity(0.7), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Sleep at end of current episode")
+            .accessibilityIdentifier("PlayerSleepEndOfEpisode")
         }
     }
 
@@ -634,6 +652,9 @@ struct PlayerView: View {
     /// so the SwiftUI tick is enough to keep the countdown fresh without a
     /// dedicated Timer.
     private var sleepTimerLabel: String {
+        if player.isEndOfEpisodeSleepArmed {
+            return "SLEEP  END OF EP"
+        }
         guard let endDate = player.sleepTimerEndDate else { return "SLEEP  OFF" }
         // Bind to player.currentTime so SwiftUI re-renders this label every
         // second (the AVPlayer time observer drives that publisher).
