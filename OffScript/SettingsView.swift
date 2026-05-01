@@ -20,6 +20,11 @@ struct SettingsView: View {
     @State private var cloudKitAvailability: CloudKitAccountAvailability = .couldNotDetermine
     @State private var showSignOutConfirmation = false
     @State private var signInMessage: String?
+    /// Auto-clears `signInMessage` after a short window so a stale
+    /// "Sign-in failed. Please try again." doesn't linger across the
+    /// next session. The timer is cancelled and replaced whenever a
+    /// new message is set.
+    @State private var signInMessageClearTask: Task<Void, Never>?
     @State private var isDefaultRatePickerExpanded = false
 
     @State private var subscribedPodcastCount: Int = 0
@@ -67,6 +72,21 @@ struct SettingsView: View {
             await refreshIdentityStatus()
             settingsLogger.info("Settings task completed: episodes=\(episodeCount, privacy: .public), queued=\(queuedCount, privacy: .public), signedIn=\(isSignedIn, privacy: .public), apple=\(appleCredentialState.displayText, privacy: .public), iCloud=\(cloudKitAvailability.displayText, privacy: .public)")
         }
+        // Auto-clear the sign-in status copy so a stale "Sign-in
+        // failed" line doesn't linger across the next Settings open.
+        // Cancels any prior timer when the message changes so two
+        // back-to-back attempts both get the full window.
+        .onChange(of: signInMessage) { _, newValue in
+            signInMessageClearTask?.cancel()
+            guard newValue != nil else { return }
+            signInMessageClearTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(8))
+                if !Task.isCancelled {
+                    withAnimation { signInMessage = nil }
+                }
+            }
+        }
+        .onDisappear { signInMessageClearTask?.cancel() }
     }
 
     // MARK: header + stats
