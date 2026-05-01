@@ -1509,6 +1509,75 @@ struct OffScriptTests {
     }
 
     @Test
+    func podcastDetailRankerPrefersFeedSuppliedEpisodeNumber() {
+        let rank = PodcastDetailRanker.chronologicalRank(
+            explicitEpisodeNumber: 42,
+            displayedIndex: 0,
+            totalEpisodeCount: 100,
+            filterShowsFullFeed: true
+        )
+        #expect(rank == 42)
+    }
+
+    @Test
+    func podcastDetailRankerNumbersOldestFirstOnFullFeed() {
+        let newest = PodcastDetailRanker.chronologicalRank(
+            explicitEpisodeNumber: nil,
+            displayedIndex: 0,
+            totalEpisodeCount: 250,
+            filterShowsFullFeed: true
+        )
+        let oldest = PodcastDetailRanker.chronologicalRank(
+            explicitEpisodeNumber: nil,
+            displayedIndex: 249,
+            totalEpisodeCount: 250,
+            filterShowsFullFeed: true
+        )
+        #expect(newest == 250)
+        #expect(oldest == 1)
+    }
+
+    @Test
+    func podcastDetailRankerSuppressesNumberOnFilteredSubsets() {
+        let rank = PodcastDetailRanker.chronologicalRank(
+            explicitEpisodeNumber: nil,
+            displayedIndex: 0,
+            totalEpisodeCount: 12,
+            filterShowsFullFeed: false
+        )
+        #expect(rank == nil)
+    }
+
+    @Test
+    func podcastDetailRankerStillUsesExplicitNumberOnFilteredSubsets() {
+        let rank = PodcastDetailRanker.chronologicalRank(
+            explicitEpisodeNumber: 7,
+            displayedIndex: 0,
+            totalEpisodeCount: 3,
+            filterShowsFullFeed: false
+        )
+        #expect(rank == 7)
+    }
+
+    @Test
+    func podcastDetailRankerHandlesEmptyAndOutOfRangeIndexes() {
+        let empty = PodcastDetailRanker.chronologicalRank(
+            explicitEpisodeNumber: nil,
+            displayedIndex: 0,
+            totalEpisodeCount: 0,
+            filterShowsFullFeed: true
+        )
+        let outOfRange = PodcastDetailRanker.chronologicalRank(
+            explicitEpisodeNumber: nil,
+            displayedIndex: 99,
+            totalEpisodeCount: 50,
+            filterShowsFullFeed: true
+        )
+        #expect(empty == nil)
+        #expect(outOfRange == nil)
+    }
+
+    @Test
     @MainActor
     func appSettingsRoundTripsPreferences() {
         let originalAutoPlay = AppSettings.autoPlayNext
