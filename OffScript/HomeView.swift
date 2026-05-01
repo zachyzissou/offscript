@@ -409,9 +409,16 @@ private struct HomeErrorRow: View {
 private struct HomeStarterRail: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var subscribed: [Podcast]
-    @State private var importingID: String?
+    /// Per-pick in-flight import set so two picks tapped in quick
+    /// succession both keep their `○ ADDING…` state. Mirrors the
+    /// per-row staging set added to SearchView in #199.
+    @State private var importingIDs: Set<String> = []
     @State private var addedIDs: Set<String> = []
-    @State private var errorMessage: String?
+    /// Per-pick error state — when `+ ADD` fails for a specific row
+    /// the key flips to `✗ FAILED · RETRY` instead of vanishing into
+    /// a global error strip that only ever shows the last failure.
+    /// Same pattern as `SearchView.importErrors` (#199).
+    @State private var importErrors: [String: String] = [:]
     private let syncService = FeedSyncService()
 
     private var subscribedFeedURLs: Set<String> {
@@ -423,9 +430,6 @@ private struct HomeStarterRail: View {
             header
             ForEach(StarterRailService.groupedPicks, id: \.0) { category, picks in
                 section(category: category, picks: picks)
-            }
-            if let errorMessage {
-                errorStrip(message: errorMessage)
             }
         }
         .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -474,79 +478,102 @@ private struct HomeStarterRail: View {
     private func pickRow(idx: Int, pick: StarterPick) -> some View {
         let isAdded = addedIDs.contains(pick.id)
             || subscribedFeedURLs.contains(pick.feedURL.absoluteString)
-        let isImporting = importingID == pick.id
+        let isImporting = importingIDs.contains(pick.id)
+        let importError = importErrors[pick.id]
+        let hasImportError = importError != nil && !isImporting && !isAdded
 
-        return HStack(alignment: .top, spacing: 12) {
-            Text(String(format: "%02d", idx + 1))
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .tracking(1.0)
-                .foregroundStyle(Color.offscriptSignalYellow)
-                .frame(width: 28, alignment: .leading)
-                .padding(.top, 4)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 12) {
+                Text(String(format: "%02d", idx + 1))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .tracking(1.0)
+                    .foregroundStyle(Color.offscriptSignalYellow)
+                    .frame(width: 28, alignment: .leading)
+                    .padding(.top, 4)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(pick.title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.offscriptPaperWhite)
-                    .lineLimit(1)
-                TunerLabel(text: pick.author.uppercased(),
-                           color: .offscriptFnInfo, size: 8)
-                    .lineLimit(1)
-                Text(pick.summary)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
-                    .lineSpacing(2)
-                    .lineLimit(2)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(pick.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.offscriptPaperWhite)
+                        .lineLimit(1)
+                    TunerLabel(text: pick.author.uppercased(),
+                               color: .offscriptFnInfo, size: 8)
+                        .lineLimit(1)
+                    Text(pick.summary)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
+                        .lineSpacing(2)
+                        .lineLimit(2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button {
-                Task { await add(pick) }
-            } label: {
-                TunerLabel(
-                    text: isAdded ? "✓ ADDED"
-                        : (isImporting ? "○ ADDING…" : "+ ADD"),
-                    color: isAdded ? .offscriptFnMode : .offscriptSignalYellow,
-                    size: 10
+                Button {
+                    Task { await add(pick) }
+                } label: {
+                    TunerLabel(
+                        text: actionLabel(isAdded: isAdded, isImporting: isImporting, hasImportError: hasImportError),
+                        color: actionColor(isAdded: isAdded, hasImportError: hasImportError),
+                        size: 10
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .overlay(Rectangle().stroke(
+                        actionColor(isAdded: isAdded, hasImportError: hasImportError),
+                        lineWidth: 1
+                    ))
+                }
+                .buttonStyle(.plain)
+                .disabled(isAdded || isImporting)
+                .accessibilityLabel(
+                    isAdded
+                        ? "\(pick.title) is already in your library"
+                        : (isImporting
+                            ? "Adding \(pick.title) to library"
+                            : (hasImportError
+                                ? "Retry adding \(pick.title) to library"
+                                : "Add \(pick.title) to library"))
                 )
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .overlay(Rectangle().stroke(
-                    isAdded ? Color.offscriptFnMode : Color.offscriptSignalYellow,
-                    lineWidth: 1
-                ))
+                .accessibilityHint(hasImportError ? (importError ?? "") : "")
             }
-            .buttonStyle(.plain)
-            .disabled(isAdded || isImporting)
-            .accessibilityLabel(
-                isAdded
-                    ? "\(pick.title) is already in your library"
-                    : (isImporting ? "Adding \(pick.title) to library" : "Add \(pick.title) to library")
-            )
+
+            if hasImportError, let importError {
+                HStack(alignment: .top, spacing: 8) {
+                    Spacer().frame(width: 28 + 12)
+                    VStack(alignment: .leading, spacing: 4) {
+                        TunerLabel(text: "● ADD FAILED", color: .offscriptFnRecord, size: 8)
+                        Text(importError)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Color.offscriptPaperWhite.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                }
+                .accessibilityElement(children: .combine)
+            }
         }
         .padding(.vertical, 10)
     }
 
-    private func errorStrip(message: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            TunerLabel(text: "● COULDN'T ADD", color: .offscriptFnRecord)
-            Text(message)
-                .font(.system(size: 12.5))
-                .foregroundStyle(Color.offscriptPaperWhite)
-        }
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(
-            Rectangle().fill(Color.offscriptFnRecord).frame(height: 1),
-            alignment: .top
-        )
+    private func actionLabel(isAdded: Bool, isImporting: Bool, hasImportError: Bool) -> String {
+        if isAdded { return "✓ ADDED" }
+        if isImporting { return "○ ADDING…" }
+        if hasImportError { return "✗ FAILED · RETRY" }
+        return "+ ADD"
+    }
+
+    private func actionColor(isAdded: Bool, hasImportError: Bool) -> Color {
+        if isAdded { return .offscriptFnMode }
+        if hasImportError { return .offscriptFnRecord }
+        return .offscriptSignalYellow
     }
 
     @MainActor
     private func add(_ pick: StarterPick) async {
-        importingID = pick.id
-        defer { importingID = nil }
-        errorMessage = nil
+        importingIDs.insert(pick.id)
+        defer { importingIDs.remove(pick.id) }
+        // Clear stale row error before retry so the button doesn't
+        // render the prior FAILED state during the new attempt.
+        importErrors[pick.id] = nil
 
         do {
             let result = StarterRailService.searchResult(for: pick)
@@ -558,7 +585,10 @@ private struct HomeStarterRail: View {
             addedIDs.insert(pick.id)
         } catch {
             homeLogger.error("Starter add failed for \(pick.title, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            errorMessage = "Couldn't add \(pick.title) — try Search instead."
+            // Per-row error state mirroring SearchView (#199) — the
+            // global error strip used to overwrite per row, hiding
+            // earlier failures.
+            importErrors[pick.id] = error.localizedDescription
         }
     }
 }
