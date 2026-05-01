@@ -5,6 +5,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ## [Unreleased]
 
 ### Added — UI QA swarm coverage
+- **Library Import key now has UI smoke coverage** that taps the IMPORT affordance from a launched Library tab, asserts the `IMPORT · ADD CHANNELS` sheet appears, and verifies tapping `Close import` returns to Library — pinning the OPML/paste-URL entry point against header refactors (#115).
 - **Hero recommendation card play/queue keys, hero feedback chips (LIKE/MORE/LESS/HIDE), and the starter-pick `+ ADD` row now expose explicit VoiceOver labels** that include the episode or pick title, so the home recommendation surface no longer falls back to the visible mono text and decorative arrow glyphs (#127).
 - **LibraryView buttons now expose explicit VoiceOver labels** for the channel directory rows, scope/sort/density mode keys, episode filter chips, podcast detail website/cancel keys, per-row play/queue keys, and the `+ LOAD 100 MORE` pager so VoiceOver users can disambiguate every action by show or episode title (#127).
 - **Settings playback-rate reset, signal rebuild, sign-out, and the sign-out confirmation Cancel/Confirm pair now exposes explicit VoiceOver labels** with hint copy on the destructive sign-out action, so destructive Settings flows can be operated with VoiceOver without guessing what each Tuner key does (#127).
