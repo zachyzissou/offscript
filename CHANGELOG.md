@@ -5,6 +5,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ## [Unreleased]
 
 ### Added — UI QA swarm coverage
+- **Hero recommendation card play/queue keys, hero feedback chips (LIKE/MORE/LESS/HIDE), and the starter-pick `+ ADD` row now expose explicit VoiceOver labels** that include the episode or pick title, so the home recommendation surface no longer falls back to the visible mono text and decorative arrow glyphs (#127).
 - **Large-library UI smoke coverage now seeds a deterministic 258-show library** and launches directly into Library, giving the 250+ show scrolling case a repeatable simulator test instead of a manual-only complaint.
 - **Settings UI coverage now opens the config panel against a deterministic 258-show library** and verifies simulator iCloud status stays recoverable instead of crashing.
 - **Debug large-library seeding now resets stale simulator data when an explicit library size is requested**, so visual audits and UI tests are not polluted by previous sample stores.
