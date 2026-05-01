@@ -84,15 +84,19 @@ struct HomeView: View {
                             }
                         }
                     }
-                    .padding(.top, OffScriptTheme.rootContentTopPadding)
+                    .padding(.top, 88)
                     .padding(.bottom, 28)
                 }
-                // Pin HomeTunerHeader as a top inset (#161). The header
-                // grabs below the Dynamic Island / status bar; scrolling
-                // rail and hero content slides behind it. The black
-                // background occludes scrolled content cleanly so cards
-                // don't bleed through the eyebrow row.
-                .safeAreaInset(edge: .top, spacing: 0) {
+                // Pin HomeTunerHeader as a top overlay instead of safeAreaInset.
+                // safeAreaInset content renders in a parent compositor layer
+                // that doesn't inherit the parent's opacity — when the user
+                // tabs to Queue or Search, the tabPane sets HomeView's opacity
+                // to 0 to hide it, but the safeAreaInset content stayed visible
+                // and the retune / settings icons leaked onto every other tab.
+                // .overlay(alignment: .top) renders within HomeView's own
+                // compositor layer so it respects the opacity-0 tab swap (#161
+                // / regression from #185).
+                .overlay(alignment: .top) {
                     HomeTunerHeader(
                         isRetuning: isRetuning,
                         onRetune: { Task { await loadSections(manual: true) } },

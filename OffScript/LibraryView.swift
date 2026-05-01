@@ -1638,18 +1638,24 @@ private struct LibraryTunerHeader: View {
                 .accessibilityLabel("Open settings")
             }
 
-            // Inline mono readout — no surface, just hairline bar between
-            HStack(spacing: 14) {
-                statReadout(label: "SHOWS", value: showCount)
-                Rectangle().fill(Color.offscriptHairline).frame(width: 1, height: 24)
-                statReadout(label: "VISIBLE", value: visibleCount)
-                Rectangle().fill(Color.offscriptHairline).frame(width: 1, height: 24)
-                statReadout(label: "UNPLAYED", value: unplayedCount)
-                Rectangle().fill(Color.offscriptHairline).frame(width: 1, height: 24)
-                statReadout(label: "IN PROGRESS", value: inProgressCount)
-                Spacer()
+            // Inline mono readout — hidden when the library is empty so a
+            // fresh-install user doesn't see "0 / 0 / 0 / 0" above the
+            // empty-state copy. The same vertical band is then absorbed by
+            // the empty-state padding, centering the message instead of
+            // pushing it down past redundant zeros.
+            if showCount > 0 {
+                HStack(spacing: 14) {
+                    statReadout(label: "SHOWS", value: showCount)
+                    Rectangle().fill(Color.offscriptHairline).frame(width: 1, height: 24)
+                    statReadout(label: "VISIBLE", value: visibleCount)
+                    Rectangle().fill(Color.offscriptHairline).frame(width: 1, height: 24)
+                    statReadout(label: "UNPLAYED", value: unplayedCount)
+                    Rectangle().fill(Color.offscriptHairline).frame(width: 1, height: 24)
+                    statReadout(label: "IN PROGRESS", value: inProgressCount)
+                    Spacer()
+                }
+                .padding(.top, 6)
             }
-            .padding(.top, 6)
 
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                 .padding(.top, 6)
