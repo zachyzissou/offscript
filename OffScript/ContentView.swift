@@ -436,6 +436,23 @@ private extension ContentView {
 
         do { try modelContext.save() }
         catch { appLogger.error("Debug sample seed save failed: \(error.localizedDescription, privacy: .public)") }
+
+        // Optional `-offscript.debugSeedQueue N` arg stacks N episodes
+        // from the just-seeded sample set into the queue, so UI tests
+        // (e.g. the `× CLEAR ALL` confirm-strip smoke for #126) can
+        // launch into a populated queue without driving the queue
+        // through user gestures first.
+        let queueSeedCount = max(0, defaults.integer(forKey: "offscript.debugSeedQueue"))
+        if queueSeedCount > 0 {
+            let descriptor = FetchDescriptor<Episode>(
+                sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
+            )
+            let episodes = (try? modelContext.fetch(descriptor)) ?? []
+            for episode in episodes.prefix(queueSeedCount) {
+                do { try QueueService.addToEnd(episode, in: modelContext) }
+                catch { appLogger.error("Debug queue seed failed: \(error.localizedDescription, privacy: .public)") }
+            }
+        }
     }
 
     private func debugLargeLibraryNeedsReset(

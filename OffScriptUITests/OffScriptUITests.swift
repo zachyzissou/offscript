@@ -188,6 +188,44 @@ final class OffScriptUITests: XCTestCase {
     }
 
     @MainActor
+    func testQueueClearAllRequiresConfirmation() throws {
+        // #126 acceptance: large queue states need a non-destructive
+        // path through bulk clear. Verifies the `× CLEAR ALL` key opens
+        // the `● CONFIRM CLEAR` strip, CANCEL dismisses without
+        // wiping, and `× CONFIRM` actually clears the queue.
+        let app = makeApp(
+            hasSeenOnboarding: true,
+            debugLaunchTab: 2,
+            debugSeedSampleData: true,
+            debugSeedQueue: 5
+        )
+        app.launch()
+
+        XCTAssertTrue(app.screen("QueueScreen").waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts.containing(labelContaining: "STACKED").waitForExistence(timeout: 6),
+                      "Queue should report a non-zero stacked count after seed. Hierarchy:\n\(app.debugDescription)")
+
+        let clearAll = app.buttons["QueueClearAll"].firstMatch
+        tapWhenReady(clearAll, in: app, name: "× CLEAR ALL key")
+
+        XCTAssertTrue(app.staticTexts["● CONFIRM CLEAR"].waitForExistence(timeout: 4),
+                      "Confirm strip should appear after × CLEAR ALL. Hierarchy:\n\(app.debugDescription)")
+
+        // Cancel — strip dismisses, queue intact.
+        tapWhenReady(app.buttons["QueueClearAllCancel"].firstMatch, in: app, name: "Confirm CANCEL key")
+        XCTAssertFalse(app.staticTexts["● CONFIRM CLEAR"].waitForExistence(timeout: 2),
+                       "Confirm strip should dismiss after CANCEL. Hierarchy:\n\(app.debugDescription)")
+
+        // Reopen + confirm — queue clears, empty state renders.
+        tapWhenReady(app.buttons["QueueClearAll"].firstMatch, in: app, name: "× CLEAR ALL key (second tap)")
+        XCTAssertTrue(app.staticTexts["● CONFIRM CLEAR"].waitForExistence(timeout: 4))
+        tapWhenReady(app.buttons["QueueClearAllConfirm"].firstMatch, in: app, name: "× CONFIRM key")
+
+        XCTAssertTrue(app.staticTexts["● QUEUE EMPTY"].waitForExistence(timeout: 6),
+                      "Queue empty-state eyebrow should render after × CONFIRM. Hierarchy:\n\(app.debugDescription)")
+    }
+
+    @MainActor
     func testSettingsPanelOpensWithLargeLibrarySeed() throws {
         let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 258, debugEpisodesPerShow: 3)
         app.launch()
@@ -404,14 +442,16 @@ final class OffScriptUITests: XCTestCase {
         debugLibrarySize: Int = 0,
         debugEpisodesPerShow: Int = 0,
         debugLaunchTab: Int = 0,
-        debugWipeLibrary: Bool = false
+        debugWipeLibrary: Bool = false,
+        debugSeedSampleData: Bool = false,
+        debugSeedQueue: Int = 0
     ) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += [
             "-offscript.hasSeenOnboarding",
             hasSeenOnboarding ? "YES" : "NO",
             "-offscript.debugSeedSampleData",
-            "NO",
+            debugSeedSampleData ? "YES" : "NO",
             "-offscript.debugSeedLibrarySize",
             String(debugLibrarySize),
             "-offscript.debugSeedEpisodesPerShow",
@@ -419,7 +459,9 @@ final class OffScriptUITests: XCTestCase {
             "-offscript.debugLaunchTab",
             String(debugLaunchTab),
             "-offscript.debugWipeLibrary",
-            debugWipeLibrary ? "YES" : "NO"
+            debugWipeLibrary ? "YES" : "NO",
+            "-offscript.debugSeedQueue",
+            String(debugSeedQueue)
         ]
         return app
     }

@@ -9,6 +9,11 @@ private let queueLogger = Logger(subsystem: "com.offscript", category: "Queue")
 struct QueueView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var queueItems: [QueueItem]
+    /// `× CLEAR ALL` is irreversible and operates on the entire working
+    /// set — under a heavy listener's queue (10+ items) the silent wipe
+    /// is the wrong default. Drop into a confirm strip first; tap
+    /// `× CONFIRM` to commit, or CANCEL to back out.
+    @State private var isConfirmingClearAll = false
 
     private var orderedItems: [QueueItem] {
         queueItems.sorted { lhs, rhs in
@@ -55,6 +60,17 @@ struct QueueView: View {
         .toolbarBackground(Color.offscriptStudioBlack, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        // Auto-dismiss the clear-all confirm strip when the queue
+        // empties or shrinks to ≤1 via another path while the dialog
+        // is open (e.g. an episode finishes playback and is removed in
+        // the background). Lives on the parent so the watcher fires
+        // even if `queueListSection` (which hosts the strip) is no
+        // longer in the hierarchy because the queue went empty.
+        .onChange(of: orderedItems.count) { _, newCount in
+            if newCount <= 1 && isConfirmingClearAll {
+                isConfirmingClearAll = false
+            }
+        }
     }
 
     private var emptyState: some View {
@@ -94,11 +110,8 @@ struct QueueView: View {
                 Spacer()
                 if orderedItems.count > 1 {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            for item in orderedItems {
-                                do { try QueueService.remove(item, in: modelContext) }
-                                catch { queueLogger.error("Failed to remove queue item: \(error.localizedDescription, privacy: .public)") }
-                            }
+                        withAnimation(.easeOut(duration: 0.18)) {
+                            isConfirmingClearAll = true
                         }
                     } label: {
                         TunerLabel(text: "× CLEAR ALL", color: .offscriptFnRecord, size: 9)
@@ -106,8 +119,15 @@ struct QueueView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .disabled(isConfirmingClearAll)
                     .accessibilityLabel("Clear all \(orderedItems.count) queued episodes")
+                    .accessibilityHint("Asks for confirmation before clearing the queue")
+                    .accessibilityIdentifier("QueueClearAll")
                 }
+            }
+
+            if isConfirmingClearAll {
+                clearAllConfirmStrip
             }
 
             LazyVStack(spacing: 0) {
@@ -143,6 +163,61 @@ struct QueueView: View {
             }
             .padding(.top, 4)
         }
+    }
+
+    /// Tuner-styled inline confirm — keeps the destructive bulk-clear
+    /// inside the Queue surface instead of bouncing through a system
+    /// `.alert` that would render in non-Tuner chrome. Hairline strip,
+    /// `● CONFIRM CLEAR` eyebrow in `offscriptFnRecord`, two equal-width
+    /// CANCEL / CONFIRM keys at 44pt min-height. Closes part of #126
+    /// (large queue states) — silent bulk-wipe was the wrong default
+    /// once a heavy listener has 10+ items stacked.
+    private var clearAllConfirmStrip: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TunerLabel(text: "● CONFIRM CLEAR", color: .offscriptFnRecord)
+            Text("Clear all \(orderedItems.count) queued episodes? This can't be undone.")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.offscriptPaperWhite)
+                .lineSpacing(2)
+
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        isConfirmingClearAll = false
+                    }
+                } label: {
+                    TunerLabel(text: "CANCEL", color: .offscriptPaperWhite, size: 11)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel clear all queued episodes")
+                .accessibilityIdentifier("QueueClearAllCancel")
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        do {
+                            try QueueService.clearAll(in: modelContext)
+                        } catch {
+                            queueLogger.error("Failed to clear queue: \(error.localizedDescription, privacy: .public)")
+                        }
+                        isConfirmingClearAll = false
+                    }
+                } label: {
+                    TunerLabel(text: "× CONFIRM", color: .offscriptFnRecord, size: 11)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Confirm clear all \(orderedItems.count) queued episodes")
+                .accessibilityIdentifier("QueueClearAllConfirm")
+            }
+        }
+        .padding(12)
+        .overlay(Rectangle().stroke(Color.offscriptFnRecord.opacity(0.6), lineWidth: 1))
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 }
 

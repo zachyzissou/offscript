@@ -913,6 +913,29 @@ enum QueueService {
         try remove(item, in: context)
     }
 
+    /// Bulk-clear the entire queue in a single transaction. Avoids the
+    /// O(n²) DB churn of looping `remove(_:)` per item (which fetches +
+    /// reorders + saves each pass) and emits one telemetry event with
+    /// the count instead of N events. Used by the `× CLEAR ALL` confirm
+    /// flow on heavy queues.
+    @discardableResult
+    static func clearAll(in context: ModelContext) throws -> Int {
+        let items = try orderedItems(in: context)
+        guard !items.isEmpty else { return 0 }
+        let count = items.count
+        for item in items {
+            item.episode.isQueued = false
+            context.delete(item)
+        }
+        try context.save()
+        TelemetryService.track(
+            "queue_clear_all",
+            metadata: ["count": "\(count)"],
+            in: context
+        )
+        return count
+    }
+
     static func move(from offsets: IndexSet, to destination: Int, in context: ModelContext) throws {
         var items = try orderedItems(in: context)
         let movingItems = offsets.sorted().map { items[$0] }
