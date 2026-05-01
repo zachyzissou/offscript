@@ -5,6 +5,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ## [Unreleased]
 
 ### Added — UI QA swarm coverage
+- **LibraryView buttons now expose explicit VoiceOver labels** for the channel directory rows, scope/sort/density mode keys, episode filter chips, podcast detail website/cancel keys, per-row play/queue keys, and the `+ LOAD 100 MORE` pager so VoiceOver users can disambiguate every action by show or episode title (#127).
 - **Settings playback-rate reset, signal rebuild, sign-out, and the sign-out confirmation Cancel/Confirm pair now exposes explicit VoiceOver labels** with hint copy on the destructive sign-out action, so destructive Settings flows can be operated with VoiceOver without guessing what each Tuner key does (#127).
 - **Queue lead-strip `→ PLAY` / `× REMOVE` actions and the list `× CLEAR ALL` key now expose explicit VoiceOver labels** that include the episode title (or queued-episode count for the bulk clear), so the queue surface no longer reads ambiguous "Button" / mono visible text only (#127).
 - **Search topic chips, recent-search rows, the clear-recents key, and discovery result row buttons (`+ ADD TO LIBRARY`, `→ WEBSITE`) now expose explicit VoiceOver labels** that include the topic / search term / podcast title, so Search no longer exposes ambiguous "Button" / `arrow.up.left` SF Symbol-name labels (#127).
