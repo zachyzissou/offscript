@@ -276,14 +276,14 @@ private struct HomeTunerHeader: View {
         // Apply squish effect only when topSafeArea > 50pt (Dynamic Island present).
         guard topSafeArea > 50 else { return 1.0 }
 
-        // Subtle compression: scale down to 0.88 (12% reduction).
-        // This makes the text "squish" to avoid the Dynamic Island.
-        return 0.88
+        // More pronounced compression: scale down to 0.82 (18% reduction).
+        // This makes the text "squish" noticeably to avoid the Dynamic Island.
+        return 0.82
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
+            HStack(spacing: topSafeArea > 50 ? 12 : 8) {
                 // Both eyebrows lock to a single line — at larger Dynamic
                 // Type sizes the right-hand "OFFSCRIPT · CHANNEL FEED" used
                 // to wrap and collide with the "Home" title rendered just
@@ -293,6 +293,8 @@ private struct HomeTunerHeader: View {
                 // Dynamic Island interaction: When the device has a Dynamic Island
                 // (topSafeArea > 50pt), we apply a subtle horizontal scale
                 // compression to make the text "squish" and stay out of the way.
+                // We also increase the HStack spacing to give more room between
+                // the text and the Spacer that sits beneath the Dynamic Island.
                 TunerLabel(text: "TODAY · \(dayString.uppercased())", color: .offscriptSoftPaper)
                     .lineLimit(1)
                     .scaleEffect(x: eyebrowSquishScale, y: 1.0, anchor: .leading)
