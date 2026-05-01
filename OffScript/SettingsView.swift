@@ -647,6 +647,12 @@ struct SettingsView: View {
                 .minimumScaleFactor(0.72)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Same single-element pattern as the Settings stats and
+        // Library header stats (#245 / #246) — VoiceOver reads
+        // "Credential authorized" instead of "CREDENTIAL", "AUTHORIZED"
+        // as separate stops.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label.lowercased()) \(value.lowercased())")
     }
 
     private var identityStatusRows: some View {
