@@ -2554,6 +2554,8 @@ private struct PodcastDetailTunerHeader: View {
     let episodeCount: Int
     @State private var showUnsubscribeConfirmation = false
     @State private var safariURL: IdentifiableURL?
+    @State private var isRefreshing = false
+    private let syncService = FeedSyncService()
 
     /// Same definition as LibraryDirectoryRow.hasSyncFailure (#206).
     /// Either a failure count > 0 or a `failed` syncStatus flips the
@@ -2631,14 +2633,44 @@ private struct PodcastDetailTunerHeader: View {
                     Button {
                         safariURL = IdentifiableURL(url: url)
                     } label: {
+                        // Bumped to 44pt min-height alongside the new
+                        // ↻ REFRESH key so the row reads as a uniform
+                        // action bar.
                         TunerLabel(text: "→ WEBSITE", color: .offscriptSignalYellow, size: 10)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 9)
+                            .frame(minHeight: 44)
                             .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Open \(podcast.title) website")
                 }
+
+                // Per-feed refresh — pull-to-refresh on Library only
+                // works from that tab, and the SYNC key on Library
+                // refreshes EVERY feed. A user looking at one show who
+                // wants the latest episodes shouldn't have to bounce
+                // back to Library and re-sync 50 feeds.
+                Button {
+                    Task { await refreshFeed() }
+                } label: {
+                    TunerLabel(
+                        text: isRefreshing ? "○ REFRESHING…" : "↻ REFRESH",
+                        color: .offscriptSignalYellow,
+                        size: 10
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .frame(minHeight: 44)
+                    .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isRefreshing)
+                .accessibilityLabel("Refresh \(podcast.title) feed")
+                .accessibilityIdentifier("PodcastDetailRefreshFeed")
+
                 Spacer()
             }
             .padding(.top, 4)
@@ -2654,6 +2686,22 @@ private struct PodcastDetailTunerHeader: View {
 
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                 .padding(.top, 6)
+        }
+    }
+
+    @MainActor
+    private func refreshFeed() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        do {
+            try await syncService.sync(
+                podcast: podcast,
+                in: modelContext,
+                options: .standard()
+            )
+        } catch {
+            libraryLogger.error("PodcastDetail refresh feed failed for '\(podcast.title, privacy: .public)': \(error.localizedDescription, privacy: .public)")
         }
     }
 
