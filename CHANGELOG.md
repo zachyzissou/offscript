@@ -5,6 +5,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 ## [Unreleased]
 
 ### Added — UI QA swarm coverage
+- **Podcast detail load errors now expose a `↻ RETRY` Tuner key** instead of just a static red `LOAD ERROR · …` label, so a user who hit a transient SwiftData fetch failure on the channel detail page can recover without backing out and re-entering (#115).
 - **Library Import key now has UI smoke coverage** that taps the IMPORT affordance from a launched Library tab, asserts the `IMPORT · ADD CHANNELS` sheet appears, and verifies tapping `Close import` returns to Library — pinning the OPML/paste-URL entry point against header refactors (#115).
 - **Hero recommendation card play/queue keys, hero feedback chips (LIKE/MORE/LESS/HIDE), and the starter-pick `+ ADD` row now expose explicit VoiceOver labels** that include the episode or pick title, so the home recommendation surface no longer falls back to the visible mono text and decorative arrow glyphs (#127).
 - **LibraryView buttons now expose explicit VoiceOver labels** for the channel directory rows, scope/sort/density mode keys, episode filter chips, podcast detail website/cancel keys, per-row play/queue keys, and the `+ LOAD 100 MORE` pager so VoiceOver users can disambiguate every action by show or episode title (#127).

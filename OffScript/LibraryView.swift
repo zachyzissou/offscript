@@ -2135,8 +2135,22 @@ struct PodcastDetailView: View {
                 FilterRow(selection: $filter)
 
                 if let loadError {
-                    TunerLabel(text: "LOAD ERROR · \(loadError.uppercased())", color: .offscriptFnRecord)
-                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 8) {
+                        TunerLabel(text: "LOAD ERROR · \(loadError.uppercased())", color: .offscriptFnRecord)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button {
+                            loadEpisodes(resetLimit: true)
+                        } label: {
+                            TunerLabel(text: "↻ RETRY", color: .offscriptSignalYellow, size: 10)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Retry loading episodes")
+                    }
                 }
 
                 if episodes.isEmpty {
