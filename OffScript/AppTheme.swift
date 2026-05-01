@@ -14,8 +14,13 @@ private extension CGFloat {
 private enum HTMLPlainTextCache {
     static let cache: NSCache<NSString, NSString> = {
         let cache = NSCache<NSString, NSString>()
-        cache.countLimit = 500
-        cache.totalCostLimit = 2_000_000
+        // Sized for a power-listener feed: a 200+ episode show with long
+        // summaries can blow through a 500-entry / 2MB cache during a
+        // single scroll, causing the NSAttributedString HTML parser to
+        // run again on every recycle. NSCache evicts under memory
+        // pressure so the larger ceiling isn't a hard floor (#169).
+        cache.countLimit = 5_000
+        cache.totalCostLimit = 16_000_000
         return cache
     }()
 
