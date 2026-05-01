@@ -500,20 +500,44 @@ struct PlayerView: View {
                             do { try QueueService.add(episode, in: modelContext) }
                             catch { playerLogger.error("Queue add failed: \(error.localizedDescription, privacy: .public)") }
                         } label: {
-                            tunerControlLabel(text: "+ QUEUE NEXT", color: .offscriptPaperWhite)
+                            // Was "+ QUEUE NEXT" but called QueueService.add
+                            // (end-of-queue). Renamed to match the actual
+                            // behavior — Episode Detail now owns "QUEUE NEXT"
+                            // (front-of-queue, via QueueService.playNext)
+                            // after #210, so two surfaces using the same
+                            // label for opposite semantics was a real bug.
+                            tunerControlLabel(text: "+ QUEUE", color: .offscriptPaperWhite)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Add \(episode.title) to end of queue")
                     }
 
+                    // Toggle so an accidental tap is recoverable —
+                    // MARK PLAYED → ↺ MARK UNPLAYED resets isPlayed
+                    // and rewinds playedPosition so the episode comes
+                    // back into the unplayed pool. Without the toggle
+                    // the only way to undo is to play the episode
+                    // again and let it advance past 0%.
                     Button {
-                        episode.isPlayed = true
-                        episode.playedPosition = player.duration
+                        if episode.isPlayed {
+                            episode.isPlayed = false
+                            episode.playedPosition = 0
+                        } else {
+                            episode.isPlayed = true
+                            episode.playedPosition = player.duration
+                        }
                         do { try modelContext.save() }
                         catch { playerLogger.error("Mark-played save failed: \(error.localizedDescription, privacy: .public)") }
                     } label: {
-                        tunerControlLabel(text: "✓ MARK PLAYED", color: .offscriptSignalYellow)
+                        tunerControlLabel(
+                            text: episode.isPlayed ? "↺ MARK UNPLAYED" : "✓ MARK PLAYED",
+                            color: .offscriptSignalYellow
+                        )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(episode.isPlayed
+                        ? "Mark \(episode.title) as unplayed"
+                        : "Mark \(episode.title) as played")
 
                     Button {
                         withAnimation(.easeInOut(duration: 0.16)) {
