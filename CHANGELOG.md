@@ -27,6 +27,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home recommendations now have a dedicated “More From Shows You Chose” lane** so explicit like/more-like-this show intent is not mislabeled as passive completion affinity.
 
 ### Changed — Tuner UI conformance
+- **CardComponents queue button now uses title-aware VoiceOver label** — last surface still using generic `Already queued`. Now reads `<title> already queued` consistent with #224's pass.
 - **LibraryImportSheet `BACK` button now reads as `Back to import menu`** instead of `ChevronLeft, BACK` two-stop readback. Also bumped to 44pt min height.
 - **Library OPML batch import strip's running header now reads as one VoiceOver stop** — `Importing 12 of 50 feeds in background` instead of two separate stops for the eyebrow and count. Cancel button stays its own a11y element.
 - **Settings sign-in identity readouts (`CREDENTIAL` / `CLOUD`) now read as a single VoiceOver element each.** Same `accessibilityElement(children: .ignore)` pattern as #245 / #246 / #247.
