@@ -2879,12 +2879,30 @@ private struct LibraryBatchImportStrip: View {
                 EmptyView()
             case .running:
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack {
+                    HStack(spacing: 10) {
                         TunerLabel(text: "● IMPORTING IN BACKGROUND",
                                    color: .offscriptSignalYellow)
                         Spacer()
                         TunerLabel(text: "\(importer.completedCount)/\(importer.totalCount)",
                                    color: .offscriptFnInfo)
+                        // Cancel key — once a long OPML batch is running
+                        // there was no way to abort it short of force-
+                        // quitting the app. Existing work is preserved
+                        // (already-imported feeds stay), pending rows
+                        // get marked .cancelled.
+                        Button {
+                            importer.cancel()
+                        } label: {
+                            TunerLabel(text: "× CANCEL", color: .offscriptFnRecord, size: 9)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Cancel import")
+                        .accessibilityIdentifier("LibraryBatchImportCancel")
                     }
 
                     GeometryReader { proxy in
