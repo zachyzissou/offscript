@@ -62,6 +62,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Discovery genre matches now stay low-confidence until backed by local evidence** such as latest-episode tag overlap, topic matches, show affinity, or feed freshness, and genre-only WHY copy no longer claims local evidence.
 
 ### Fixed — silent failure paths
+- **Background feed refresh, deep-link episode lookup, `deleteAllDownloads`, `resumeQueuedDownloadsIfNeeded`, and `reconcilePersistedDownloads` now log the underlying SwiftData fetch error** instead of dropping it via bare `try?` — so a failed background refresh, a broken episode deep link, or a download lifecycle hiccup leaves a real OSLog entry (`BackgroundRefresh` at `.warning`, `DeepLink` and `DownloadService` at `.error`) instead of disappearing silently.
 - **`modelContext.save()` calls on the played-state toggle (CardComponents) and the debug seed/reset paths (ContentView) no longer swallow errors via bare `try?`** — they now use `do/catch` with category-scoped OSLog (`CardComponents`, `App`) so SwiftData save failures during sample/large-library seeding or a played-state flip surface as real log lines.
 - **`QueueService.add` calls in CardComponents, EpisodeDetailView, and the debug-boot queue seeder no longer swallow errors via bare `try?`** — they now use `do/catch` with category-scoped OSLog (`CardComponents`, `EpisodeDetail`, `App`) so a failed enqueue surfaces as a real log line instead of disappearing. Per the design bible's "NEVER use bare try?" rule.
 

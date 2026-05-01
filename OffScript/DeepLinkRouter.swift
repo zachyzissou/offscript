@@ -92,7 +92,14 @@ enum DeepLinkRouter {
             predicate: #Predicate<Episode> { $0.id == id }
         )
         descriptor.fetchLimit = 1
-        guard let episode = try? context.fetch(descriptor).first else {
+        let episode: Episode?
+        do {
+            episode = try context.fetch(descriptor).first
+        } catch {
+            deepLinkLogger.error("Episode deep-link fetch failed for \(id, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        guard let episode else {
             deepLinkLogger.warning("Episode not found for deep link: \(id, privacy: .public)")
             return
         }
