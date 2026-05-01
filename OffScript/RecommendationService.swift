@@ -197,7 +197,8 @@ final class RecommendationService {
     @MainActor
     func discoverySection(
         context: ModelContext,
-        mode: AppSettings.RecommendationMode
+        mode: AppSettings.RecommendationMode,
+        signalDrivenRailCount: Int? = nil
     ) async -> HomeFeedSection? {
         guard mode.allowsDiscovery else { return nil }
         guard let tasteProfile = try? TasteProfileService.loadOrCreate(in: context) else { return nil }
@@ -215,10 +216,15 @@ final class RecommendationService {
         ))) ?? []
         let subscribedFeedURLs = Set(podcasts.map { $0.feedURL.absoluteString })
 
+        let limit = Self.discoveryCardLimit(
+            mode: mode,
+            signalDrivenRailCount: signalDrivenRailCount
+        )
+
         let results = await discoveryService.discoverPodcasts(
             tasteProfile: tasteProfile,
             subscribedFeedURLs: subscribedFeedURLs,
-            limit: mode.discoveryLimit
+            limit: limit
         )
 
         guard !results.isEmpty else { return nil }
@@ -422,6 +428,29 @@ final class RecommendationService {
         allSections = allSections.filter { !$0.episodes.isEmpty }
 
         return allSections
+    }
+
+    /// Demote discovery card count when signal-driven rails are sparse.
+    /// The bigger the user's actual listening signal, the more discovery
+    /// cards we surface; when signal is thin discovery shrinks so it
+    /// doesn't dominate the screen and read as "Apple Podcasts catalog"
+    /// (#191). Pure function so the limit logic can be unit-tested
+    /// without hitting the discovery network path.
+    static func discoveryCardLimit(
+        mode: AppSettings.RecommendationMode,
+        signalDrivenRailCount: Int?
+    ) -> Int {
+        guard let signalCount = signalDrivenRailCount else {
+            return mode.discoveryLimit
+        }
+        switch signalCount {
+        case 3...:
+            return mode.discoveryLimit
+        case 1...2:
+            return max(3, mode.discoveryLimit / 2)
+        default:
+            return min(3, mode.discoveryLimit)
+        }
     }
 
     private static func subscriptionFreshSection(
