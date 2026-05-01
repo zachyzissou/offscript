@@ -271,6 +271,7 @@ struct SettingsView: View {
                 .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Reset per-podcast playback rates")
         }
         .padding(.vertical, 10)
     }
@@ -354,6 +355,7 @@ struct SettingsView: View {
                         .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Rebuild signal profile from current listening history")
 
                 if let signalUpdatedAt {
                     TunerLabel(
@@ -477,6 +479,8 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 4)
+                    .accessibilityLabel(showSignOutConfirmation ? "Hide sign out confirmation" : "Sign out of OffScript")
+                    .accessibilityHint("Stops iCloud sync on next launch. Local data remains on this device.")
 
                     if showSignOutConfirmation {
                         signOutConfirmationPanel
@@ -655,6 +659,7 @@ struct SettingsView: View {
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Cancel sign out")
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
@@ -668,6 +673,7 @@ struct SettingsView: View {
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Confirm sign out")
             }
         }
         .padding(12)
