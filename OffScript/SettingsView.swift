@@ -227,7 +227,7 @@ struct SettingsView: View {
 
             if isDefaultRatePickerExpanded {
                 TunerRatePicker(
-                    rates: [Float(0.75), 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5],
+                    rates: PodcastPlaybackPreferences.supportedRates,
                     selectedRate: currentDefaultRate,
                     accessibilityActionPrefix: "Set default playback rate to"
                 ) { rate in
