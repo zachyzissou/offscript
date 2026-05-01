@@ -240,6 +240,7 @@ struct SettingsView: View {
                         Image(systemName: isDefaultRatePickerExpanded ? "chevron.up" : "chevron.down")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(Color.offscriptSignalYellow)
+                            .accessibilityHidden(true)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
