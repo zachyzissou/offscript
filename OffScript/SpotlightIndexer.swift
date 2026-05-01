@@ -42,7 +42,18 @@ enum SpotlightIndexer {
         )
         descriptor.fetchLimit = maxEpisodesToIndex
 
-        guard let episodes = try? context.fetch(descriptor), !episodes.isEmpty else { return }
+        // CLAUDE.md bans bare `try?`. A SwiftData fetch failure here is
+        // non-fatal (we just skip indexing this run), but logging the
+        // error makes a recurring failure visible in sysdiagnose
+        // instead of silently degrading Spotlight discovery.
+        let episodes: [Episode]
+        do {
+            episodes = try context.fetch(descriptor)
+        } catch {
+            spotlightLogger.error("Spotlight episode fetch failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        guard !episodes.isEmpty else { return }
 
         // Stamp the last-indexed time before batching so a crash mid-run
         // doesn't cause a retry loop on the next launch.
