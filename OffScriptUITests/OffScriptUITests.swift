@@ -126,6 +126,27 @@ final class OffScriptUITests: XCTestCase {
     }
 
     @MainActor
+    func testLibraryImportKeyOpensImportSheet() throws {
+        let app = makeApp(hasSeenOnboarding: true, debugLaunchTab: 1)
+        app.launch()
+
+        XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 12))
+
+        let importKey = app.buttons["Import podcasts"].firstMatch
+        XCTAssertTrue(importKey.waitForExistence(timeout: 8), "Library Import key missing. Hierarchy:\n\(app.debugDescription)")
+        for _ in 0..<3 where !importKey.isHittable { app.swipeDown() }
+        XCTAssertTrue(importKey.isHittable, "Library Import key not hittable. Hierarchy:\n\(app.debugDescription)")
+        importKey.tap()
+
+        let importHeader = app.staticTexts["IMPORT · ADD CHANNELS"]
+        XCTAssertTrue(importHeader.waitForExistence(timeout: 10), "Import sheet did not appear. Hierarchy:\n\(app.debugDescription)")
+        XCTAssertTrue(app.buttons["Close import"].waitForExistence(timeout: 5))
+
+        app.buttons["Close import"].tap()
+        XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 8), "Closing Import did not return to Library. Hierarchy:\n\(app.debugDescription)")
+    }
+
+    @MainActor
     func testLargeLibrarySeedSmoke() throws {
         let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 258, debugEpisodesPerShow: 3, debugLaunchTab: 1)
         app.launch()
