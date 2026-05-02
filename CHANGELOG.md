@@ -4,6 +4,9 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+### Added — power-user QoL
+- **Settings ABOUT · BUILD `VERSION` row is now tap-to-copy** — tapping the build readout writes `<version> (<build>)` to the clipboard so a tester filing TestFlight feedback or a bug report doesn't have to retype it. The strip flips to `✓ COPIED · <version>` in `offscriptFnMode` for ~1.5s before resetting. Includes a `TAP TO COPY` hint chip in `offscriptSignalYellow` so the affordance is discoverable without VoiceOver. Tap target is 44pt min-height with explicit a11y identifier and label.
+
 ### Added — UI QA swarm coverage
 - **New `-offscript.debugWipeLibrary YES` launch arg wipes the SwiftData store before seeding** so UI tests that need a guaranteed-empty Library or Queue can launch deterministically regardless of prior simulator state. Documented in `docs/TEST_MATRIX.md`. Closes #177.
 - **Library empty state now has UI smoke coverage** that asserts `● NO CHANNELS TUNED` and "Your library is empty" render on a freshly-wiped store, pinning the day-one Library experience against future header refactors (#115).
