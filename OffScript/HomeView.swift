@@ -490,6 +490,20 @@ private struct HomeStarterRail: View {
         let importError = importErrors[pick.id]
         let hasImportError = importError != nil && !isImporting && !isAdded
 
+        // Descriptive zone — combined into one VoiceOver element so
+        // rank + title + author + summary read as a single stop per
+        // row instead of four. Action key stays its own a11y element
+        // with its own state-aware label. Mirrors the combine pass on
+        // SearchResultRow (#261) and TunerDiscoveryRail (#256).
+        let descriptiveLabel: String = {
+            var parts: [String] = ["Pick \(idx + 1)", pick.title]
+            let trimmedAuthor = pick.author.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedAuthor.isEmpty { parts.append("by \(trimmedAuthor)") }
+            let trimmedSummary = pick.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedSummary.isEmpty { parts.append(trimmedSummary) }
+            return parts.joined(separator: ", ")
+        }()
+
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 12) {
                 Text(String(format: "%02d", idx + 1))
@@ -498,6 +512,7 @@ private struct HomeStarterRail: View {
                     .foregroundStyle(Color.offscriptSignalYellow)
                     .frame(width: 28, alignment: .leading)
                     .padding(.top, 4)
+                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(pick.title)
@@ -514,6 +529,8 @@ private struct HomeStarterRail: View {
                         .lineLimit(2)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(descriptiveLabel)
 
                 Button {
                     Task { await add(pick) }
