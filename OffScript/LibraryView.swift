@@ -1183,7 +1183,15 @@ struct LibraryView: View {
                                 .equatable()
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("Open \(row.title) channel")
+                            // Rich VoiceOver label folds the channel
+                            // number, author, in-progress count,
+                            // unplayed count, and sync-failure chip
+                            // into the "Open ... channel" stop. Without
+                            // this the parent button's label
+                            // ("Open <title> channel") clobbers every
+                            // child — VO loses the metadata sighted
+                            // users see right next to the title.
+                            .accessibilityLabel(libraryShelfRowAccessibilityLabel(for: row))
 
                         case .rowSeparator, .sectionSeparator:
                             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
@@ -2174,6 +2182,25 @@ private struct TunerLibraryCard: View {
 }
 
 // MARK: - Show row
+
+/// Build the rich VoiceOver label for a directory row's "Open …
+/// channel" button. Folds the channel number, author, in-progress /
+/// unplayed counts, and sync-failure flag into a single readout so VO
+/// users get the same context sighted users see next to the title.
+private func libraryShelfRowAccessibilityLabel(for row: LibraryDirectoryRow) -> String {
+    var parts: [String] = ["Open channel \(row.channelNumber)", row.title]
+    if let author = row.author?.trimmingCharacters(in: .whitespacesAndNewlines), !author.isEmpty {
+        parts.append("by \(author)")
+    }
+    if row.inProgressCount > 0 {
+        parts.append("\(row.inProgressCount) in progress")
+    }
+    parts.append("\(row.unplayedCount) unplayed")
+    if row.syncFailureCount > 0 || row.syncStatus == "failed" {
+        parts.append("sync failed")
+    }
+    return parts.joined(separator: ", ")
+}
 
 private struct PodcastShelfRow: View {
     let row: LibraryDirectoryRow
