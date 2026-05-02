@@ -226,6 +226,30 @@ final class OffScriptUITests: XCTestCase {
     }
 
     @MainActor
+    func testQueueRowOpensEpisodeDetail() throws {
+        // #258 acceptance: tapping a Queue row's rank+artwork+title zone
+        // should push the episode's detail screen, leaving the inline
+        // → PLAY / × DROP keys still tappable on their own.
+        let app = makeApp(
+            hasSeenOnboarding: true,
+            debugLaunchTab: 2,
+            debugSeedSampleData: true,
+            debugSeedQueue: 3
+        )
+        app.launch()
+
+        XCTAssertTrue(app.screen("QueueScreen").waitForExistence(timeout: 12))
+
+        let openLink = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Open '")).firstMatch
+        XCTAssertTrue(openLink.waitForExistence(timeout: 8),
+                      "Queue row navigation link missing. Hierarchy:\n\(app.debugDescription)")
+        tapWhenReady(openLink, in: app, name: "Queue row open link")
+
+        XCTAssertTrue(app.screen("EpisodeDetailScreen").waitForExistence(timeout: 10),
+                      "Tapping queue row should open EpisodeDetailScreen. Hierarchy:\n\(app.debugDescription)")
+    }
+
+    @MainActor
     func testSettingsPanelOpensWithLargeLibrarySeed() throws {
         let app = makeApp(hasSeenOnboarding: true, debugLibrarySize: 258, debugEpisodesPerShow: 3)
         app.launch()

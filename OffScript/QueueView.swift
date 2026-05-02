@@ -474,7 +474,7 @@ private struct QueueItemRow: View {
                 }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Open \(item.episode.title) detail")
+            .accessibilityLabel("Open \(item.episode.title) from \(item.episode.podcast.title) detail")
 
             Button {
                 PlaybackController.shared.play(item.episode, in: modelContext)
