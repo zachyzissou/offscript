@@ -27,6 +27,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 - **Home recommendations now have a dedicated “More From Shows You Chose” lane** so explicit like/more-like-this show intent is not mislabeled as passive completion affinity.
 
 ### Changed — Tuner UI conformance
+- **Search empty `NO MATCHES` state now exposes a `× CLEAR SEARCH` recovery key** — one-tap reset back to the starter-topics + recent-searches landing state. Mirrors the clear-filter affordances on PodcastDetail (#208) and Library directory (#220).
 - **Home discovery rail now owns per-pick import errors** — the same #214 fix applied to `HomeStarterRail` is now also on `TunerDiscoveryRail`. Failed `+ TUNE` flips to `✗ FAILED · RETRY` in `offscriptFnRecord` instead of overwriting a single global error strip. Per-pick in-flight tracking via `importingIDs: Set<String>` so concurrent taps both keep their `○ TUNING…` state.
 - **HeroTunerCard `…` more-actions key now reads as `More actions for <title>`** (was generic `More actions`) and meets 44pt tap target (was 32pt visible).
 - **EpisodeCompactCard's `+ QUEUE` and `✓ PLAYED` inline actions now expose title-aware VoiceOver labels** — `Add <title> to queue` / `Mark <title> as played`. Without this they read only the mono visible text without episode context.
