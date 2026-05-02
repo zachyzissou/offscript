@@ -85,6 +85,16 @@ struct SearchView: View {
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
+        .refreshable {
+            // Pull-to-refresh re-runs the active search so the user can
+            // dismiss a stale `SEARCH ERROR` strip or pull in newly
+            // catalogued shows without mutating the query. Idle (no query)
+            // refresh is a no-op so the gesture stays harmless on the
+            // starter-topics + recent-searches landing.
+            let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            await search()
+        }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
         .accessibilityIdentifier("SearchScreen")
         .navigationTitle("")
