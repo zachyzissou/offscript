@@ -578,7 +578,9 @@ struct EpisodeDetailView: View {
     /// Spoken variant for VO — "fifteen minutes left" instead of
     /// VO walking the visible "15M LEFT" letters.
     private var spokenTimeRemaining: String {
-        guard let duration = episode.duration else { return "in progress" }
+        // Sentence case to match the rest of this view's a11y labels
+        // (#270 review). Visible mono `timeRemaining` stays uppercased.
+        guard let duration = episode.duration else { return "In progress" }
         let remaining = max(0, duration - episode.playedPosition)
         return "\(EpisodeDurationFormatter.spoken(remaining)) left"
     }
