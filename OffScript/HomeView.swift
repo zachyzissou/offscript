@@ -975,6 +975,12 @@ private struct HeroTunerCard: View {
                 HStack(spacing: 10) {
                     TunerLabel(text: metadata, color: .offscriptSoftPaper)
                         .lineLimit(1)
+                        // VO speaks the visible mono "·" and abbreviated
+                        // "1H 5M" letters literally; override with the
+                        // spoken variant so the parent .contain label
+                        // walks children with a natural readout (#269
+                        // follow-up).
+                        .accessibilityLabel(voiceOverMetadata)
                     Spacer()
                 }
 
@@ -1084,6 +1090,15 @@ private struct HeroTunerCard: View {
             return "\(dateString) · \(EpisodeDurationFormatter.short(duration))".uppercased()
         }
         return dateString.uppercased()
+    }
+
+    /// VoiceOver-friendly variant of `metadata` — same fix as the rail
+    /// card (#267) and PodcastEpisodeTunerRow (#268). Drops uppercasing,
+    /// drops the "·" separator, uses the spoken duration form.
+    private var voiceOverMetadata: String {
+        let dateString = episode.pubDate.formatted(date: .abbreviated, time: .omitted)
+        guard let duration = episode.duration else { return dateString }
+        return "\(dateString), \(EpisodeDurationFormatter.spoken(duration))"
     }
 
     private var timeRemaining: String {
