@@ -435,37 +435,36 @@ private struct RecentSearchesSection: View {
                     Text("Wipe all \(items.count) recent search\(items.count == 1 ? "" : "es")? This cannot be undone.")
                         .font(.system(size: 12.5))
                         .foregroundStyle(Color.offscriptPaperWhite)
+                    // Equal-width CANCEL / × CONFIRM keys at 44pt min-height
+                    // matches the established destructive-confirm vocabulary
+                    // used by Queue × CLEAR ALL and Library × UNSUBSCRIBE.
                     HStack(spacing: 8) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { showClearConfirm = false }
+                        } label: {
+                            TunerLabel(text: "CANCEL", color: .offscriptPaperWhite, size: 11)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("RecentSearchesClearCancel")
+                        .accessibilityLabel("Cancel clear recent searches")
+
                         Button {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 showClearConfirm = false
                                 onClear()
                             }
                         } label: {
-                            TunerLabel(text: "× CONFIRM", color: .offscriptFnRecord, size: 10)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
+                            TunerLabel(text: "× CONFIRM", color: .offscriptFnRecord, size: 11)
+                                .frame(maxWidth: .infinity, minHeight: 44)
                                 .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
-                                .frame(minHeight: 44)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("RecentSearchesClearConfirm")
                         .accessibilityLabel("Confirm clear recent searches")
-
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) { showClearConfirm = false }
-                        } label: {
-                            TunerLabel(text: "CANCEL", color: .offscriptSoftPaper, size: 10)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
-                                .frame(minHeight: 44)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("RecentSearchesClearCancel")
-                        .accessibilityLabel("Cancel clear recent searches")
                     }
                 }
                 .padding(.vertical, 10)
