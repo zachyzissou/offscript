@@ -113,6 +113,15 @@ nonisolated struct LibraryDirectoryRow: Equatable, Identifiable, Sendable {
     /// scope or open the detail.
     var syncStatus: String = "idle"
     var syncFailureCount: Int = 0
+
+    /// Single source of truth for "this feed has a sync failure
+    /// sighted users should see flagged inline". Centralized here so
+    /// PodcastShelfRow's `● SYNC FAILED` chip and the row-level
+    /// VoiceOver readout never drift if the failure criteria changes
+    /// (e.g. adding a "retrying" state). Copilot review on #264.
+    var hasSyncFailure: Bool {
+        syncFailureCount > 0 || syncStatus == "failed"
+    }
 }
 
 nonisolated struct LibraryDirectoryPodcast: Identifiable, Hashable, Sendable {
@@ -1183,7 +1192,15 @@ struct LibraryView: View {
                                 .equatable()
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("Open \(row.title) channel")
+                            // Rich VoiceOver label folds the channel
+                            // number, author, in-progress count,
+                            // unplayed count, and sync-failure chip
+                            // into the "Open ... channel" stop. Without
+                            // this the parent button's label
+                            // ("Open <title> channel") clobbers every
+                            // child — VO loses the metadata sighted
+                            // users see right next to the title.
+                            .accessibilityLabel(libraryShelfRowAccessibilityLabel(for: row))
 
                         case .rowSeparator, .sectionSeparator:
                             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
@@ -2175,6 +2192,29 @@ private struct TunerLibraryCard: View {
 
 // MARK: - Show row
 
+/// Build the rich VoiceOver label for a directory row's "Open …
+/// channel" button. Folds the channel number, author, in-progress /
+/// unplayed counts, and sync-failure flag into a single readout so VO
+/// users get the same context sighted users see next to the title.
+private func libraryShelfRowAccessibilityLabel(for row: LibraryDirectoryRow) -> String {
+    // Speak the zero-padded channel number ("Open channel 03") so the
+    // readout matches what sighted users see in the mono gutter (#264
+    // review).
+    let channel = String(format: "%02d", row.channelNumber)
+    var parts: [String] = ["Open channel \(channel)", row.title]
+    if let author = row.author?.trimmingCharacters(in: .whitespacesAndNewlines), !author.isEmpty {
+        parts.append("by \(author)")
+    }
+    if row.inProgressCount > 0 {
+        parts.append("\(row.inProgressCount) in progress")
+    }
+    parts.append("\(row.unplayedCount) unplayed")
+    if row.hasSyncFailure {
+        parts.append("sync failed")
+    }
+    return parts.joined(separator: ", ")
+}
+
 private struct PodcastShelfRow: View {
     let row: LibraryDirectoryRow
     let channelNumber: Int
@@ -2188,10 +2228,10 @@ private struct PodcastShelfRow: View {
     /// identical to a healthy one in the directory until the user
     /// opens it. The `needsSync` filter scope already collects these,
     /// but the chip flags them inline so users notice without
-    /// changing scope.
-    private var hasSyncFailure: Bool {
-        row.syncFailureCount > 0 || row.syncStatus == "failed"
-    }
+    /// changing scope. Predicate centralized on
+    /// `LibraryDirectoryRow.hasSyncFailure` so this chip and the
+    /// row-level VoiceOver readout never drift (#264 review).
+    private var hasSyncFailure: Bool { row.hasSyncFailure }
 
     var body: some View {
         HStack(spacing: 12) {
