@@ -2,6 +2,7 @@ import AuthenticationServices
 import OSLog
 import SwiftData
 import SwiftUI
+import UIKit
 
 private let settingsLogger = Logger(subsystem: "com.offscript", category: "Settings")
 
@@ -30,6 +31,12 @@ struct SettingsView: View {
     /// custom speed) and otherwise irreversible — drop into a confirm
     /// strip first, mirroring the Queue × CLEAR ALL pattern from #200.
     @State private var isConfirmingResetRates = false
+    /// Tracks whether the ABOUT · BUILD `VERSION` row has just copied
+    /// itself to the clipboard, so a tester sending a bug report
+    /// doesn't have to remember the build number — one tap copies,
+    /// strip flips to ✓ COPIED for ~1.5s, then resets.
+    @State private var didCopyBuildVersion = false
+    @State private var copyVersionResetTask: Task<Void, Never>?
 
     @State private var subscribedPodcastCount: Int = 0
     @State private var episodeCount: Int = 0
@@ -681,10 +688,42 @@ struct SettingsView: View {
                 .foregroundStyle(Color.offscriptPaperWhite)
                 .lineSpacing(2)
 
-            HStack {
-                TunerLabel(text: "VERSION  \(buildVersionString.uppercased())", color: .offscriptSoftPaper)
-                Spacer()
+            // VERSION readout doubles as a copy-to-clipboard key —
+            // testers filing TestFlight feedback or bug reports can
+            // grab the exact build string without leaving the app.
+            // Strip flips to ✓ COPIED for ~1.5s after the tap.
+            Button {
+                copyVersionResetTask?.cancel()
+                UIPasteboard.general.string = buildVersionString
+                withAnimation(.easeInOut(duration: 0.18)) { didCopyBuildVersion = true }
+                copyVersionResetTask = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(1500))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeInOut(duration: 0.18)) { didCopyBuildVersion = false }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    TunerLabel(
+                        text: didCopyBuildVersion
+                            ? "✓ COPIED · \(buildVersionString.uppercased())"
+                            : "VERSION  \(buildVersionString.uppercased())",
+                        color: didCopyBuildVersion ? .offscriptFnMode : .offscriptSoftPaper
+                    )
+                    Spacer()
+                    if !didCopyBuildVersion {
+                        TunerLabel(text: "TAP TO COPY", color: .offscriptSignalYellow, size: 8)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("SettingsCopyBuildVersion")
+            .accessibilityLabel(
+                didCopyBuildVersion
+                    ? "Copied build version \(buildVersionString) to clipboard"
+                    : "Copy build version \(buildVersionString) to clipboard"
+            )
             .padding(.top, 4)
         }
         .padding(.vertical, 12)
