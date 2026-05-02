@@ -778,25 +778,46 @@ private struct TunerDiscoveryRail: View {
         let hasImportError = importError != nil && !isImporting && !isAdded
 
         return VStack(alignment: .leading, spacing: 8) {
-            OffScriptArtworkView(url: result.artworkURL, cornerRadius: 3)
-                .frame(width: 168, height: 168)
-                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+            // Descriptive zone — combined into one VoiceOver element so
+            // the title / author / reason read as a single stop. The
+            // action button below stays its own a11y element with its
+            // own state-aware label (Copilot review on #256).
+            VStack(alignment: .leading, spacing: 8) {
+                OffScriptArtworkView(url: result.artworkURL, cornerRadius: 3)
+                    .frame(width: 168, height: 168)
+                    .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
 
-            TunerLabel(text: result.author.uppercased(), color: .offscriptFnInfo, size: 8)
-                .lineLimit(1)
+                TunerLabel(text: result.author.uppercased(), color: .offscriptFnInfo, size: 8)
+                    .lineLimit(1)
 
-            // Lock the title to a fixed 2-line slot so cards with 1-line
-            // and 2-line titles bottom-align identically across the rail.
-            // Without this, longer titles push the reason / SOURCE / +
-            // TUNE rows down, producing a staircased rail (#180).
-            Text(result.title)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.offscriptPaperWhite)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .frame(width: 168, height: 36, alignment: .topLeading)
+                // Lock the title to a fixed 2-line slot so cards with 1-line
+                // and 2-line titles bottom-align identically across the rail.
+                // Without this, longer titles push the reason / SOURCE / +
+                // TUNE rows down, producing a staircased rail (#180).
+                Text(result.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(width: 168, height: 36, alignment: .topLeading)
 
-            TunerRailReasonTag(text: displayReason, color: .offscriptFnInfo)
+                TunerRailReasonTag(text: displayReason, color: .offscriptFnInfo)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(result.title) from \(result.author). \(displayReason)")
+
+            // Visible per-pick error strip for sighted users — the
+            // accessibilityHint on the button below covers VoiceOver,
+            // but without this the only on-screen feedback would be
+            // the button's `✗ FAILED · RETRY` color flip (Copilot
+            // review on #256).
+            if hasImportError, let importError {
+                Text(importError)
+                    .font(.system(size: 10, weight: .regular))
+                    .foregroundStyle(Color.offscriptFnRecord)
+                    .lineLimit(2)
+                    .frame(width: 168, alignment: .leading)
+            }
 
             // Spacer absorbs any leftover variance from the reason tag
             // (1 vs 2 lines) so the action key always
@@ -837,8 +858,6 @@ private struct TunerDiscoveryRail: View {
             .accessibilityHint(hasImportError ? (importError ?? "") : "")
         }
         .frame(width: 168, height: 348, alignment: .topLeading)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(result.title) from \(result.author). \(displayReason)")
     }
 
     @MainActor
