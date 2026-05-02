@@ -696,9 +696,14 @@ private struct HomeDiscoveryLoadingStrip: View {
 private struct TunerDiscoveryRail: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var subscribed: [Podcast]
-    @State private var importingID: String?
+    /// Per-pick in-flight set so concurrent + TUNE taps both keep
+    /// their `○ TUNING…` state. Same shape as #214's Starter Rail fix.
+    @State private var importingIDs: Set<String> = []
     @State private var addedIDs: Set<String> = []
-    @State private var errorMessage: String?
+    /// Per-pick error keyed by feedURL.normalizedFeedKey so a failed
+    /// + TUNE flips that row to ✗ FAILED · RETRY instead of vanishing
+    /// into a global error strip.
+    @State private var importErrors: [String: String] = [:]
 
     let section: HomeFeedSection
     private let syncService = FeedSyncService()
@@ -733,14 +738,10 @@ private struct TunerDiscoveryRail: View {
                 .padding(.horizontal, OffScriptTheme.pagePadding)
             }
             .tunerRailEdgeFade()
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.offscriptFnRecord)
-                    .padding(.horizontal, OffScriptTheme.pagePadding)
-                    .transition(.opacity)
-            }
+            // Removed the global error strip — each card now owns its
+            // own ✗ FAILED · RETRY state via importErrors (same pattern
+            // as the Starter Rail fix in #214). Multi-pick failures are
+            // no longer overwritten by the most-recent error.
         }
     }
 
@@ -772,28 +773,51 @@ private struct TunerDiscoveryRail: View {
         let result = scored.result
         let key = result.feedURL.normalizedFeedKey
         let isAdded = addedIDs.contains(key) || subscribedFeedURLs.contains(key)
-        let isImporting = importingID == key
+        let isImporting = importingIDs.contains(key)
+        let importError = importErrors[key]
+        let hasImportError = importError != nil && !isImporting && !isAdded
 
         return VStack(alignment: .leading, spacing: 8) {
-            OffScriptArtworkView(url: result.artworkURL, cornerRadius: 3)
-                .frame(width: 168, height: 168)
-                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+            // Descriptive zone — combined into one VoiceOver element so
+            // the title / author / reason read as a single stop. The
+            // action button below stays its own a11y element with its
+            // own state-aware label (Copilot review on #256).
+            VStack(alignment: .leading, spacing: 8) {
+                OffScriptArtworkView(url: result.artworkURL, cornerRadius: 3)
+                    .frame(width: 168, height: 168)
+                    .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
 
-            TunerLabel(text: result.author.uppercased(), color: .offscriptFnInfo, size: 8)
-                .lineLimit(1)
+                TunerLabel(text: result.author.uppercased(), color: .offscriptFnInfo, size: 8)
+                    .lineLimit(1)
 
-            // Lock the title to a fixed 2-line slot so cards with 1-line
-            // and 2-line titles bottom-align identically across the rail.
-            // Without this, longer titles push the reason / SOURCE / +
-            // TUNE rows down, producing a staircased rail (#180).
-            Text(result.title)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.offscriptPaperWhite)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-                .frame(width: 168, height: 36, alignment: .topLeading)
+                // Lock the title to a fixed 2-line slot so cards with 1-line
+                // and 2-line titles bottom-align identically across the rail.
+                // Without this, longer titles push the reason / SOURCE / +
+                // TUNE rows down, producing a staircased rail (#180).
+                Text(result.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(width: 168, height: 36, alignment: .topLeading)
 
-            TunerRailReasonTag(text: displayReason, color: .offscriptFnInfo)
+                TunerRailReasonTag(text: displayReason, color: .offscriptFnInfo)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(result.title) from \(result.author). \(displayReason)")
+
+            // Visible per-pick error strip for sighted users — the
+            // accessibilityHint on the button below covers VoiceOver,
+            // but without this the only on-screen feedback would be
+            // the button's `✗ FAILED · RETRY` color flip (Copilot
+            // review on #256).
+            if hasImportError, let importError {
+                Text(importError)
+                    .font(.system(size: 10, weight: .regular))
+                    .foregroundStyle(Color.offscriptFnRecord)
+                    .lineLimit(2)
+                    .frame(width: 168, alignment: .leading)
+            }
 
             // Spacer absorbs any leftover variance from the reason tag
             // (1 vs 2 lines) so the action key always
@@ -803,39 +827,57 @@ private struct TunerDiscoveryRail: View {
             Button {
                 Task { await add(scored.result) }
             } label: {
-                TunerLabel(
-                    text: isAdded ? "✓ TUNED" : (isImporting ? "○ TUNING…" : "+ TUNE"),
-                    color: isAdded ? .offscriptFnMode : .offscriptSignalYellow,
-                    size: 10
-                )
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .padding(.vertical, 9)
-                .overlay(
-                    Rectangle().stroke(isAdded ? Color.offscriptFnMode : Color.offscriptSignalYellow, lineWidth: 1)
-                )
-                .contentShape(Rectangle())
+                let actionLabel: String = {
+                    if isAdded { return "✓ TUNED" }
+                    if isImporting { return "○ TUNING…" }
+                    if hasImportError { return "✗ FAILED · RETRY" }
+                    return "+ TUNE"
+                }()
+                let actionColor: Color = {
+                    if isAdded { return .offscriptFnMode }
+                    if hasImportError { return .offscriptFnRecord }
+                    return .offscriptSignalYellow
+                }()
+                TunerLabel(text: actionLabel, color: actionColor, size: 10)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .padding(.vertical, 9)
+                    .overlay(Rectangle().stroke(actionColor, lineWidth: 1))
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(isAdded || isImporting)
+            .accessibilityLabel(
+                isAdded
+                    ? "\(result.title) is already in your library"
+                    : (isImporting
+                        ? "Adding \(result.title) to library"
+                        : (hasImportError
+                            ? "Retry adding \(result.title) to library"
+                            : "Add \(result.title) to library"))
+            )
+            .accessibilityHint(hasImportError ? (importError ?? "") : "")
         }
         .frame(width: 168, height: 348, alignment: .topLeading)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(result.title) from \(result.author). \(displayReason)")
     }
 
     @MainActor
     private func add(_ result: PodcastSearchResult) async {
         let key = result.feedURL.normalizedFeedKey
-        importingID = key
-        defer { importingID = nil }
-        errorMessage = nil
+        importingIDs.insert(key)
+        defer { importingIDs.remove(key) }
+        // Clear the prior failure for this row before retry so the
+        // button doesn't render the stale FAILED state during the
+        // new attempt.
+        importErrors[key] = nil
 
         do {
             _ = try syncService.subscribeThenHydrate(from: result, into: modelContext, episodeLimit: 25)
             addedIDs.insert(key)
         } catch {
             homeLogger.error("Discovery add failed for \(result.title, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            errorMessage = "Couldn't tune \(result.title). Try Search if the feed moved."
+            // Per-row error state — see #214 for the same pattern on
+            // HomeStarterRail.
+            importErrors[key] = error.localizedDescription
         }
     }
 }
