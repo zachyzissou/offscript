@@ -1309,12 +1309,12 @@ private struct TunerRailCard: View {
     }
 
     /// VoiceOver-friendly variant of `metadata` — non-uppercased,
-    /// comma-separated, and using SwiftUI's natural-language date so
-    /// VO doesn't speak the "·" separator or stumble on the abbreviated
-    /// "1H 5M" duration form (#267 review).
+    /// comma-separated, with the spoken duration ("1 hour 5 minutes")
+    /// so VO doesn't speak the "·" separator or the literal
+    /// abbreviated "1h 5m" form (#267 + #268 reviews).
     private var voiceOverMetadata: String {
         let dateString = episode.pubDate.formatted(date: .abbreviated, time: .omitted)
         guard let duration = episode.duration else { return dateString }
-        return "\(dateString), \(EpisodeDurationFormatter.short(duration))"
+        return "\(dateString), \(EpisodeDurationFormatter.spoken(duration))"
     }
 }
