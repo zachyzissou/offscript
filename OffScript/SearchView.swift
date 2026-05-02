@@ -586,6 +586,26 @@ private struct SearchResultRow: View {
         return .offscriptSignalYellow
     }
 
+    /// Single VoiceOver readout for the descriptive zone. Without an
+    /// `.accessibilityElement(children: .ignore)` + custom label, VO
+    /// walks rank + status chip + title + author as four separate stops
+    /// per row, so a 25-result list balloons to ~100 stops before
+    /// reaching the action keys. Mirrors the combine pass applied to
+    /// LibraryDirectoryRow (#246) and PodcastEpisodeTunerRow.
+    /// Author may be an empty string (TopPodcastsService fallback) — we
+    /// drop the clause entirely in that case so VO doesn't read a
+    /// dangling "by".
+    private var rowVoiceOverLabel: String {
+        var parts: [String] = ["Result \(rank)"]
+        if isAdded { parts.append("in library") }
+        parts.append(result.title)
+        let trimmedAuthor = result.author.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedAuthor.isEmpty {
+            parts.append("by \(trimmedAuthor)")
+        }
+        return parts.joined(separator: ", ")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 12) {
@@ -599,6 +619,7 @@ private struct SearchResultRow: View {
                 OffScriptArtworkView(url: result.artworkURL, cornerRadius: 3)
                     .frame(width: 64, height: 64)
                     .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
@@ -617,6 +638,8 @@ private struct SearchResultRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(rowVoiceOverLabel)
 
             if let summary = result.summary {
                 Text(summary)
