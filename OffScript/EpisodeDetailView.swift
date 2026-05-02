@@ -206,6 +206,7 @@ struct EpisodeDetailView: View {
             .frame(height: 2)
             HStack {
                 TunerLabel(text: timeRemaining)
+                    .accessibilityLabel(spokenTimeRemaining)
                 Spacer()
                 TunerLabel(text: "RESUME AVAILABLE", color: .offscriptSignalYellow)
             }
@@ -572,6 +573,14 @@ struct EpisodeDetailView: View {
         guard let duration = episode.duration else { return "IN PROGRESS" }
         let remaining = max(0, duration - episode.playedPosition)
         return "\(EpisodeDurationFormatter.short(remaining).uppercased()) LEFT"
+    }
+
+    /// Spoken variant for VO — "fifteen minutes left" instead of
+    /// VO walking the visible "15M LEFT" letters.
+    private var spokenTimeRemaining: String {
+        guard let duration = episode.duration else { return "in progress" }
+        let remaining = max(0, duration - episode.playedPosition)
+        return "\(EpisodeDurationFormatter.spoken(remaining)) left"
     }
 
     private func register(_ action: PreferenceSignal.Action) -> Bool {
