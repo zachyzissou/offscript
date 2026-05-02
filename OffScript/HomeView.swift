@@ -1245,6 +1245,17 @@ private struct TunerRailCard: View {
                 }
             }
             .buttonStyle(.plain)
+            // Combine artwork + podcast eyebrow + title + reason +
+            // metadata into one VoiceOver stop. Use the VO-friendly
+            // metadata variant — the visible `metadata` is uppercased,
+            // `·`-separated, and uses the abbreviated "1h 5m" duration
+            // form, all of which read awkwardly in VoiceOver. The
+            // VO variant uses sentence-case date and the unabbreviated
+            // duration ("1 hour 5 minutes" via the same formatter)
+            // joined with commas. Sibling Play / Queue keys keep their
+            // own a11y elements (#267 review).
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Open \(episode.title) from \(episode.podcast.title), \(displayReason), \(voiceOverMetadata)")
 
             // Sharp action row — single signal-yellow play key + queue toggle
             HStack(spacing: 6) {
@@ -1295,5 +1306,15 @@ private struct TunerRailCard: View {
             return "\(dateString) · \(EpisodeDurationFormatter.short(duration).uppercased())"
         }
         return dateString
+    }
+
+    /// VoiceOver-friendly variant of `metadata` — non-uppercased,
+    /// comma-separated, and using SwiftUI's natural-language date so
+    /// VO doesn't speak the "·" separator or stumble on the abbreviated
+    /// "1H 5M" duration form (#267 review).
+    private var voiceOverMetadata: String {
+        let dateString = episode.pubDate.formatted(date: .abbreviated, time: .omitted)
+        guard let duration = episode.duration else { return dateString }
+        return "\(dateString), \(EpisodeDurationFormatter.short(duration))"
     }
 }
