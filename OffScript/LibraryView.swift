@@ -2881,6 +2881,16 @@ private struct PodcastEpisodeTunerRow: View {
                 }
             }
             .buttonStyle(.plain)
+            // Combine the NavigationLink into a single VoiceOver stop
+            // so each row reads as
+            //   "Open <title>, <metadata>" instead of three separate
+            // stops for rank + title + metadata. The rank glyph is
+            // already announced as part of the metadata readout
+            // (e.g. "EP 003"), so swallowing it here avoids a
+            // duplicate. Sibling Play / Queue / More keys stay their
+            // own a11y elements.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Open \(episode.title), \(metadata)")
 
             if progressValue > 0 {
                 GeometryReader { proxy in
