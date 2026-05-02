@@ -404,6 +404,8 @@ private struct RecentSearchesSection: View {
     let onSelect: (String) -> Void
     let onClear: () -> Void
 
+    @State private var showClearConfirm: Bool = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
@@ -411,7 +413,7 @@ private struct RecentSearchesSection: View {
                 TunerLabel(text: "RECENT SEARCHES", color: .offscriptSignalYellow)
                 Spacer()
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { onClear() }
+                    withAnimation(.easeInOut(duration: 0.2)) { showClearConfirm = true }
                 } label: {
                     TunerLabel(text: "× CLEAR", color: .offscriptFnRecord, size: 9)
                         .padding(.horizontal, 8)
@@ -419,7 +421,55 @@ private struct RecentSearchesSection: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("RecentSearchesClear")
                 .accessibilityLabel("Clear recent searches")
+                .disabled(showClearConfirm)
+            }
+
+            if showClearConfirm {
+                // Inline confirm strip — same vocabulary as Queue × CLEAR ALL
+                // and Library × UNSUBSCRIBE so an accidental tap on × CLEAR
+                // doesn't wipe history without a second deliberate tap.
+                VStack(alignment: .leading, spacing: 8) {
+                    TunerLabel(text: "● CONFIRM CLEAR", color: .offscriptFnRecord)
+                    Text("Wipe all \(items.count) recent search\(items.count == 1 ? "" : "es")? This cannot be undone.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Color.offscriptPaperWhite)
+                    // Equal-width CANCEL / × CONFIRM keys at 44pt min-height
+                    // matches the established destructive-confirm vocabulary
+                    // used by Queue × CLEAR ALL and Library × UNSUBSCRIBE.
+                    HStack(spacing: 8) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) { showClearConfirm = false }
+                        } label: {
+                            TunerLabel(text: "CANCEL", color: .offscriptPaperWhite, size: 11)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("RecentSearchesClearCancel")
+                        .accessibilityLabel("Cancel clear recent searches")
+
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showClearConfirm = false
+                                onClear()
+                            }
+                        } label: {
+                            TunerLabel(text: "× CONFIRM", color: .offscriptFnRecord, size: 11)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("RecentSearchesClearConfirm")
+                        .accessibilityLabel("Confirm clear recent searches")
+                    }
+                }
+                .padding(.vertical, 10)
+                .padding(.horizontal, 10)
+                .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
             }
 
             LazyVStack(spacing: 0) {
