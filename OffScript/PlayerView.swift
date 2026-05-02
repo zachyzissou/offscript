@@ -142,6 +142,7 @@ struct PlayerView: View {
                 }
                 if let dur = episode.duration {
                     TunerLabel(text: "DURATION  \(EpisodeDurationFormatter.short(dur).uppercased())", color: .offscriptSoftPaper)
+                        .accessibilityLabel("Duration \(EpisodeDurationFormatter.spoken(dur))")
                 }
                 Spacer(minLength: 0)
             }
@@ -408,7 +409,11 @@ struct PlayerView: View {
                 .accessibilityLabel({
                     var parts: [String] = ["Up next", nextItem.episode.title, "from \(nextItem.episode.podcast.title)"]
                     if let dur = nextItem.episode.duration {
-                        parts.append(EpisodeDurationFormatter.short(dur))
+                        // Use the spoken duration ("32 minutes") so VO
+                        // doesn't say literal "h" / "m" letters from
+                        // the abbreviated short form. Same fix as
+                        // PR #268's PodcastEpisode/Home rail labels.
+                        parts.append(EpisodeDurationFormatter.spoken(dur))
                     }
                     return parts.joined(separator: ", ")
                 }())

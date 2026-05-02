@@ -332,6 +332,10 @@ private struct QueueLeadStrip: View {
                 Spacer()
                 if let dur = item.episode.duration {
                     TunerLabel(text: EpisodeDurationFormatter.short(dur).uppercased(), color: .offscriptSoftPaper)
+                        // Speak the duration naturally ("1 hour 5
+                        // minutes") instead of letting VO walk the mono
+                        // glyphs as "1 H 5 M" letters.
+                        .accessibilityLabel(EpisodeDurationFormatter.spoken(dur))
                 }
             }
 
@@ -468,6 +472,7 @@ private struct QueueItemRow: View {
                         if let duration = item.episode.duration {
                             TunerLabel(text: EpisodeDurationFormatter.short(duration).uppercased(),
                                        color: .offscriptSoftPaper, size: 8)
+                                .accessibilityLabel(EpisodeDurationFormatter.spoken(duration))
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
