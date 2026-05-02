@@ -332,6 +332,10 @@ private struct QueueLeadStrip: View {
                 Spacer()
                 if let dur = item.episode.duration {
                     TunerLabel(text: EpisodeDurationFormatter.short(dur).uppercased(), color: .offscriptSoftPaper)
+                        // Speak the duration naturally ("1 hour 5
+                        // minutes") instead of letting VO walk the mono
+                        // glyphs as "1 H 5 M" letters.
+                        .accessibilityLabel(EpisodeDurationFormatter.spoken(dur))
                 }
             }
 
@@ -466,15 +470,32 @@ private struct QueueItemRow: View {
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                         if let duration = item.episode.duration {
+                            // Visible mono badge — VO label on this
+                            // child is masked by the parent
+                            // NavigationLink's .accessibilityLabel, so
+                            // duration is folded into the parent
+                            // label below instead. Hide the child
+                            // here so VO doesn't see a stale "1H 5M"
+                            // child element either way (#269 review).
                             TunerLabel(text: EpisodeDurationFormatter.short(duration).uppercased(),
                                        color: .offscriptSoftPaper, size: 8)
+                                .accessibilityHidden(true)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Open \(item.episode.title) from \(item.episode.podcast.title) detail")
+            .accessibilityLabel({
+                var parts: [String] = [
+                    "Open \(item.episode.title) from \(item.episode.podcast.title)"
+                ]
+                if let duration = item.episode.duration {
+                    parts.append(EpisodeDurationFormatter.spoken(duration))
+                }
+                parts.append("detail")
+                return parts.joined(separator: ", ")
+            }())
 
             Button {
                 PlaybackController.shared.play(item.episode, in: modelContext)
