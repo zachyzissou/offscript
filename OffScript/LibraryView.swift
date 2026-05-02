@@ -2149,6 +2149,12 @@ private struct TunerLibraryCard: View {
                 }
             }
             .buttonStyle(.plain)
+            // Combine artwork + podcast eyebrow + title + reason into
+            // one VoiceOver stop. Sibling Play / Queue keys keep their
+            // own a11y elements. Mirrors PodcastEpisodeTunerRow (#265)
+            // and SearchResultRow (#261).
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Open \(episode.title) from \(episode.podcast.title), \(reason)")
 
             HStack(spacing: 6) {
                 Button {
