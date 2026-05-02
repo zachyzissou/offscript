@@ -85,6 +85,16 @@ struct SearchView: View {
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
+        .refreshable {
+            // Pull-to-refresh re-runs the active search so the user can
+            // dismiss a stale `SEARCH ERROR` strip or pull in newly
+            // catalogued shows without mutating the query. `search()` has
+            // its own internal `trimmed.count >= 2` gate, so we don't
+            // duplicate the trim here — the gesture is harmless on the
+            // starter-topics + recent-searches landing because the gate
+            // short-circuits.
+            await search()
+        }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
         .accessibilityIdentifier("SearchScreen")
         .navigationTitle("")
