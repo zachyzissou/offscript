@@ -167,7 +167,7 @@ struct SearchView: View {
     }
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
             TunerLabel(text: "● NO MATCHES", color: .offscriptSoftPaper)
             Text("No matches")
@@ -177,6 +177,23 @@ struct SearchView: View {
                 .font(.system(size: 13.5))
                 .foregroundStyle(Color.offscriptPaperWhite)
                 .lineSpacing(2)
+
+            // One-tap reset to the starter-topics + recent-searches
+            // landing state. Mirrors the × CLEAR FILTER recovery key on
+            // PodcastDetail (#208) and Library directory (#220).
+            Button {
+                query = ""
+            } label: {
+                TunerLabel(text: "× CLEAR SEARCH", color: .offscriptSignalYellow, size: 10)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(minHeight: 44)
+                    .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Clear search query")
+            .accessibilityIdentifier("SearchEmptyClearSearch")
         }
         .padding(.top, 8)
     }
