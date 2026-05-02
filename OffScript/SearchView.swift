@@ -586,6 +586,19 @@ private struct SearchResultRow: View {
         return .offscriptSignalYellow
     }
 
+    /// Single VoiceOver readout for the descriptive zone — without
+    /// .combine, VO walks rank + status chip + title + author as four
+    /// separate stops per row, so a 25-result list balloons to 100+
+    /// swipes before reaching the action keys. Mirrors the combine pass
+    /// applied to LibraryDirectoryRow / EpisodeRow elsewhere.
+    private var rowVoiceOverLabel: String {
+        var parts: [String] = ["Result \(rank)"]
+        if isAdded { parts.append("in library") }
+        parts.append(result.title)
+        parts.append("by \(result.author)")
+        return parts.joined(separator: ", ")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 12) {
@@ -599,6 +612,7 @@ private struct SearchResultRow: View {
                 OffScriptArtworkView(url: result.artworkURL, cornerRadius: 3)
                     .frame(width: 64, height: 64)
                     .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
@@ -617,6 +631,8 @@ private struct SearchResultRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(rowVoiceOverLabel)
 
             if let summary = result.summary {
                 Text(summary)
