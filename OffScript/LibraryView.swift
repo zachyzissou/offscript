@@ -2839,6 +2839,27 @@ private struct PodcastEpisodeTunerRow: View {
         return "—"
     }
 
+    /// VoiceOver readout for the row's NavigationLink. Conditionally
+    /// includes the chronological rank when the metadata won't already
+    /// announce an episode number (feeds without <itunes:episode> still
+    /// get a computed `chronologicalRank` and surface the `%03d` glyph
+    /// to sighted users). Appends the stripped summary so VO users get
+    /// the description text sighted users see (#265 review).
+    fileprivate var rowAccessibilityLabel: String {
+        var parts: [String] = ["Open \(episode.title)"]
+        if episode.episodeNumber == nil, let rank {
+            parts.append("rank \(rank)")
+        }
+        if !metadata.isEmpty { parts.append(metadata) }
+        if let summary = episode.summary {
+            let stripped = summary.strippingHTML
+            if !stripped.isEmpty {
+                parts.append(stripped)
+            }
+        }
+        return parts.joined(separator: ", ")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             NavigationLink {
@@ -2881,6 +2902,19 @@ private struct PodcastEpisodeTunerRow: View {
                 }
             }
             .buttonStyle(.plain)
+            // Combine the NavigationLink into a single VoiceOver stop
+            // so each row reads as one navigation, not three. Sibling
+            // Play / Queue / More keys stay their own a11y elements.
+            // Build label inline so we can:
+            //   - conditionally include rankLabel when the metadata
+            //     readout would NOT already encode it (i.e. when the
+            //     feed lacks <itunes:episode> so metadata won't have
+            //     "E<n>"). Otherwise rank would double-announce.
+            //   - append the stripped summary when present so VO users
+            //     don't lose the description text the row shows
+            //     sighted users (#265 review).
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(rowAccessibilityLabel)
 
             if progressValue > 0 {
                 GeometryReader { proxy in
