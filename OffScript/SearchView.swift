@@ -586,16 +586,23 @@ private struct SearchResultRow: View {
         return .offscriptSignalYellow
     }
 
-    /// Single VoiceOver readout for the descriptive zone — without
-    /// .combine, VO walks rank + status chip + title + author as four
-    /// separate stops per row, so a 25-result list balloons to 100+
-    /// swipes before reaching the action keys. Mirrors the combine pass
-    /// applied to LibraryDirectoryRow / EpisodeRow elsewhere.
+    /// Single VoiceOver readout for the descriptive zone. Without an
+    /// `.accessibilityElement(children: .ignore)` + custom label, VO
+    /// walks rank + status chip + title + author as four separate stops
+    /// per row, so a 25-result list balloons to ~100 stops before
+    /// reaching the action keys. Mirrors the combine pass applied to
+    /// LibraryDirectoryRow (#246) and PodcastEpisodeTunerRow.
+    /// Author may be an empty string (TopPodcastsService fallback) — we
+    /// drop the clause entirely in that case so VO doesn't read a
+    /// dangling "by".
     private var rowVoiceOverLabel: String {
         var parts: [String] = ["Result \(rank)"]
         if isAdded { parts.append("in library") }
         parts.append(result.title)
-        parts.append("by \(result.author)")
+        let trimmedAuthor = result.author.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedAuthor.isEmpty {
+            parts.append("by \(trimmedAuthor)")
+        }
         return parts.joined(separator: ", ")
     }
 
