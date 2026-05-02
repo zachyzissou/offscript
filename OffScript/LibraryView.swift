@@ -2856,7 +2856,7 @@ private struct PodcastEpisodeTunerRow: View {
         if episode.episodeNumber == nil, let rank {
             parts.append("rank \(rank)")
         }
-        if !metadata.isEmpty { parts.append(metadata) }
+        if !voiceOverMetadata.isEmpty { parts.append(voiceOverMetadata) }
         if let summary = episode.summary {
             let stripped = summary.strippingHTML
             if !stripped.isEmpty {
@@ -2983,6 +2983,26 @@ private struct PodcastEpisodeTunerRow: View {
             parts.append(EpisodeDurationFormatter.short(duration))
         }
         return parts.joined(separator: " · ").uppercased()
+    }
+
+    /// VoiceOver-friendly metadata variant — drops uppercasing and the
+    /// "·" separator so VO doesn't speak the punctuation literally,
+    /// and expands "S2 E5" to "Season 2 Episode 5" so the readout
+    /// pronounces sensibly. The visible mono `metadata` is unchanged.
+    /// Same pattern as HomeView TunerRailCard's voiceOverMetadata
+    /// (#267 review).
+    private var voiceOverMetadata: String {
+        var parts: [String] = []
+        if let s = episode.seasonNumber, let e = episode.episodeNumber {
+            parts.append("Season \(s) Episode \(e)")
+        } else if let e = episode.episodeNumber {
+            parts.append("Episode \(e)")
+        }
+        parts.append(episode.pubDate.formatted(date: .abbreviated, time: .omitted))
+        if let duration = episode.duration {
+            parts.append(EpisodeDurationFormatter.short(duration))
+        }
+        return parts.joined(separator: ", ")
     }
 }
 
