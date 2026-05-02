@@ -1245,6 +1245,12 @@ private struct TunerRailCard: View {
                 }
             }
             .buttonStyle(.plain)
+            // Combine artwork + podcast eyebrow + title + reason +
+            // metadata into one VoiceOver stop. Sibling Play / Queue
+            // keys keep their own a11y elements. Mirrors
+            // TunerLibraryCard (#266) and PodcastEpisodeTunerRow (#265).
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Open \(episode.title) from \(episode.podcast.title), \(displayReason), \(metadata)")
 
             // Sharp action row — single signal-yellow play key + queue toggle
             HStack(spacing: 6) {
