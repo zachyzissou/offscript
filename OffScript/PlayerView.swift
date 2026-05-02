@@ -375,6 +375,13 @@ struct PlayerView: View {
             VStack(alignment: .leading, spacing: 8) {
                 TunerLabel(text: "UP NEXT · CHANNEL QUEUE", color: .offscriptSignalYellow)
 
+                // Descriptive zone — combined into one VoiceOver stop
+                // ("Up next: <title> from <podcast>, <duration>")
+                // instead of artwork + podcast + title + duration as
+                // four separate stops. Mirrors the combine pass on
+                // SearchResultRow (#261), HomeStarterRail (#262), and
+                // TunerDiscoveryRail (#256). The → PLAY / × DROP keys
+                // below stay their own a11y elements.
                 HStack(spacing: 12) {
                     OffScriptArtworkView(
                         url: nextItem.episode.artworkURL ?? nextItem.episode.podcast.artworkURL,
@@ -382,6 +389,7 @@ struct PlayerView: View {
                     )
                     .frame(width: 44, height: 44)
                     .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                    .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 2) {
                         TunerLabel(text: nextItem.episode.podcast.title.uppercased(), color: .offscriptFnInfo, size: 8)
@@ -396,6 +404,14 @@ struct PlayerView: View {
                         TunerLabel(text: EpisodeDurationFormatter.short(dur).uppercased(), color: .offscriptSoftPaper)
                     }
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel({
+                    var parts: [String] = ["Up next", nextItem.episode.title, "from \(nextItem.episode.podcast.title)"]
+                    if let dur = nextItem.episode.duration {
+                        parts.append(EpisodeDurationFormatter.short(dur))
+                    }
+                    return parts.joined(separator: ", ")
+                }())
 
                 // Action row — play the up-next episode immediately or
                 // drop it from the queue without playing. Without these
