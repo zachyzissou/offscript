@@ -2856,7 +2856,9 @@ private struct PodcastEpisodeTunerRow: View {
         if episode.episodeNumber == nil, let rank {
             parts.append("rank \(rank)")
         }
-        if !voiceOverMetadata.isEmpty { parts.append(voiceOverMetadata) }
+        // voiceOverMetadata always contains at least the pubDate
+        // (non-optional with a default) so no empty guard needed.
+        parts.append(voiceOverMetadata)
         if let summary = episode.summary {
             let stripped = summary.strippingHTML
             if !stripped.isEmpty {
@@ -3000,7 +3002,7 @@ private struct PodcastEpisodeTunerRow: View {
         }
         parts.append(episode.pubDate.formatted(date: .abbreviated, time: .omitted))
         if let duration = episode.duration {
-            parts.append(EpisodeDurationFormatter.short(duration))
+            parts.append(EpisodeDurationFormatter.spoken(duration))
         }
         return parts.joined(separator: ", ")
     }

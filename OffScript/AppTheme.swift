@@ -892,4 +892,22 @@ enum EpisodeDurationFormatter {
         }
         return "\(minutes)m"
     }
+
+    /// VoiceOver-friendly duration ("1 hour 5 minutes" / "32 minutes")
+    /// — VO speaks the abbreviated `short` form's "h" and "m" letters
+    /// literally, which sounds wrong. Plural-correct, falls back to
+    /// "0 minutes" for sub-minute durations to stay grammatical
+    /// (#268 review).
+    static func spoken(_ duration: TimeInterval) -> String {
+        let minutes = Int(duration / 60)
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+        if hours == 0 {
+            return "\(minutes) \(minutes == 1 ? "minute" : "minutes")"
+        }
+        let hoursPart = "\(hours) \(hours == 1 ? "hour" : "hours")"
+        if remainingMinutes == 0 { return hoursPart }
+        let minutesPart = "\(remainingMinutes) \(remainingMinutes == 1 ? "minute" : "minutes")"
+        return "\(hoursPart) \(minutesPart)"
+    }
 }
