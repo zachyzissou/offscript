@@ -435,32 +435,46 @@ private struct QueueItemRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(String(format: "%02d", rank))
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .tracking(1.0)
-                .foregroundStyle(Color.offscriptSignalYellow)
-                .frame(width: 28, alignment: .leading)
+            // Tap-to-detail zone — rank + artwork + title/metadata.
+            // The action buttons (play / move / remove) are siblings
+            // outside the NavigationLink so they don't trigger the
+            // detail push when tapped. Matches the
+            // PodcastEpisodeTunerRow pattern.
+            NavigationLink {
+                EpisodeDetailView(episode: item.episode)
+            } label: {
+                HStack(spacing: 12) {
+                    Text(String(format: "%02d", rank))
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .tracking(1.0)
+                        .foregroundStyle(Color.offscriptSignalYellow)
+                        .frame(width: 28, alignment: .leading)
 
-            OffScriptArtworkView(
-                url: item.episode.artworkURL ?? item.episode.podcast.artworkURL,
-                cornerRadius: 3
-            )
-            .frame(width: 48, height: 48)
-            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                    OffScriptArtworkView(
+                        url: item.episode.artworkURL ?? item.episode.podcast.artworkURL,
+                        cornerRadius: 3
+                    )
+                    .frame(width: 48, height: 48)
+                    .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
 
-            VStack(alignment: .leading, spacing: 3) {
-                TunerLabel(text: item.episode.podcast.title.uppercased(), color: .offscriptFnInfo, size: 8)
-                    .lineLimit(1)
-                Text(item.episode.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.offscriptPaperWhite)
-                    .lineLimit(2)
-                if let duration = item.episode.duration {
-                    TunerLabel(text: EpisodeDurationFormatter.short(duration).uppercased(),
-                               color: .offscriptSoftPaper, size: 8)
+                    VStack(alignment: .leading, spacing: 3) {
+                        TunerLabel(text: item.episode.podcast.title.uppercased(), color: .offscriptFnInfo, size: 8)
+                            .lineLimit(1)
+                        Text(item.episode.title)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.offscriptPaperWhite)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        if let duration = item.episode.duration {
+                            TunerLabel(text: EpisodeDurationFormatter.short(duration).uppercased(),
+                                       color: .offscriptSoftPaper, size: 8)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open \(item.episode.title) from \(item.episode.podcast.title) detail")
 
             Button {
                 PlaybackController.shared.play(item.episode, in: modelContext)
