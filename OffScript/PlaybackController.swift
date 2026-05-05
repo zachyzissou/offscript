@@ -685,6 +685,9 @@ final class PlaybackController: ObservableObject {
             let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
             await MainActor.run {
                 guard PlaybackController.shared.nowPlayingArtworkURL == url else { return }
+                if MPNowPlayingInfoCenter.default().nowPlayingInfo == nil {
+                    MPNowPlayingInfoCenter.default().nowPlayingInfo = [:]
+                }
                 MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] = artwork
             }
         }
