@@ -1974,12 +1974,20 @@ private struct LibraryDirectoryControls: View {
         Button(action: action) {
             TunerLabel(
                 text: title,
-                color: isDisabled ? .offscriptSoftPaper.opacity(0.5) : (isSelected ? .offscriptStudioBlack : .offscriptPaperWhite),
+                // Outline-only active treatment: yellow glyph + yellow
+                // stroke matches the Tuner action-key pattern (e.g.
+                // → PLAY) called out in CLAUDE.md. Previously the
+                // selected chip filled with signal-yellow + studio-
+                // black glyph, which made it the single solid-fill
+                // pill in an otherwise hairline-outline system — the
+                // 2026-05-20 visual audit flagged this as design-
+                // system drift.
+                color: isDisabled ? .offscriptSoftPaper.opacity(0.5) : (isSelected ? .offscriptSignalYellow : .offscriptPaperWhite),
                 size: 9
             )
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(isSelected && !isDisabled ? Color.offscriptSignalYellow : Color.clear)
+            .background(Color.clear)
             .overlay(
                 Rectangle().stroke(
                     isSelected && !isDisabled ? Color.offscriptSignalYellow : Color.offscriptHairline,
