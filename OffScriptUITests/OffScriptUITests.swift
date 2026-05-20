@@ -173,8 +173,12 @@ final class OffScriptUITests: XCTestCase {
         // and reads `● QUEUE EMPTY` + "Nothing queued yet" + an EXPLORE
         // SHOWS escape hatch. A user with no subscriptions on a fresh
         // install lands here, so it has to be readable and the EXPLORE
-        // key has to route somewhere useful.
-        let app = makeApp(hasSeenOnboarding: true, debugLaunchTab: 2)
+        // key has to route somewhere useful. debugWipeLibrary guarantees
+        // no-subscriptions state — without it, residual subscriptions
+        // from earlier parallel-test runs flip QueueView.emptyState's
+        // `hasSubscriptions` branch and the CTA reads "→ BROWSE LIBRARY"
+        // instead of "→ EXPLORE SHOWS" (#177).
+        let app = makeApp(hasSeenOnboarding: true, debugLaunchTab: 2, debugWipeLibrary: true)
         app.launch()
 
         XCTAssertTrue(app.screen("QueueScreen").waitForExistence(timeout: 12))
@@ -183,7 +187,11 @@ final class OffScriptUITests: XCTestCase {
                       "Queue empty-state eyebrow missing. Hierarchy:\n\(app.debugDescription)")
         XCTAssertTrue(app.staticTexts["Nothing queued yet"].waitForExistence(timeout: 4),
                       "Queue empty-state headline missing. Hierarchy:\n\(app.debugDescription)")
-        XCTAssertTrue(app.staticTexts.containing(labelContaining: "EXPLORE SHOWS").waitForExistence(timeout: 4),
+        // The CTA is a Button whose label = the inner TunerLabel text;
+        // SwiftUI collapses the Button + TunerLabel into a single Button
+        // accessibility element, so the "→ EXPLORE SHOWS" text is on
+        // `app.buttons`, not `app.staticTexts`.
+        XCTAssertTrue(app.buttons.containing(labelContaining: "EXPLORE SHOWS").firstMatch.waitForExistence(timeout: 4),
                       "Queue empty-state escape hatch missing. Hierarchy:\n\(app.debugDescription)")
     }
 
@@ -230,9 +238,14 @@ final class OffScriptUITests: XCTestCase {
         // #258 acceptance: tapping a Queue row's rank+artwork+title zone
         // should push the episode's detail screen, leaving the inline
         // → PLAY / × DROP keys still tappable on their own.
+        // debugWipeLibrary guarantees the seed lands in a clean store —
+        // without it, parallel-test contamination from earlier seeded
+        // runs leaves stale subscriptions and the new seed no-ops,
+        // leaving the queue empty and the row never rendering (#177).
         let app = makeApp(
             hasSeenOnboarding: true,
             debugLaunchTab: 2,
+            debugWipeLibrary: true,
             debugSeedSampleData: true,
             debugSeedQueue: 3
         )
