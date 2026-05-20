@@ -49,8 +49,8 @@ struct OffScriptApp: App {
     // MARK: - Model Container with Versioned Migration
     //
     // Three-tier recovery:
-    //   1. Open the on-disk store with the SchemaV2 migration plan. Lets
-    //      existing user data carry forward via the V1→V2 stage.
+    //   1. Open the on-disk store with the SchemaV3 migration plan. Lets
+    //      existing user data carry forward via the V1→V2→V3 stages.
     //   2. If (1) fails (e.g. "Cannot use staged migration with an unknown
     //      model version" — happens when the on-disk store has metadata
     //      that doesn't match either V1 or V2; possible if a build between
@@ -89,7 +89,7 @@ struct OffScriptApp: App {
     }()
 
     private static func buildModelContainer() -> ModelContainer {
-        let schema = Schema(versionedSchema: SchemaV2.self)
+        let schema = Schema(versionedSchema: SchemaV3.self)
         do {
             return try Self.makeModelContainer(schema: schema)
         } catch {
@@ -100,13 +100,13 @@ struct OffScriptApp: App {
                 Self.logger.info("Quarantined corrupted store directory — retrying with fresh schema")
                 // Rebuild Schema instance — keeps SwiftData's internal
                 // state from carrying over the failed first attempt.
-                let freshSchema = Schema(versionedSchema: SchemaV2.self)
+                let freshSchema = Schema(versionedSchema: SchemaV3.self)
                 return try Self.makeModelContainer(schema: freshSchema)
             } catch {
                 Self.logger.fault("Quarantine + retry failed: \(String(describing: error), privacy: .public). Falling back to in-memory store so the app at least launches.")
                 do {
                     let inMemory = try ModelContainer(
-                        for: Schema(versionedSchema: SchemaV2.self),
+                        for: Schema(versionedSchema: SchemaV3.self),
                         configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
                     )
                     Self.logger.fault("In-memory ModelContainer active — user data will not persist across launches until the on-disk store can be opened again.")

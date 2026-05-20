@@ -1,25 +1,8 @@
-2.5.0 — Podcast-native foundations + recommendation credibility
+2.5.1 — CRITICAL FIX: SwiftData schema migration
 
-Builds on 2.4.0's accessibility pass. The audit cycle's findings drove deep wiring + feature work across the app.
+If you installed 2.5.0 (build 2026052003) and your library appeared empty after upgrade, this fixes it going forward. Apologies for the data-loss scare — root-cause was a missed schema-version bump for the new EpisodeProfile fields shipped in 2.5.0. SwiftData saw the schema fingerprint mismatch, failed the lightweight migration, and the app's three-tier recovery quarantined the old store rather than crash. Your data is NOT deleted — it's renamed to `OffScript-corrupted-<timestamp>/` inside the app's Application Support container. Restoring from a device backup will bring it back; opening the app on 2.5.1 will continue forward cleanly from whatever state you're at now.
 
-— Podcast-native chapters: feed-provided `<podcast:chapters>` JSON parsed end-to-end. Chapter artwork swaps with the playhead, tappable → NOTES link opens chapter URLs, sponsor-break filtering, sparse-coverage endTime support.
-— Published transcripts: VTT / JSON / SRT / HTML decoders. Falls back to on-device Speech only when no published transcript exists. The transcript panel now scrolls to follow playhead, highlights current line, tap-to-seek, search-within-transcript, source provenance pill.
-— Siri & Spotlight: parameterized PlayEpisode intent + OpenLibrary/OpenQueue/OpenSearch/OpenHome intents. Five donate() sites so iOS Suggestions/Smart Stack/Lock Screen can learn your patterns. Spotlight indexing enriched from 9 to 13 fields per episode.
-— CarPlay scaffolding: 5-tab browse (Library / Queue / Recent / Recommendations / Search), CPSearchTemplate against on-device shows, Now Playing Up Next wired to queue. Ships dormant — requires Apple's `com.apple.developer.carplay-audio` entitlement grant to activate.
-— Recommendation engine fully wired: 14-day taste-decay half-life, per-show binge dampener, 5 PlaybackEvent emit sites driving negative-signal suppression + positive queue-trust credit. Explanations now cite specific evidence ("You finished 3 episodes of Hardcore History" not "Matches your taste").
-— Editorial collections in Search/Picker: hand-curated shelves (Just under an hour / Long-form interviews / News on the go / etc.) layered over the genre catalog.
-— Library row download badges: ambient download state visible on every row. Failed downloads are tappable to retry.
-— Lock-screen scrubber now actually seeks (was rendering but no-op on drag). Live Activity ends on episode change so the Dynamic Island doesn't show stale artwork.
-— Debug Inspector in Settings → Diagnostics: surfaces telemetry events, per-podcast sync history, download state, BGTaskScheduler schedule. Wi-Fi-only download toggle finally has UI.
-— ~50 new unit + UI tests covering the new wiring. Build green.
+— Fix: SchemaV3 + migrateV2toV3 lightweight migration stage.
+— Users who skipped 2.5.0 and go straight from 2.4.x to 2.5.1 get the full V1→V2→V3 migration path with no data loss.
 
-Audit-cycle fixes
-— Real production bug: TopicExtractionService was silently producing zero tags on simulator + during real-device model-download warmup. Recommendations had been impoverished. Fixed with NLTokenizer fallback.
-— DownloadService configure() was dead code in production. The reconciliation, queue-resume, and model-context wiring never ran. Subway test now works.
-— Sentry sendDefaultPii explicitly false. Widget gets its own privacy manifest.
-— Ghost Live Activities frozen on Dynamic Island after force-quit now sweep on cold launch.
-
-Known issues
-— 4 PlaybackEventEmissionTests + 1 deep-link test fail in full-suite, pass in isolation. Architectural fix is instance-based context injection (multi-session refactor). Documented in TEST_MATRIX.md.
-— CarPlay won't appear until Apple grants the audio-app entitlement. Apply via developer.apple.com/contact/carplay/.
-— Push notifications scaffolded but not wired to BackgroundFeedRefresh yet (NotificationService.swift is ready; host-app wiring is the 4-line follow-up).
+All other 2.5.0 features are unchanged — see the 2.5.0 release notes for the podcast-namespace chapters / published transcripts / CarPlay scaffolding / recommendation-credibility wiring.

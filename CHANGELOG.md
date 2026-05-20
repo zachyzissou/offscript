@@ -4,6 +4,15 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.5.1] — 2026-05-20
+
+### Fixed — schema migration ship bug (CRITICAL)
+- **Existing user libraries were being quarantined on first launch of 2.5.0** because Phase 38 (commit `b897e3d`) added two new fields to `EpisodeProfile` (`confidenceScore`, `freshnessBucket`) without bumping the SwiftData schema version or registering a migration stage. SwiftData detected the schema fingerprint mismatch against the V2-shaped on-disk store, the lightweight migration failed, and the three-tier recovery in `OffScriptApp.sharedModelContainer` fell through to the rename-and-fresh quarantine path. Users with the prior store still have it on disk as `OffScript-corrupted-<unix-timestamp>/` in Application Support; opening 2.5.1 will NOT auto-recover that store (the quarantine happened on 2.5.0 launch and the V2 store is no longer the live one), but the fresh V3 store built by 2.5.0 + the upgrade flow in 2.5.1 will continue forward cleanly.
+- **Adds `SchemaV3`** with the new `EpisodeProfile` shape and a lightweight `migrateV2toV3` stage (additive columns only; SwiftData fills defaults / nulls for existing rows automatically). Users who never installed 2.5.0 will skip directly through V1→V2→V3 on upgrade with no data loss.
+- **Lesson canonized:** every new `@Model` field — even nullable / defaulted — needs a new `SchemaVN` + migration stage. Documented in `SchemaMigration.swift`'s header comments and added to the audit-cycle ship-checklist in `docs/TESTFLIGHT.md` (separate commit).
+
+
+
 _Most cycle deferrals were resolved in 2.5.0 (see audit doc cross-reference sweep, commit `f14da05`). Remaining items: instance-based context-injection refactor to permanently retire the singleton-pollution test flake class (multi-session); CarPlay Apple-developer-portal entitlement application; TelemetryEvent persistence migration if/when the schema warrants V3._
 
 ## [2.5.0] — 2026-05-20
