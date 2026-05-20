@@ -140,6 +140,7 @@ struct EpisodeDetailView: View {
                     cornerRadius: 3
                 )
                 .frame(width: 96, height: 96)
+                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
