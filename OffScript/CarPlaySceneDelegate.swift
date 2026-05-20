@@ -419,11 +419,68 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
 // MARK: - CPNowPlayingTemplateObserver
 
-/// Empty conformance for now — `CPNowPlayingTemplate.add(_:)` requires an
-/// observer object. The protocol has no required methods; we keep the
-/// conformance here so future hook points (e.g. reacting to Up Next taps)
-/// have a place to land.
-extension CarPlaySceneDelegate: CPNowPlayingTemplateObserver {}
+extension CarPlaySceneDelegate: CPNowPlayingTemplateObserver {
+    /// User tapped the Up Next button in the CarPlay now-playing overlay.
+    /// We surface an `Up Next` list template, prioritizing the explicit
+    /// queue when non-empty, otherwise falling back to
+    /// `RecommendationService.playerSuggestions(...)` so the user always
+    /// sees something actionable rather than an empty surface.
+    nonisolated func nowPlayingTemplateUpNextButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {
+        Task { @MainActor in
+            let episodes = self.fetchUpNext()
+            let section: CPListSection
+            if episodes.isEmpty {
+                section = self.emptySection(title: "Nothing queued", detail: "Add episodes from iPhone")
+            } else {
+                section = CPListSection(items: episodes.map { self.listItem(for: $0) })
+            }
+            let template = CPListTemplate(title: "Up Next", sections: [section])
+            self.interfaceController?.pushTemplate(template, animated: true, completion: nil)
+        }
+    }
+}
+
+extension CarPlaySceneDelegate {
+    /// Resolve the "what plays next" list. Priority order:
+    ///   1. `QueueService.orderedItems` — user's explicit queue (the same
+    ///      source `PlaybackController.advanceToNextQueuedEpisode` reads
+    ///      from when an episode finishes). Excludes the currently-playing
+    ///      episode so we don't repeat what the driver is already hearing.
+    ///   2. `RecommendationService.playerSuggestions` — contextual
+    ///      suggestions based on the current episode. Only consulted when
+    ///      the explicit queue is empty (or fully drained by the
+    ///      current-episode filter).
+    /// Returns at most `ListLimits.upNext` episodes.
+    fileprivate func fetchUpNext() -> [Episode] {
+        guard let context = makeModelContext() else { return [] }
+        let currentID = PlaybackController.shared.currentEpisode?.id
+
+        // 1) Explicit queue first.
+        if let items = try? QueueService.orderedItems(in: context) {
+            let filtered = items
+                .map(\.episode)
+                .filter { $0.id != currentID }
+                .prefix(ListLimits.upNext)
+            if !filtered.isEmpty {
+                return Array(filtered)
+            }
+        }
+
+        // 2) Fall back to player suggestions for the current episode.
+        if let current = PlaybackController.shared.currentEpisode {
+            let service = RecommendationService()
+            if let scored = try? service.playerSuggestions(
+                currentEpisode: current,
+                context: context,
+                limit: ListLimits.upNext
+            ) {
+                return scored.map(\.episode)
+            }
+        }
+
+        return []
+    }
+}
 
 // MARK: - CPSearchTemplateDelegate
 
