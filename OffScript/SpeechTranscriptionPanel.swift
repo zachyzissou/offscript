@@ -1,3 +1,4 @@
+import Combine
 import OSLog
 import Speech
 import SwiftData
@@ -6,10 +7,14 @@ import SwiftUI
 private let panelLogger = Logger(subsystem: "com.offscript", category: "SpeechTranscriptionPanel")
 
 /// EpisodeDetailView panel that lets the user generate an on-device transcript
-/// using Apple's Speech framework. Audio must be downloaded first — streaming
-/// transcription is too slow for podcast-length audio. Generated text stays
-/// in process memory (cached on `SpeechTranscriptionService.shared`); a
-/// future pass will persist it to a SwiftData model so it survives restart.
+/// using Apple's Speech framework, OR surface a Podcasting-2.0 published
+/// transcript fetched via `PublishedTranscriptLoader`.
+///
+/// Phase 30 began wiring the synchronized-cue UI the Phase 14 audit asked
+/// for: this initial commit reads cues + source/language from the cache and
+/// renders a provenance chip in the header (PUBLISHED vs ON-DEVICE). Cue
+/// rendering, scroll-follow, tap-to-seek, and search land in follow-up
+/// commits on this same file.
 struct SpeechTranscriptionPanel: View {
     let episode: Episode
 
@@ -17,6 +22,9 @@ struct SpeechTranscriptionPanel: View {
     @ObservedObject private var downloadService = DownloadService.shared
     @State private var status: PanelStatus = .idle
     @State private var transcriptText: String?
+    @State private var cues: [TranscriptCue] = []
+    @State private var transcriptSource: TranscriptSource = .unknown
+    @State private var transcriptLanguage: String?
     @State private var isExpanded = false
 
     private enum PanelStatus: Equatable {
@@ -27,11 +35,25 @@ struct SpeechTranscriptionPanel: View {
         case failed(String)
     }
 
+    /// Provenance pill source. Inferred from the `EpisodeTranscriptCache.source`
+    /// string flag ("speech" → onDevice, "published" → published). "mixed" is
+    /// reserved for a future pass where on-device cues backfill gaps in
+    /// published cues — no current code path produces it, but the pill is
+    /// wired so the schema change (a single optional flag) is the only
+    /// remaining piece.
+    private enum TranscriptSource {
+        case unknown
+        case onDevice
+        case published
+        case mixed
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                TunerLabel(text: "TRANSCRIPT · ON DEVICE", color: .offscriptSignalYellow)
+                TunerLabel(text: panelHeaderTitle, color: .offscriptSignalYellow)
                 Spacer()
+                sourcePill
                 statusBadge
             }
 
@@ -66,13 +88,37 @@ struct SpeechTranscriptionPanel: View {
             alignment: .top
         )
         .task(id: episode.id) {
-            // Hydrate from persistent cache first (survives app restart),
-            // then in-memory cache. Either way the user sees the result
-            // instantly without re-running Speech.
-            if let stored = SpeechTranscriptionService.shared.persistedTranscript(for: episode.id, in: modelContext) {
-                transcriptText = stored
-                status = .ready
-            }
+            await hydrateFromCache()
+        }
+    }
+
+    // MARK: - Header / pill
+
+    private var panelHeaderTitle: String {
+        switch transcriptSource {
+        case .published: return "TRANSCRIPT · PUBLISHED"
+        case .mixed:     return "TRANSCRIPT · MIXED"
+        case .onDevice, .unknown:
+            return "TRANSCRIPT · ON DEVICE"
+        }
+    }
+
+    /// Compact provenance chip. Only renders once we've successfully loaded
+    /// either cues or flat text from the cache (transcriptSource != .unknown)
+    /// — otherwise the panel hasn't established provenance yet and the chip
+    /// would be a lie.
+    @ViewBuilder
+    private var sourcePill: some View {
+        switch transcriptSource {
+        case .unknown:
+            EmptyView()
+        case .onDevice:
+            TunerLabel(text: "● ON-DEVICE", color: .offscriptFnMode, size: 9)
+        case .published:
+            let langSuffix = transcriptLanguage.map { " · " + $0.uppercased() } ?? ""
+            TunerLabel(text: "● PUBLISHED" + langSuffix, color: .offscriptFnInfo, size: 9)
+        case .mixed:
+            TunerLabel(text: "● MIXED", color: .offscriptSignalYellow, size: 9)
         }
     }
 
@@ -167,6 +213,46 @@ struct SpeechTranscriptionPanel: View {
         .padding(.top, 4)
     }
 
+    // MARK: - Hydration / fetch
+
+    /// Pulls whatever the cache has for this episode — flat text, timed
+    /// cues, source, language — into local state. Runs on `.task(id:)`
+    /// so it re-fires when the user navigates between episodes.
+    @MainActor
+    private func hydrateFromCache() async {
+        let episodeID = episode.id
+        var descriptor = FetchDescriptor<EpisodeTranscriptCache>(
+            predicate: #Predicate<EpisodeTranscriptCache> { $0.episodeID == episodeID }
+        )
+        descriptor.fetchLimit = 1
+
+        guard let entry = try? modelContext.fetch(descriptor).first else {
+            // No cache yet — leave the panel in its idle/generate state.
+            // Don't clear `status`; it might already be `.transcribing`
+            // from an in-flight Speech run.
+            return
+        }
+
+        transcriptText = entry.text.isEmpty ? nil : entry.text
+        cues = entry.cues
+        transcriptLanguage = entry.language
+        transcriptSource = mapSource(entry.source)
+        if transcriptText != nil || !cues.isEmpty {
+            status = .ready
+        }
+    }
+
+    private func mapSource(_ raw: String) -> TranscriptSource {
+        switch raw {
+        case "published":             return .published
+        case "speech", "speechAnalyzer": return .onDevice
+        case "mixed":                 return .mixed
+        default:                      return .unknown
+        }
+    }
+
+    // MARK: - Speech action
+
     @MainActor
     private func runTranscription() async {
         guard let localURL = downloadService.localURL(for: episode) else {
@@ -189,6 +275,9 @@ struct SpeechTranscriptionPanel: View {
                 persistTo: modelContext
             )
             transcriptText = text
+            // Refresh cues / source post-transcription — the service may
+            // have written cues (published path) or just flat text.
+            await hydrateFromCache()
             status = .ready
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                 isExpanded = true
