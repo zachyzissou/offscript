@@ -5137,8 +5137,8 @@ struct PlaybackEventEmissionTests {
         let outgoing = makeEpisode(title: "Outgoing", in: context)
         let incoming = makeEpisode(title: "Incoming", in: context)
 
+        DebugTeardown.resetAllSingletons()
         let controller = PlaybackController.shared
-        controller.debugResetForTesting()
         controller.configure(context: context)
         controller.debugPrimePlayback(
             episode: outgoing,
@@ -5165,8 +5165,8 @@ struct PlaybackEventEmissionTests {
         let outgoing = makeEpisode(title: "Outgoing", in: context)
         let incoming = makeEpisode(title: "Incoming", in: context)
 
+        DebugTeardown.resetAllSingletons()
         let controller = PlaybackController.shared
-        controller.debugResetForTesting()
         controller.configure(context: context)
         controller.debugPrimePlayback(
             episode: outgoing,
@@ -5195,8 +5195,8 @@ struct PlaybackEventEmissionTests {
         let outgoing = makeEpisode(title: "Outgoing", in: context)
         let incoming = makeEpisode(title: "Incoming", in: context)
 
+        DebugTeardown.resetAllSingletons()
         let controller = PlaybackController.shared
-        controller.debugResetForTesting()
         controller.configure(context: context)
         controller.debugPrimePlayback(
             episode: outgoing,
@@ -5223,8 +5223,8 @@ struct PlaybackEventEmissionTests {
 
         let ep = makeEpisode(in: context)
 
+        DebugTeardown.resetAllSingletons()
         let controller = PlaybackController.shared
-        controller.debugResetForTesting()
         controller.configure(context: context)
         controller.debugPrimePlayback(
             episode: ep,
@@ -5251,8 +5251,8 @@ struct PlaybackEventEmissionTests {
 
         let ep = makeEpisode(in: context)
 
+        DebugTeardown.resetAllSingletons()
         let controller = PlaybackController.shared
-        controller.debugResetForTesting()
         controller.configure(context: context)
         controller.debugPrimePlayback(
             episode: ep,
@@ -5284,8 +5284,8 @@ struct PlaybackEventEmissionTests {
 
         let ep = makeEpisode(in: context)
 
+        DebugTeardown.resetAllSingletons()
         let controller = PlaybackController.shared
-        controller.debugResetForTesting()
         controller.configure(context: context)
         controller.debugPrimePlayback(
             episode: ep,
@@ -5328,8 +5328,8 @@ struct PlaybackEventEmissionTests {
         // entry from a prior test run can't suppress auto-advance.)
         UserDefaults.standard.set(true, forKey: "offscript.autoPlayNext")
 
+        DebugTeardown.resetAllSingletons()
         let controller = PlaybackController.shared
-        controller.debugResetForTesting()
         controller.configure(context: context)
         controller.debugPrimePlayback(
             episode: finishing,
@@ -5383,8 +5383,8 @@ struct PlaybackEventEmissionTests {
         context.insert(finishing)
         context.insert(nextUp)
 
+        DebugTeardown.resetAllSingletons()
         let controller = PlaybackController.shared
-        controller.debugResetForTesting()
         controller.configure(context: context)
         controller.debugPrimePlayback(
             episode: finishing,
@@ -5424,8 +5424,8 @@ struct PlaybackEventEmissionTests {
 
         let ep = makeEpisode(in: context)
 
+        DebugTeardown.resetAllSingletons()
         let controller = PlaybackController.shared
-        controller.debugResetForTesting()
         controller.configure(context: context)
         controller.debugPrimePlayback(
             episode: ep,
@@ -6621,8 +6621,8 @@ struct LiveActivityLifecycleTests {
         let episodeA = makeEpisode(title: "Episode A", in: context)
         let episodeB = makeEpisode(title: "Episode B", in: context)
 
+        DebugTeardown.resetAllSingletons()
         let controller = PlaybackController.shared
-        controller.debugResetForTesting()
         controller.configure(context: context)
 
         // Hook up the publisher's subscriptions. `start()` is idempotent and
