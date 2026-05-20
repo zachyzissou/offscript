@@ -4412,3 +4412,457 @@ struct CuratedDiscoveryTests {
         #expect(loader.state(for: Self.sampleResult, rank: 1) == .failed)
     }
 }
+
+// MARK: - PlaybackEvent emission (Phase 19)
+
+/// Pins the contract for the four `PlaybackEvent.Kind` emitters wired in
+/// Phase 19. Phase 18's audit found `~75%` of the playback-event scoring
+/// machinery was dead code reading from a stream that only ever carried
+/// `.completed` events. These tests cover the heuristics that turn user
+/// behavior into the missing four signals — `.skippedQuickly`, `.abandoned`,
+/// `.advancedFromQueue`, `.resumed` — without driving the AVPlayer
+/// directly (the live singleton has audio-session side-effects we don't
+/// want in a test process). The pure `classifySwitchAway` static is the
+/// load-bearing piece; integration tests verify the wiring through
+/// `PlaybackController.shared` for the auto-advance + resume paths.
+@Suite("PlaybackEventEmission")
+struct PlaybackEventEmissionTests {
+    private func makeContainer() throws -> ModelContainer {
+        let schema = Schema([
+            Podcast.self,
+            Episode.self,
+            EpisodeProfile.self,
+            PlaybackEvent.self,
+            PreferenceSignal.self,
+            QueueItem.self,
+            UserTasteProfile.self,
+            TelemetryEvent.self
+        ])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        return try ModelContainer(for: schema, configurations: [configuration])
+    }
+
+    @MainActor
+    private func makeEpisode(
+        title: String = "Ep",
+        in context: ModelContext,
+        podcast: Podcast? = nil
+    ) -> Episode {
+        let pod = podcast ?? {
+            let p = Podcast(title: "Show", feedURL: URL(string: "https://example.com/\(UUID().uuidString).xml")!)
+            context.insert(p)
+            return p
+        }()
+        let ep = Episode(
+            title: title,
+            pubDate: .now,
+            audioURL: URL(string: "https://example.com/\(UUID().uuidString).mp3")!,
+            podcast: pod
+        )
+        context.insert(ep)
+        return ep
+    }
+
+    // MARK: classifySwitchAway pure tests
+
+    @Test
+    @MainActor
+    func classifierReturnsSkippedQuicklyUnder30Seconds() throws {
+        let container = try makeContainer()
+        let ep = makeEpisode(in: container.mainContext)
+        ep.duration = 1800 // 30-minute episode
+        // 5 seconds in — well below the 30s skipped-quickly floor.
+        #expect(PlaybackController.classifySwitchAway(episode: ep, position: 5, duration: 1800) == .skippedQuickly)
+    }
+
+    @Test
+    @MainActor
+    func classifierReturnsAbandonedAt60Percent() throws {
+        let container = try makeContainer()
+        let ep = makeEpisode(in: container.mainContext)
+        ep.duration = 1800
+        // 60% through (~18 minutes) — past quick-skip, well short of the
+        // 85% "close enough to finish" gate.
+        #expect(PlaybackController.classifySwitchAway(episode: ep, position: 1080, duration: 1800) == .abandoned)
+    }
+
+    @Test
+    @MainActor
+    func classifierReturnsNilAt90PercentCloseEnoughToFinish() throws {
+        let container = try makeContainer()
+        let ep = makeEpisode(in: container.mainContext)
+        ep.duration = 1800
+        // 90% through — past the 85% threshold. Emitting `.abandoned` here
+        // would teach the recommender the user disliked content they
+        // almost finished, which is exactly backwards.
+        #expect(PlaybackController.classifySwitchAway(episode: ep, position: 1620, duration: 1800) == nil)
+    }
+
+    @Test
+    @MainActor
+    func classifierReturnsNilWhenEpisodeAlreadyCompleted() throws {
+        let container = try makeContainer()
+        let ep = makeEpisode(in: container.mainContext)
+        ep.duration = 1800
+        ep.isPlayed = true
+        // The completion observer set isPlayed = true and emitted `.completed`
+        // before auto-advance reached prepareItem. Don't double-emit.
+        #expect(PlaybackController.classifySwitchAway(episode: ep, position: 100, duration: 1800) == nil)
+    }
+
+    @Test
+    @MainActor
+    func classifierReturnsNilWhenNoProgress() throws {
+        let container = try makeContainer()
+        let ep = makeEpisode(in: container.mainContext)
+        ep.duration = 1800
+        // User loaded an episode then bailed before any listening — no
+        // signal either way. (Most common cause: deep-link / Spotlight
+        // tap that the user immediately backed out of.)
+        #expect(PlaybackController.classifySwitchAway(episode: ep, position: 0, duration: 1800) == nil)
+    }
+
+    @Test
+    @MainActor
+    func classifierTreats4HourEpisodeAt1MinuteAsQuickSkip() throws {
+        let container = try makeContainer()
+        let ep = makeEpisode(in: container.mainContext)
+        ep.duration = 14400 // 4-hour episode
+        // 60 seconds in. Past the wall-clock 30s floor, but the played
+        // fraction (1/240 ≈ 0.4%) is well below 5% — clearly a quick
+        // skip on a long-form episode. Without the fraction gate this
+        // would mis-classify as `.abandoned`.
+        #expect(PlaybackController.classifySwitchAway(episode: ep, position: 60, duration: 14400) == .skippedQuickly)
+    }
+
+    @Test
+    @MainActor
+    func classifierReturnsAbandonedWhenDurationUnknown() throws {
+        let container = try makeContainer()
+        let ep = makeEpisode(in: container.mainContext)
+        // Episode duration not yet loaded (RSS-only, no AVPlayerItem
+        // metadata yet). The fraction gates can't apply; fall through
+        // to the wall-clock threshold. 5 minutes in with unknown
+        // duration reads as abandonment, not quick skip.
+        #expect(PlaybackController.classifySwitchAway(episode: ep, position: 300, duration: 0) == .abandoned)
+    }
+
+    // MARK: Integration through PlaybackController.shared
+
+    @Test
+    @MainActor
+    func playSwitchingAwayMidEpisodeEmitsAbandoned() throws {
+        // Drive the live singleton: prime an episode in mid-playback,
+        // then call `play(newEpisode)` to trigger the switch-away path
+        // in `prepareItem`. The outgoing episode should have an
+        // `.abandoned` event recorded.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let outgoing = makeEpisode(title: "Outgoing", in: context)
+        let incoming = makeEpisode(title: "Incoming", in: context)
+
+        let controller = PlaybackController.shared
+        controller.debugResetForTesting()
+        controller.configure(context: context)
+        controller.debugPrimePlayback(
+            episode: outgoing,
+            duration: 1800,
+            currentTime: 900, // 50% through — abandonment territory
+            isPlaying: true,
+            presentPlayer: true
+        )
+
+        controller.play(incoming, in: context)
+
+        let events = try context.fetch(FetchDescriptor<PlaybackEvent>())
+        let outgoingEvents = events.filter { $0.episode?.id == outgoing.id }
+        #expect(outgoingEvents.count == 1)
+        #expect(outgoingEvents.first?.kind == .abandoned)
+    }
+
+    @Test
+    @MainActor
+    func playSwitchingAwayWithin30SecondsEmitsSkippedQuickly() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let outgoing = makeEpisode(title: "Outgoing", in: context)
+        let incoming = makeEpisode(title: "Incoming", in: context)
+
+        let controller = PlaybackController.shared
+        controller.debugResetForTesting()
+        controller.configure(context: context)
+        controller.debugPrimePlayback(
+            episode: outgoing,
+            duration: 1800,
+            currentTime: 5, // 5 seconds — quick skip
+            isPlaying: true,
+            presentPlayer: true
+        )
+
+        controller.play(incoming, in: context)
+
+        let events = try context.fetch(FetchDescriptor<PlaybackEvent>())
+        let outgoingEvents = events.filter { $0.episode?.id == outgoing.id }
+        #expect(outgoingEvents.count == 1)
+        #expect(outgoingEvents.first?.kind == .skippedQuickly)
+    }
+
+    @Test
+    @MainActor
+    func playSwitchingAwayNearCompletionEmitsNoEvent() throws {
+        // 90% played — past the 85% threshold. We treat as good-faith
+        // finish even though `.AVPlayerItemDidPlayToEndTime` never fired.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let outgoing = makeEpisode(title: "Outgoing", in: context)
+        let incoming = makeEpisode(title: "Incoming", in: context)
+
+        let controller = PlaybackController.shared
+        controller.debugResetForTesting()
+        controller.configure(context: context)
+        controller.debugPrimePlayback(
+            episode: outgoing,
+            duration: 1800,
+            currentTime: 1620, // 90%
+            isPlaying: true,
+            presentPlayer: true
+        )
+
+        controller.play(incoming, in: context)
+
+        let events = try context.fetch(FetchDescriptor<PlaybackEvent>())
+        let outgoingEvents = events.filter { $0.episode?.id == outgoing.id }
+        #expect(outgoingEvents.isEmpty)
+    }
+
+    @Test
+    @MainActor
+    func replayingSameEpisodeDoesNotEmitSkipEvent() throws {
+        // Tapping the currently-playing episode again is a re-load, not
+        // a switch-away — no skip/abandon signal should fire.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let ep = makeEpisode(in: context)
+
+        let controller = PlaybackController.shared
+        controller.debugResetForTesting()
+        controller.configure(context: context)
+        controller.debugPrimePlayback(
+            episode: ep,
+            duration: 1800,
+            currentTime: 600,
+            isPlaying: true,
+            presentPlayer: true
+        )
+
+        controller.play(ep, in: context)
+
+        let events = try context.fetch(FetchDescriptor<PlaybackEvent>())
+        // No skip/abandon (we replayed the same episode).
+        #expect(events.allSatisfy { $0.kind != .skippedQuickly && $0.kind != .abandoned })
+    }
+
+    @Test
+    @MainActor
+    func togglePlayPauseResumeAtMeaningfulProgressEmitsResumed() throws {
+        // User resumed mid-episode (past the 60s resumed-progress gate)
+        // by tapping the mini-player play button. Emit `.resumed`.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let ep = makeEpisode(in: context)
+
+        let controller = PlaybackController.shared
+        controller.debugResetForTesting()
+        controller.configure(context: context)
+        controller.debugPrimePlayback(
+            episode: ep,
+            duration: 1800,
+            currentTime: 600, // 10 minutes in — well past 60s gate
+            isPlaying: false, // paused — togglePlayPause will resume
+            presentPlayer: true
+        )
+
+        controller.togglePlayPause()
+        // Re-pause immediately so we don't leave the test process with
+        // a live audio player.
+        if controller.isPlaying { controller.togglePlayPause() }
+
+        let events = try context.fetch(FetchDescriptor<PlaybackEvent>())
+        let resumed = events.filter { $0.kind == .resumed && $0.episode?.id == ep.id }
+        #expect(resumed.count == 1)
+    }
+
+    @Test
+    @MainActor
+    func togglePlayPauseResumeBelow60SecondsEmitsNothing() throws {
+        // User paused 10 seconds into a freshly queued episode, then
+        // tapped play again. That's not a true resume — still in the
+        // initial-listening phase. Emitting `.resumed` here would
+        // inflate the positive signal on every queued episode.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let ep = makeEpisode(in: context)
+
+        let controller = PlaybackController.shared
+        controller.debugResetForTesting()
+        controller.configure(context: context)
+        controller.debugPrimePlayback(
+            episode: ep,
+            duration: 1800,
+            currentTime: 10, // below 60s gate
+            isPlaying: false,
+            presentPlayer: true
+        )
+
+        controller.togglePlayPause()
+        if controller.isPlaying { controller.togglePlayPause() }
+
+        let events = try context.fetch(FetchDescriptor<PlaybackEvent>())
+        #expect(events.allSatisfy { $0.kind != .resumed })
+    }
+
+    @Test
+    @MainActor
+    func playbackCompletionWithAutoplayEmitsAdvancedFromQueue() async throws {
+        // Drive the real completion observer by posting
+        // `.AVPlayerItemDidPlayToEndTime`. The observer should:
+        //   1. Emit `.completed` for the finishing episode
+        //   2. Call `skipToNextInQueue` → prepareItem on nextUp
+        //   3. Emit `.advancedFromQueue` for nextUp (the new episode)
+        //   4. NOT emit any skip/abandon (finishing.isPlayed becomes true)
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let podcast = Podcast(title: "AutoAdv", feedURL: URL(string: "https://example.com/aa.xml")!)
+        context.insert(podcast)
+        let finishing = Episode(title: "Finishing", pubDate: .now, audioURL: URL(string: "https://example.com/f.mp3")!, podcast: podcast)
+        let nextUp = Episode(title: "NextUp", pubDate: .now, audioURL: URL(string: "https://example.com/n.mp3")!, podcast: podcast)
+        context.insert(finishing)
+        context.insert(nextUp)
+
+        try QueueService.addToEnd(nextUp, in: context)
+
+        // Default to autoplay on (the controller falls back to true when
+        // the key is unset, but we set it explicitly so a stale UserDefaults
+        // entry from a prior test run can't suppress auto-advance.)
+        UserDefaults.standard.set(true, forKey: "offscript.autoPlayNext")
+
+        let controller = PlaybackController.shared
+        controller.debugResetForTesting()
+        controller.configure(context: context)
+        controller.debugPrimePlayback(
+            episode: finishing,
+            duration: 1800,
+            currentTime: 1800,
+            isPlaying: true,
+            presentPlayer: true
+        )
+
+        // Post the end-time notification — picked up by
+        // `observePlaybackCompletion` which routes the completion through
+        // a `Task { @MainActor }` (not synchronous), so we have to spin
+        // the run loop a beat to let it land.
+        NotificationCenter.default.post(name: .AVPlayerItemDidPlayToEndTime, object: nil)
+        for _ in 0..<10 {
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 20_000_000) // 20ms
+            if controller.currentEpisode?.id == nextUp.id { break }
+        }
+
+        let events = try context.fetch(FetchDescriptor<PlaybackEvent>())
+        let advanced = events.filter { $0.kind == .advancedFromQueue }
+        let completed = events.filter { $0.kind == .completed }
+        let skippedOnFinishing = events.filter {
+            $0.episode?.id == finishing.id && ($0.kind == .skippedQuickly || $0.kind == .abandoned)
+        }
+
+        #expect(completed.count == 1)
+        #expect(completed.first?.episode?.id == finishing.id)
+        #expect(advanced.count == 1)
+        #expect(advanced.first?.episode?.id == nextUp.id) // emitted FOR the NEW episode
+        #expect(skippedOnFinishing.isEmpty) // no double-emit
+    }
+
+    @Test
+    @MainActor
+    func autoAdvanceDoesNotDoubleEmitSkipOrAbandonedOnFinishedEpisode() throws {
+        // The completion observer marks `isPlayed = true` before calling
+        // `skipToNextInQueue`, which calls `play(nextEpisode)` → prepareItem.
+        // The skip/abandoned classifier must return nil for the OUTGOING
+        // episode (it's already `isPlayed`), so we don't double-emit on
+        // top of `.completed`. This test pins that the prepareItem path
+        // honors the `isPlayed` short-circuit.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let podcast = Podcast(title: "Auto-advance", feedURL: URL(string: "https://example.com/aa.xml")!)
+        context.insert(podcast)
+        let finishing = Episode(title: "Finishing", pubDate: .now, audioURL: URL(string: "https://example.com/f.mp3")!, podcast: podcast)
+        let nextUp = Episode(title: "NextUp", pubDate: .now, audioURL: URL(string: "https://example.com/n.mp3")!, podcast: podcast)
+        context.insert(finishing)
+        context.insert(nextUp)
+
+        let controller = PlaybackController.shared
+        controller.debugResetForTesting()
+        controller.configure(context: context)
+        controller.debugPrimePlayback(
+            episode: finishing,
+            duration: 1800,
+            currentTime: 1800,
+            isPlaying: true,
+            presentPlayer: true
+        )
+        // Mirror the completion observer: episode is now played.
+        finishing.isPlayed = true
+        try context.save()
+
+        // This is what the observer calls after marking isPlayed + emitting
+        // .completed: switching the controller to the next episode. Our
+        // contract: no skippedQuickly / abandoned should fire for
+        // `finishing` because it's already `isPlayed`. The real production
+        // emission of `.advancedFromQueue` happens inside the observer
+        // callback (post-skipToNextInQueue) and is out of reach of an
+        // AVPlayer-less unit test, but the no-double-emit contract is
+        // testable here.
+        controller.play(nextUp, in: context)
+
+        let events = try context.fetch(FetchDescriptor<PlaybackEvent>())
+        let skipOnFinishing = events.filter {
+            $0.episode?.id == finishing.id && ($0.kind == .skippedQuickly || $0.kind == .abandoned)
+        }
+        #expect(skipOnFinishing.isEmpty)
+    }
+
+    @Test
+    @MainActor
+    func togglePlayPausePauseAlonePersistsNoEvent() throws {
+        // Pausing should never emit a PlaybackEvent — only resumes
+        // (with meaningful progress) carry signal.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let ep = makeEpisode(in: context)
+
+        let controller = PlaybackController.shared
+        controller.debugResetForTesting()
+        controller.configure(context: context)
+        controller.debugPrimePlayback(
+            episode: ep,
+            duration: 1800,
+            currentTime: 600,
+            isPlaying: true,
+            presentPlayer: true
+        )
+
+        controller.togglePlayPause() // pause
+
+        let events = try context.fetch(FetchDescriptor<PlaybackEvent>())
+        #expect(events.isEmpty)
+    }
+}
