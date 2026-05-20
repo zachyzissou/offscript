@@ -193,3 +193,49 @@ Both fixes build clean against the iOS Simulator destination.
   the audit focused; trivial follow-up.
 - **Single-episode delete de-indexing.** No UI path for it today, but
   worth wiring defensively if/when episode delete is added.
+
+## Phase 11 — donate() integration resolved
+
+The top finding ("zero `donate()` calls in the codebase") is now closed.
+Donations land at the user-action point after the action successfully
+takes effect — donating an intent that didn't run pollutes the iOS
+prediction model.
+
+Commit: `9d25794` (`feat(intents): donate playback intents at user-action points`).
+
+| Intent | Donation site | Trigger |
+|---|---|---|
+| `PlayEpisodeIntent` | `OffScript/PlaybackController.swift:257` (`play(_:in:)`) | After `AVPlayer.play()` succeeds on episode start |
+| `ResumeListeningIntent` | `OffScript/PlaybackController.swift:341` (`togglePlayPause()`) | User-initiated resume (paused → playing) |
+| `PauseListeningIntent` | `OffScript/PlaybackController.swift:339` (`togglePlayPause()`) | User-initiated pause (playing → paused) |
+| `SkipForwardIntent` | `OffScript/PlaybackController.swift:355` (`seek(by:)`) | Positive seek only — we don't have a `SkipBackwardIntent` |
+| `PlayNextInQueueIntent` | `OffScript/PlaybackController.swift:490` (auto-advance branch of `observePlaybackCompletion()`) | Episode completion auto-advance, guarded on `currentEpisode` actually changing |
+
+Helper plumbing (`donate<Intent>(_:label:)` and per-intent wrappers) lives
+at `OffScript/PlaybackController.swift:752-786`. All donations run inside
+a detached `Task` so Siri index writes never block playback; failures are
+logged through a dedicated `OSLog` category (`com.offscript` /
+`IntentDonation`) so prediction-pipeline regressions remain diagnosable
+from sysdiagnose without swallowing errors.
+
+System-induced state changes (interruptions in
+`handleInterruption(typeValue:optionValue:)`, route changes in
+`handleRouteChange(reasonValue:)`) call `player.pause()` directly rather
+than going through `togglePlayPause()`, so they correctly bypass
+donation — pulling out the headphones must not teach Siri "the user
+likes to pause around 8pm."
+
+Verification: 139/139 unit tests still pass; debug build green against
+`platform=iOS Simulator,id=F623EB2A-1CF4-405E-9583-6B0EE2053FDE` (iPhone
+17 Pro · iOS 26.5).
+
+Not addressed in this phase (separate deferred items above still stand):
+
+- Unsubscribe-flow de-donation (no observed UI complaint yet).
+- Cold-resume persistence of `offscript.lastEpisodeAudioURL` — still
+  dead-code per the original audit; donation does not change that.
+- Manual user-initiated next-track via the remote `nextTrackCommand` /
+  in-app forward button is intentionally NOT donated to
+  `PlayNextInQueueIntent` — only the auto-advance path is, matching the
+  spec's framing of "play next thing" as a system-driven prediction
+  signal. Revisit if Siri Suggestions under-surfaces the intent.
