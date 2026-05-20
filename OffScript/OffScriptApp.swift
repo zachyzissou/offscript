@@ -84,13 +84,18 @@ struct OffScriptApp: App {
                 return try Self.makeModelContainer(schema: freshSchema)
             } catch {
                 Self.logger.fault("Quarantine + retry failed: \(String(describing: error), privacy: .public). Falling back to in-memory store so the app at least launches.")
-                if let inMemory = try? ModelContainer(
-                    for: Schema(versionedSchema: SchemaV2.self),
-                    configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
-                ) {
+                do {
+                    let inMemory = try ModelContainer(
+                        for: Schema(versionedSchema: SchemaV2.self),
+                        configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
+                    )
+                    Self.logger.fault("In-memory ModelContainer active — user data will not persist across launches until the on-disk store can be opened again.")
+                    AppSettings.cloudSyncRuntimeState = .fallbackFailed
                     return inMemory
+                } catch let inMemoryError {
+                    Self.logger.fault("In-memory ModelContainer init also failed: \(String(describing: inMemoryError), privacy: .public)")
+                    fatalError("Could not create ModelContainer: quarantine error=\(error); in-memory error=\(inMemoryError)")
                 }
-                fatalError("Could not create ModelContainer: \(error)")
             }
         }
     }()
