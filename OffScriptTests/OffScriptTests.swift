@@ -3339,3 +3339,100 @@ private final class RecordingAudioSession: OffScriptAudioSessionApplying {
     }
 }
 #endif
+
+// MARK: - EpisodeDurationFormatter Tests
+
+/// Pins the contract for `EpisodeDurationFormatter.short(_:)` and
+/// `.spoken(_:)` — both have 15+ call sites across HomeView,
+/// LibraryView, and the Now Playing surfaces, but had zero test
+/// coverage prior to the 2.4.0 audit (Phase 1.1).
+struct EpisodeDurationFormatterTests {
+    // MARK: short(_:)
+
+    @Test func shortZero() {
+        #expect(EpisodeDurationFormatter.short(0) == "0m")
+    }
+
+    @Test func shortSubMinuteRoundsDown() {
+        #expect(EpisodeDurationFormatter.short(59) == "0m")
+    }
+
+    @Test func shortExactlyOneMinute() {
+        #expect(EpisodeDurationFormatter.short(60) == "1m")
+    }
+
+    @Test func shortThirtyTwoMinutes() {
+        #expect(EpisodeDurationFormatter.short(32 * 60) == "32m")
+    }
+
+    @Test func shortExactlyOneHour() {
+        #expect(EpisodeDurationFormatter.short(60 * 60) == "1h")
+    }
+
+    @Test func shortOneHourFiveMinutes() {
+        #expect(EpisodeDurationFormatter.short(65 * 60) == "1h 5m")
+    }
+
+    @Test func shortTwoHoursExact() {
+        #expect(EpisodeDurationFormatter.short(2 * 3600) == "2h")
+    }
+
+    @Test func shortFiveHoursExact() {
+        #expect(EpisodeDurationFormatter.short(5 * 3600) == "5h")
+    }
+
+    /// Defensive contract: negative durations clamp to "0m" so a
+    /// stale `playedPosition > duration` arithmetic glitch never
+    /// surfaces a "-1m" glyph in the UI. `Int(-1.0/60)` truncates
+    /// toward zero, which is what we rely on.
+    @Test func shortNegativeClampsToZero() {
+        #expect(EpisodeDurationFormatter.short(-1) == "0m")
+    }
+
+    // MARK: spoken(_:)
+
+    @Test func spokenZero() {
+        #expect(EpisodeDurationFormatter.spoken(0) == "0 minutes")
+    }
+
+    @Test func spokenSubMinute() {
+        #expect(EpisodeDurationFormatter.spoken(45) == "0 minutes")
+    }
+
+    @Test func spokenSingularMinute() {
+        #expect(EpisodeDurationFormatter.spoken(60) == "1 minute")
+    }
+
+    @Test func spokenPluralMinutes() {
+        #expect(EpisodeDurationFormatter.spoken(32 * 60) == "32 minutes")
+    }
+
+    @Test func spokenSingularHour() {
+        #expect(EpisodeDurationFormatter.spoken(60 * 60) == "1 hour")
+    }
+
+    @Test func spokenSingularHourSingularMinute() {
+        #expect(EpisodeDurationFormatter.spoken(61 * 60) == "1 hour 1 minute")
+    }
+
+    @Test func spokenSingularHourPluralMinutes() {
+        #expect(EpisodeDurationFormatter.spoken(65 * 60) == "1 hour 5 minutes")
+    }
+
+    @Test func spokenPluralHoursSingularMinute() {
+        #expect(EpisodeDurationFormatter.spoken(2 * 3600 + 60) == "2 hours 1 minute")
+    }
+
+    @Test func spokenTwoHoursExact() {
+        #expect(EpisodeDurationFormatter.spoken(2 * 3600) == "2 hours")
+    }
+
+    @Test func spokenTwentyFourHoursExact() {
+        #expect(EpisodeDurationFormatter.spoken(24 * 3600) == "24 hours")
+    }
+
+    @Test func spokenNegativeClampsToZero() {
+        #expect(EpisodeDurationFormatter.spoken(-1) == "0 minutes")
+    }
+}
+
