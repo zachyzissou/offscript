@@ -1,3 +1,4 @@
+import AppIntents
 import AVFoundation
 import Foundation
 import SwiftData
@@ -6490,15 +6491,16 @@ struct OpenAppIntentsTests {
         let shortcuts = OffScriptShortcuts.appShortcuts
         #expect(shortcuts.count == 9)
 
-        // Identity check: dump each shortcut and confirm the four new
-        // intent type names appear at least once. `AppShortcut` does not
-        // expose its `intent` initializer argument publicly, so we walk
-        // its mirror representation — same trick `dump(_:)` uses.
+        // Identity check via shortTitle (the only intent-identifying field
+        // that survives AppShortcut's opaque PreparedIntent wrapper in
+        // `String(describing:)`). The intent TYPE name doesn't appear in
+        // the mirror dump — preparedIntent is just AppIntents.PreparedIntent.
+        // shortTitle does land in the dump verbatim, so that's the seam.
         let allText = shortcuts.map { String(describing: $0) }.joined(separator: "\n")
-        #expect(allText.contains("OpenHomeIntent"))
-        #expect(allText.contains("OpenLibraryIntent"))
-        #expect(allText.contains("OpenQueueIntent"))
-        #expect(allText.contains("OpenSearchIntent"))
+        #expect(allText.contains("Open Home"))
+        #expect(allText.contains("Open Library"))
+        #expect(allText.contains("Open Queue"))
+        #expect(allText.contains("Open Search"))
     }
 
     @Test
