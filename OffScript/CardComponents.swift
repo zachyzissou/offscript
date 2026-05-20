@@ -206,6 +206,7 @@ struct EpisodeCompactCard: View {
                     cornerRadius: 3
                 )
                 .frame(width: 52, height: 52)
+                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
             }
             .buttonStyle(.plain)
 
