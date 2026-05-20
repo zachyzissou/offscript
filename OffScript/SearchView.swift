@@ -25,6 +25,10 @@ struct SearchView: View {
     /// row that failed instead of vanishing into the global error strip
     /// (#123 — search subscribe-flow error states).
     @State private var importErrors: [String: String] = [:]
+    /// Lazy latest-episode preview cache shared across rows. Rows above the
+    /// fold ask for a preview when they appear; everything below the cap
+    /// renders the no-preview shape so layout doesn't shift on scroll.
+    @State private var previewLoader = SearchPreviewLoader()
     @FocusState private var searchFieldFocused: Bool
 
     private let searchService = PodcastSearchService()
@@ -226,6 +230,11 @@ struct SearchView: View {
                         isAdded: subscribedFeedURLs.contains(result.feedURL.absoluteString),
                         isImporting: importingIDs.contains(result.id),
                         importError: importErrors[result.id],
+                        // Pull preview state at render-time so the
+                        // `@Observable` loader can update individual rows
+                        // as fetches complete without re-running the
+                        // search query.
+                        previewState: previewLoader.state(for: result, rank: index + 1),
                         onAdd: { Task { await add(result) } }
                     )
                     if index < results.count - 1 {
@@ -251,6 +260,11 @@ struct SearchView: View {
     @MainActor
     private func search() async {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Any query change should cancel in-flight preview fetches that
+        // were scheduled for the previous result set. The loader's cache
+        // is preserved, so flipping back to a previous query stays
+        // instant for rows we already resolved.
+        previewLoader.cancelAllInFlight()
         guard trimmed.count >= 2 else {
             results = []
             errorMessage = nil
@@ -564,6 +578,10 @@ private struct SearchResultRow: View {
     /// the action row, so a long results list still tells the user
     /// which row failed and gives them a one-tap recovery path.
     let importError: String?
+    /// Latest-episode preview state for this row. `nil` means the row was
+    /// beyond the loader's preview cap and is intentionally not fetching;
+    /// the row renders the no-preview shape, identical to `.failed`.
+    let previewState: SearchPreviewLoader.PreviewState?
     let onAdd: () -> Void
     @State private var safariURL: IdentifiableURL?
 
@@ -603,7 +621,68 @@ private struct SearchResultRow: View {
         if !trimmedAuthor.isEmpty {
             parts.append("by \(trimmedAuthor)")
         }
+        // Roll the latest-episode preview into the same accessibility
+        // element. Without this VO would either skip the preview block or
+        // walk it as separate stops (chip, title, duration) per row.
+        if case .loaded(let metadata) = previewState {
+            parts.append("Latest episode: \(metadata.latestEpisodeTitle)")
+            parts.append("posted \(metadata.freshnessSpoken)")
+            if !metadata.durationSpoken.isEmpty {
+                parts.append(metadata.durationSpoken)
+            }
+        }
         return parts.joined(separator: ", ")
+    }
+
+    /// Latest-episode preview block, rendered between the artwork/title
+    /// header and the action row. Three states:
+    ///
+    /// - `.loaded(metadata)` shows `● LATEST · 3D AGO` chip, the episode
+    ///   title in body-weight, and a `3D AGO · 47M` metadata strip.
+    /// - `.loading` shows a shimmering skeleton sized to match the loaded
+    ///   layout so the row doesn't jump when the fetch completes.
+    /// - `.failed` and `nil` render nothing — the row falls back to the
+    ///   pre-existing shape. We deliberately don't surface a "preview
+    ///   failed" error chip: a stale RSS server isn't the user's problem,
+    ///   and the row's main info (title/author/genre) still lets them
+    ///   subscribe.
+    @ViewBuilder
+    private var previewBlock: some View {
+        switch previewState {
+        case .loaded(let metadata):
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    TunerLabel(
+                        text: "● LATEST · \(metadata.freshnessLabel)",
+                        color: .offscriptFnInfo,
+                        size: 8
+                    )
+                }
+                Text(metadata.latestEpisodeTitle)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !metadata.durationLabel.isEmpty {
+                    TunerLabel(
+                        text: "\(metadata.freshnessLabel) · \(metadata.durationLabel)",
+                        color: .offscriptSoftPaper,
+                        size: 8
+                    )
+                }
+            }
+            .accessibilityHidden(true)
+        case .loading:
+            VStack(alignment: .leading, spacing: 6) {
+                Rectangle().fill(Color.offscriptFillSubtle).frame(width: 90, height: 8)
+                Rectangle().fill(Color.offscriptFillSubtle).frame(maxWidth: .infinity, alignment: .leading).frame(height: 12)
+                Rectangle().fill(Color.offscriptFillSubtle).frame(width: 110, height: 8)
+            }
+            .shimmer()
+            .accessibilityHidden(true)
+        case .failed, .none:
+            EmptyView()
+        }
     }
 
     var body: some View {
@@ -647,6 +726,16 @@ private struct SearchResultRow: View {
                     .lineLimit(2)
                     .padding(.leading, Self.contentColumnLeadingInset) // align under text column
             }
+
+            // Latest-episode preview — the OffScript pitch made concrete.
+            // Before this, a stranger had to subscribe blind based on
+            // title + genre alone. Now they see what they'd actually
+            // start with, when it dropped, and how long it runs. The
+            // block is rolled into the same VO element as the row's
+            // descriptive zone (see `rowVoiceOverLabel`) so screen-reader
+            // walks don't multiply by 3-4× per result.
+            previewBlock
+                .padding(.leading, Self.contentColumnLeadingInset)
 
             HStack(spacing: 8) {
                 Spacer().frame(width: Self.contentColumnLeadingInset)

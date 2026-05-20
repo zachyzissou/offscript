@@ -190,7 +190,7 @@ Classification:
 - **MUST-FIX: 3 (3 fixed, 0 deferred)**
 - **DRIFT: 42** — 41 mono-without-TunerLabel sites + 1 cornerRadius-0
   hero card. None blocking; all are sub-token scaffolding that would
-  benefit from a follow-up unified `tunerFont(size:)` modifier.
+  benefit from a follow-up unified ~~`tunerFont(size:)` modifier~~ **LANDED commit `c45d808` (`refactor(design): add tunerFont View modifier helper`) and migrated across 14 views in commits `c2c7734`..`e44b0cd`.**
 - **POLISH: 0** — no individual `.font(.system(...))` call is wrong in
   isolation; the dominant pattern is "inline named style" rather than
   "ad-hoc Font".
@@ -214,8 +214,8 @@ Classification:
    Worth considering a `OffScriptArtworkTile(...)` wrapper that bundles
    `frame + .overlay(stroke)` so future call sites can't forget.
    (Out of scope for this audit; recorded here for v2.4.x backlog.)
-3. **`TunerLabel` doesn't cover the HStack+icon button label case.** 41
+3. ~~**`TunerLabel` doesn't cover the HStack+icon button label case.** 41
    monospaced sites can't migrate cleanly because they live inside a
    button HStack. A small font-only modifier
    (`func tunerFont(size:) -> some View`) would unblock the bulk of
-   them. Recommended as a v2.4.x follow-up.
+   them. Recommended as a v2.4.x follow-up.~~ **LANDED — `tunerFont(size:)` helper added in `c45d808`; migrated across `CardComponents`, `SearchView`, `EpisodeDetailView`, `SettingsView`, `PodcastPickerView`, `HomeView`, `OnboardingFlowView`, `ImportProgressView`, `GenrePickerView`, `LibraryView`, `QueueView`, `EpisodeBriefingView`, `LibraryImportSheet`, `PlayerView`, `ContentView`.**

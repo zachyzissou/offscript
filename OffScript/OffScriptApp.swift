@@ -68,7 +68,27 @@ struct OffScriptApp: App {
     // directory or in app-private dirs that break the second attempt with
     // the same error. Quarantining the entire OffScript subdirectory and
     // creating a fresh one sidesteps that.
+    /// Exposed for non-SwiftUI scene entry points (notably
+    /// `CarPlaySceneDelegate`) that cannot read the SwiftUI
+    /// `\.modelContext` environment. Set in the lazy initializer below as a
+    /// side effect of building `sharedModelContainer`. CarPlay scene-connect
+    /// can fire either before or after the main `WindowGroup` is constructed,
+    /// so this property must be safe to read at any point after `init()`.
+    /// `nonisolated(unsafe)` because the assignment happens once during
+    /// container init (single thread) and reads are guarded by the optional —
+    /// CarPlay reads on the main actor.
+    nonisolated(unsafe) static var carPlayModelContainer: ModelContainer?
+
     var sharedModelContainer: ModelContainer = {
+        let container = Self.buildModelContainer()
+        // Publish for non-SwiftUI scene entry points (CarPlay). Safe to
+        // assign here because this initializer runs exactly once during
+        // `OffScriptApp.init()`.
+        Self.carPlayModelContainer = container
+        return container
+    }()
+
+    private static func buildModelContainer() -> ModelContainer {
         let schema = Schema(versionedSchema: SchemaV2.self)
         do {
             return try Self.makeModelContainer(schema: schema)
@@ -84,24 +104,52 @@ struct OffScriptApp: App {
                 return try Self.makeModelContainer(schema: freshSchema)
             } catch {
                 Self.logger.fault("Quarantine + retry failed: \(String(describing: error), privacy: .public). Falling back to in-memory store so the app at least launches.")
-                if let inMemory = try? ModelContainer(
-                    for: Schema(versionedSchema: SchemaV2.self),
-                    configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
-                ) {
+                do {
+                    let inMemory = try ModelContainer(
+                        for: Schema(versionedSchema: SchemaV2.self),
+                        configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
+                    )
+                    Self.logger.fault("In-memory ModelContainer active — user data will not persist across launches until the on-disk store can be opened again.")
+                    AppSettings.cloudSyncRuntimeState = .fallbackFailed
                     return inMemory
+                } catch let inMemoryError {
+                    Self.logger.fault("In-memory ModelContainer init also failed: \(String(describing: inMemoryError), privacy: .public)")
+                    fatalError("Could not create ModelContainer: quarantine error=\(error); in-memory error=\(inMemoryError)")
                 }
-                fatalError("Could not create ModelContainer: \(error)")
             }
         }
-    }()
+    }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // ActivityKit doesn't auto-end Live Activities when the host
+                // app is force-quit, so a previously-pinned now-playing
+                // activity stays frozen on the Dynamic Island / Lock Screen
+                // until the user swipes it away. Sweep stale activities on
+                // every cold launch — the helper checks `Activity<...>.activities`
+                // and ends any that don't match a current playback session.
+                //
+                // Also bootstraps the BGTaskScheduler subsystems. The
+                // .backgroundTask modifier below ONLY runs the handler when
+                // iOS already has a pending submission for that identifier;
+                // it doesn't self-submit on first launch. Without these
+                // scheduleNext...() calls the feed-refresh + background-
+                // transcription subsystems never fire because nothing
+                // ever submits a BGAppRefreshTaskRequest. Flagged by the
+                // 2026-05-20 dead-code-wiring sweep as BROKEN-WIRING #3.
+                .task {
+                    await NowPlayingActivityCoordinator.endStaleActivities()
+                    BackgroundFeedRefresh.scheduleNextRefresh()
+                    BackgroundTranscriptionService.scheduleNextRound()
+                }
         }
         .modelContainer(sharedModelContainer)
         .backgroundTask(.appRefresh(BackgroundFeedRefresh.taskIdentifier)) {
             await BackgroundFeedRefresh.performRefresh(container: sharedModelContainer)
+        }
+        .backgroundTask(.appRefresh(BackgroundTranscriptionService.taskIdentifier)) {
+            await BackgroundTranscriptionService.performTranscriptionRound(container: sharedModelContainer)
         }
     }
 

@@ -7,7 +7,6 @@ import Network
 final class NetworkMonitor {
     static let shared = NetworkMonitor()
 
-    private(set) var isConnected = true
     private(set) var connectionType: NWInterface.InterfaceType?
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "com.offscript.networkmonitor")
@@ -15,7 +14,6 @@ final class NetworkMonitor {
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor [weak self] in
-                self?.isConnected = path.status == .satisfied
                 self?.connectionType = path.availableInterfaces.first?.type
             }
         }
@@ -33,17 +31,9 @@ enum AppSettings {
         static let preferredGenres = "offscript.preferredGenres"
         static let recommendationMode = "offscript.recommendationMode"
         static let recentSearches = "offscript.recentSearches"
-        static let libraryShowDownloadedOnly = "offscript.libraryShowDownloadedOnly"
-        static let librarySortMode = "offscript.librarySortMode"
         static let cloudSyncEnabled = "offscript.cloudSyncEnabled"
         static let cloudSyncRuntimeState = "offscript.cloudSyncRuntimeState"
-        static let lastCloudSyncDate = "offscript.lastCloudSyncDate"
-    }
-
-    enum LibrarySortMode: String, CaseIterable {
-        case newest
-        case oldest
-        case recentlyPlayed
+        static let downloadsWiFiOnly = "offscript.downloadsWiFiOnly"
     }
 
     enum CloudSyncRuntimeState: String {
@@ -135,22 +125,6 @@ enum AppSettings {
         set { defaults.set(newValue, forKey: Key.recentSearches) }
     }
 
-    static var libraryShowDownloadedOnly: Bool {
-        get { defaults.bool(forKey: Key.libraryShowDownloadedOnly) }
-        set { defaults.set(newValue, forKey: Key.libraryShowDownloadedOnly) }
-    }
-
-    static var librarySortMode: LibrarySortMode {
-        get {
-            guard let raw = defaults.string(forKey: Key.librarySortMode),
-                  let mode = LibrarySortMode(rawValue: raw) else {
-                return .newest
-            }
-            return mode
-        }
-        set { defaults.set(newValue.rawValue, forKey: Key.librarySortMode) }
-    }
-
     static var cloudSyncEnabled: Bool {
         get { defaults.bool(forKey: Key.cloudSyncEnabled) }
         set { defaults.set(newValue, forKey: Key.cloudSyncEnabled) }
@@ -167,9 +141,17 @@ enum AppSettings {
         set { defaults.set(newValue.rawValue, forKey: Key.cloudSyncRuntimeState) }
     }
 
-    static var lastCloudSyncDate: Date? {
-        get { defaults.object(forKey: Key.lastCloudSyncDate) as? Date }
-        set { defaults.set(newValue, forKey: Key.lastCloudSyncDate) }
+    /// When `true`, `DownloadService` defers starting new downloads while the
+    /// device is on cellular. Already-running URLSession tasks are not killed
+    /// (they may have started on Wi-Fi); only newly-requested downloads queue.
+    /// Default is `true` — most users expect podcast app downloads to respect
+    /// metered data unless they explicitly opt in. Surface in Settings.
+    static var downloadsWiFiOnly: Bool {
+        get {
+            if defaults.object(forKey: Key.downloadsWiFiOnly) == nil { return true }
+            return defaults.bool(forKey: Key.downloadsWiFiOnly)
+        }
+        set { defaults.set(newValue, forKey: Key.downloadsWiFiOnly) }
     }
 
     static var currentUserID: String? {

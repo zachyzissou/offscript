@@ -1974,12 +1974,20 @@ private struct LibraryDirectoryControls: View {
         Button(action: action) {
             TunerLabel(
                 text: title,
-                color: isDisabled ? .offscriptSoftPaper.opacity(0.5) : (isSelected ? .offscriptStudioBlack : .offscriptPaperWhite),
+                // Outline-only active treatment: yellow glyph + yellow
+                // stroke matches the Tuner action-key pattern (e.g.
+                // → PLAY) called out in CLAUDE.md. Previously the
+                // selected chip filled with signal-yellow + studio-
+                // black glyph, which made it the single solid-fill
+                // pill in an otherwise hairline-outline system — the
+                // 2026-05-20 visual audit flagged this as design-
+                // system drift.
+                color: isDisabled ? .offscriptSoftPaper.opacity(0.5) : (isSelected ? .offscriptSignalYellow : .offscriptPaperWhite),
                 size: 9
             )
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(isSelected && !isDisabled ? Color.offscriptSignalYellow : Color.clear)
+            .background(Color.clear)
             .overlay(
                 Rectangle().stroke(
                     isSelected && !isDisabled ? Color.offscriptSignalYellow : Color.offscriptHairline,
@@ -2198,7 +2206,7 @@ private struct TunerLibraryCard: View {
             // own a11y elements. Mirrors PodcastEpisodeTunerRow (#265)
             // and SearchResultRow (#261).
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Open \(episode.title) from \(episode.podcast.title), \(reason)")
+            .accessibilityLabel(cardAccessibilityLabel)
 
             HStack(spacing: 6) {
                 Button {
@@ -2232,11 +2240,27 @@ private struct TunerLibraryCard: View {
                 .accessibilityLabel(episode.isQueued ? "\(episode.title) already queued" : "Add \(episode.title) to queue")
 
                 Spacer()
+
+                // Ambient download-state chip — hidden for `.notDownloaded`,
+                // a tappable retry target when `.failed`, decoration in
+                // every other state (Phase 22).
+                EpisodeDownloadStateChip(episode: episode)
             }
         }
         .padding(10)
         .frame(width: 280, alignment: .leading)
         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+    }
+
+    /// Folds the ambient download state into the card's existing VO
+    /// readout — silent for `.notDownloaded` so default state doesn't
+    /// add noise (Phase 22; mirrors `PodcastEpisodeTunerRow`).
+    private var cardAccessibilityLabel: String {
+        var label = "Open \(episode.title) from \(episode.podcast.title), \(reason)"
+        if let spoken = DownloadChip.spokenState(for: episode.downloadState) {
+            label += ", \(spoken)"
+        }
+        return label
     }
 }
 
@@ -2873,6 +2897,114 @@ private struct PodcastDetailTunerHeader: View {
     }
 }
 
+// MARK: - Ambient download-state chip
+//
+// Surface the per-episode `Episode.downloadState` as a small Tuner chip
+// next to the row's existing action controls (Phase 22). `DownloadButton`
+// already owns the explicit Download / Cancel / Retry control surface on
+// the detail screen — this chip is the AMBIENT readout so a user scanning
+// the Library list can see download status without inspecting each row.
+//
+// Function-coded colors mirror `DownloadButton`:
+//   - `.downloading` → `offscriptSignalYellow` (active in-progress)
+//   - `.queued`      → `offscriptFnInfo` (passive waiting)
+//   - `.failed`      → `offscriptFnRecord` (error — also a retry hit target)
+//   - `.downloaded`  → `offscriptFnMode` (success, rendered small/dim)
+//   - `.notDownloaded` → no chip (default state — avoid visual noise)
+//
+// Visual chip text uses uppercase Tuner vocabulary ("● DOWNLOADING").
+// `spokenState` is the VoiceOver-friendly lowercase form ("downloading")
+// appended to the row's accessibility label by callers — keeps the
+// punctuation-heavy mono out of the spoken readout (matches the existing
+// `voiceOverMetadata` pattern).
+private enum DownloadChip {
+    static func chipText(for state: Episode.DownloadState) -> String? {
+        switch state {
+        case .notDownloaded: return nil
+        case .queued:        return "● QUEUED"
+        case .downloading:   return "● DOWNLOADING"
+        case .downloaded:    return "● ON DEVICE"
+        case .failed:        return "● FAILED · RETRY"
+        }
+    }
+
+    static func chipColor(for state: Episode.DownloadState) -> Color {
+        switch state {
+        case .notDownloaded: return .offscriptSoftPaper
+        case .queued:        return .offscriptFnInfo
+        case .downloading:   return .offscriptSignalYellow
+        case .downloaded:    return .offscriptFnMode
+        case .failed:        return .offscriptFnRecord
+        }
+    }
+
+    /// VoiceOver-friendly version of the chip text — no `●` or `·`, spelled-out
+    /// words. Callers append `", download <state>"` to the row's
+    /// accessibility label when this is non-nil; `.notDownloaded` returns
+    /// `nil` so the default state stays silent for VO users.
+    static func spokenState(for state: Episode.DownloadState) -> String? {
+        switch state {
+        case .notDownloaded: return nil
+        case .queued:        return "queued for download"
+        case .downloading:   return "download in progress"
+        case .downloaded:    return "on device"
+        case .failed:        return "download failed"
+        }
+    }
+}
+
+/// Renders the ambient download-state chip for a Library episode row.
+/// When `.failed`, the chip itself is a tappable retry affordance with a
+/// 44pt min hit target — secondary to the row's primary navigation tap,
+/// so it doesn't trap the user (DownloadButton on the detail screen is
+/// the primary retry path; this is a convenience for users scanning the
+/// list). For all other states the chip renders as a non-interactive
+/// status indicator (the row's surrounding NavigationLink still owns the
+/// tap there).
+private struct EpisodeDownloadStateChip: View {
+    @ObservedObject private var downloadService = DownloadService.shared
+    let episode: Episode
+
+    var body: some View {
+        let state = episode.downloadState
+        if let text = DownloadChip.chipText(for: state) {
+            let color = DownloadChip.chipColor(for: state)
+            if state == .failed {
+                Button {
+                    downloadService.startDownload(for: episode)
+                } label: {
+                    chipBody(text: text, color: color, emphasized: true)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Retry download for \(episode.title)")
+                .accessibilityHint("Double-tap to retry the download.")
+            } else {
+                chipBody(text: text, color: color, emphasized: false)
+                    // The surrounding row owns navigation/a11y; the visual
+                    // chip is decoration only, so hide from VO. The spoken
+                    // state is folded into the row's accessibility label
+                    // by the host view.
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func chipBody(text: String, color: Color, emphasized: Bool) -> some View {
+        TunerLabel(text: text, color: color, size: 9)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .overlay(
+                Rectangle().stroke(
+                    color.opacity(emphasized ? 0.7 : 0),
+                    lineWidth: 1
+                )
+            )
+    }
+}
+
 private struct PodcastEpisodeTunerRow: View {
     @Environment(\.modelContext) private var modelContext
     let episode: Episode
@@ -2907,6 +3039,13 @@ private struct PodcastEpisodeTunerRow: View {
             if !stripped.isEmpty {
                 parts.append(stripped)
             }
+        }
+        // Surface ambient download state to VO users so they get the
+        // same readout sighted users see from the row's chip. Silent
+        // for the default `.notDownloaded` state to avoid noise — same
+        // contract as the visual chip (Phase 22).
+        if let spoken = DownloadChip.spokenState(for: episode.downloadState) {
+            parts.append(spoken)
         }
         return parts.joined(separator: ", ")
     }
@@ -3010,6 +3149,13 @@ private struct PodcastEpisodeTunerRow: View {
                 .accessibilityLabel(episode.isQueued ? "\(episode.title) already queued" : "Add \(episode.title) to queue")
 
                 Spacer()
+
+                // Ambient download-state chip — hidden for `.notDownloaded`
+                // so the default state doesn't add visual noise. The chip
+                // owns its own retry tap target when `.failed`; otherwise
+                // it's decorative and the row's NavigationLink remains the
+                // primary tap (Phase 22).
+                EpisodeDownloadStateChip(episode: episode)
             }
         }
         .padding(.vertical, 10)

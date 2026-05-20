@@ -66,7 +66,33 @@ enum PodcastUnsubscribeService {
         // episodes from a show the user no longer follows.
         SpotlightIndexer.deindexEpisodes(ids: episodeIDs)
 
-        // 5. Single atomic save for everything that didn't already save
+        // 5. Purge transcript cache rows for the unsubscribed episodes.
+        // `EpisodeTranscriptCache` is keyed by `episodeID` (not a SwiftData
+        // relationship) so it doesn't cascade-delete when the Episode goes
+        // away. Without this sweep, transcripts from shows the user no longer
+        // follows linger in the store forever, bloating iCloud sync and
+        // making re-imports inconsistent (a stale `published` cache row would
+        // be picked up before the re-import even hits the publisher's
+        // feed-provided transcript URL).
+        if !episodeIDs.isEmpty {
+            let idSet = Set(episodeIDs)
+            do {
+                let descriptor = FetchDescriptor<EpisodeTranscriptCache>(
+                    predicate: #Predicate<EpisodeTranscriptCache> { idSet.contains($0.episodeID) }
+                )
+                let staleCaches = try context.fetch(descriptor)
+                for cache in staleCaches {
+                    context.delete(cache)
+                }
+                if !staleCaches.isEmpty {
+                    unsubscribeLogger.info("Removed \(staleCaches.count) transcript cache rows for unsubscribed podcast")
+                }
+            } catch {
+                unsubscribeLogger.error("Transcript cache cleanup failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        // 6. Single atomic save for everything that didn't already save
         // itself (queue removal saves; download delete saves; isSubscribed
         // toggle does not).
         do {

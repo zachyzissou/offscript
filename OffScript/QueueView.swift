@@ -461,13 +461,23 @@ private struct QueueItemRow: View {
                     .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
 
                     VStack(alignment: .leading, spacing: 3) {
+                        // Eyebrow podcast name was previously
+                        // .lineLimit(1) which on a phone-width row
+                        // with 4 trailing controls clipped "Radiolab"
+                        // to "Radiol…" and "Conan O'Brien Needs A
+                        // Friend" to "Conan O'Bri…". Allow a second
+                        // line so the show identity reads in full —
+                        // the 2026-05-20 visual audit identified this
+                        // as the #1 scanability cost on the queue.
                         TunerLabel(text: item.episode.podcast.title.uppercased(), color: .offscriptFnInfo, size: 8)
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                         Text(item.episode.title)
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color.offscriptPaperWhite)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
                         if let duration = item.episode.duration {
                             // Visible mono badge — VO label on this
                             // child is masked by the parent
@@ -510,9 +520,15 @@ private struct QueueItemRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Play \(item.episode.title)")
 
-            queueIconButton(systemName: "chevron.up", color: .offscriptSoftPaper, disabled: !canMoveUp, action: onMoveUp)
+            // Enabled reorder chevrons render in signal-yellow so they
+            // don't read as disabled siblings next to the solid-yellow
+            // PLAY key. Disabled state still dims via the .disabled
+            // opacity in queueIconButton (0.35 on both glyph + stroke).
+            // The 2026-05-20 visual audit flagged the prior soft-paper
+            // gray glyph as visually equivalent to a disabled control.
+            queueIconButton(systemName: "chevron.up", color: .offscriptSignalYellow, disabled: !canMoveUp, action: onMoveUp)
                 .accessibilityLabel("Move \(item.episode.title) up in queue")
-            queueIconButton(systemName: "chevron.down", color: .offscriptSoftPaper, disabled: !canMoveDown, action: onMoveDown)
+            queueIconButton(systemName: "chevron.down", color: .offscriptSignalYellow, disabled: !canMoveDown, action: onMoveDown)
                 .accessibilityLabel("Move \(item.episode.title) down in queue")
 
             if let onRemove {

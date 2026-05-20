@@ -45,6 +45,19 @@ enum DeepLinkRouter {
     /// later tab return doesn't re-trigger navigation.
     static var pendingPodcastDeepLink: UUID?
 
+    #if DEBUG
+    /// Clears every static-scoped pending state so cross-test pollution
+    /// doesn't leak (a prior test that handled an `offscript://podcast/<uuid>`
+    /// URL would otherwise leave `pendingPodcastDeepLink` set, and the next
+    /// test asserting `pendingPodcastDeepLink == someOtherID` fails because
+    /// it's STILL the prior UUID). Called from `DebugTeardown.resetAllSingletons()`.
+    /// Mirrors the `debugResetForTesting()` pattern on other singletons —
+    /// see `docs/TEST_MATRIX.md` § "Lurking Crash Class".
+    static func debugResetForTesting() {
+        pendingPodcastDeepLink = nil
+    }
+    #endif
+
     /// Pushed by ContentView's `.onOpenURL`. Reads the URL into a route,
     /// hydrates from SwiftData if needed, then mutates shared singletons
     /// (PlaybackController, navigation state) to drive UI.

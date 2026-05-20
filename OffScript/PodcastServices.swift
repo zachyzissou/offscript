@@ -1,5 +1,30 @@
 import Foundation
+import os
 import SwiftData
+
+private let chapterSyncLogger = Logger(subsystem: "com.offscript", category: "ChapterSync")
+
+/// Podcast Namespace URI for the `podcast:` element prefix.
+/// https://podcastindex.org/namespace/1.0
+private let podcastNamespaceURI = "https://podcastindex.org/namespace/1.0"
+
+/// MIME types that signal a `podcast:chapters` JSON file we can parse.
+/// The current proposal uses `application/json+chapters`; some older feeds
+/// emit `application/x-json+chapters`. We accept either, and ignore an
+/// empty/missing type rather than reject — many feeds omit the attribute.
+private let supportedChapterMIMETypes: Set<String> = [
+    "application/json+chapters",
+    "application/x-json+chapters"
+]
+
+private func isAcceptableChapterMIMEType(_ rawType: String?) -> Bool {
+    guard let rawType, !rawType.isEmpty else { return true }
+    let normalized = rawType.lowercased()
+        .split(separator: ";", maxSplits: 1, omittingEmptySubsequences: true)
+        .first
+        .map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+    return supportedChapterMIMETypes.contains(normalized)
+}
 
 struct PodcastPreviewEpisode: Identifiable, Hashable {
     let id: String
@@ -681,8 +706,16 @@ final class FeedSyncService {
 
         for item in itemsToProcess {
             let guid = item.guid ?? item.audioURL.absoluteString
-            let resolvedChapters = await resolvedChapters(for: item, resolveExternalChapters: options.resolveExternalChapters)
-            if let existing = existingByGUID[guid] ?? existingByAudioURL[item.audioURL] {
+            let existing = existingByGUID[guid] ?? existingByAudioURL[item.audioURL]
+            // Skip the external chapter fetch when we already have chapters persisted —
+            // we don't want to clobber hand-curated edits or hammer the chapter-JSON URL
+            // on every sync. New episodes (existing == nil) and episodes with no chapters
+            // still get the resolution path.
+            let shouldResolveChapters = existing?.chapters.isEmpty ?? true
+            let resolvedChapters = shouldResolveChapters
+                ? await resolvedChapters(for: item, resolveExternalChapters: options.resolveExternalChapters)
+                : existing?.chapters ?? []
+            if let existing {
                 existing.title = item.title
                 existing.summary = item.summary
                 existing.pubDate = item.pubDate ?? existing.pubDate
@@ -690,7 +723,9 @@ final class FeedSyncService {
                 existing.artworkURL = item.artworkURL ?? existing.artworkURL
                 existing.seasonNumber = item.seasonNumber ?? existing.seasonNumber
                 existing.episodeNumber = item.episodeNumber ?? existing.episodeNumber
-                existing.chapters = resolvedChapters
+                if shouldResolveChapters {
+                    existing.chapters = resolvedChapters
+                }
                 existing.transcriptReferences = item.transcriptReferences
             } else {
                 let episode = Episode(
@@ -1108,9 +1143,18 @@ final class RSSFeedParser: NSObject, XMLParserDelegate {
             }
         }
 
-        if insideItem, currentElement == "podcast:chapters", let urlString = attributeDict["url"], let url = URL(string: urlString) {
-            ensureCurrentItem()
-            currentItem?.externalChapterURL = url
+        if insideItem, Self.isPodcastChaptersElement(elementName: elementName, qName: qName, namespaceURI: namespaceURI) {
+            guard isAcceptableChapterMIMEType(attributeDict["type"]) else {
+                // Unknown chapter file format (e.g. a future binary type) — skip.
+                chapterSyncLogger.debug("Skipping podcast:chapters with unsupported type=\(attributeDict["type"] ?? "nil", privacy: .public)")
+                return
+            }
+            if let urlString = attributeDict["url"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !urlString.isEmpty,
+               let url = URL(string: urlString) {
+                ensureCurrentItem()
+                currentItem?.externalChapterURL = url
+            }
         }
 
         if insideItem, currentElement == "podcast:transcript", let urlString = attributeDict["url"], let url = URL(string: urlString) {
@@ -1202,6 +1246,23 @@ final class RSSFeedParser: NSObject, XMLParserDelegate {
         }
     }
 
+    /// Matches a `<podcast:chapters>` element using whichever signal the XMLParser
+    /// surfaces. Apple's XMLParser does not split prefix/localName by default when
+    /// `shouldProcessNamespaces` is off (our case — we keep the legacy element-name
+    /// based pipeline), so we accept either:
+    ///   - qualifiedName == "podcast:chapters" (typical), or
+    ///   - elementName  == "podcast:chapters" (same value when ns-processing is off), or
+    ///   - namespaceURI == podcast-namespace + elementName == "chapters" (defensive,
+    ///     in case a future caller enables namespace processing).
+    /// Real-world feeds frequently mis-declare the namespace, so the prefix check is the
+    /// most forgiving — but we also accept the spec-correct namespace URI form.
+    static func isPodcastChaptersElement(elementName: String, qName: String?, namespaceURI: String?) -> Bool {
+        if qName == "podcast:chapters" { return true }
+        if elementName == "podcast:chapters" { return true }
+        if namespaceURI == podcastNamespaceURI && elementName == "chapters" { return true }
+        return false
+    }
+
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -1223,13 +1284,47 @@ final class RSSFeedParser: NSObject, XMLParserDelegate {
 }
 
 enum ExternalChapterLoader {
+    /// Fetches a podcast-namespace JSON chapters file and decodes it to `[EpisodeChapter]`.
+    /// Returns `[]` (with a debug log) on any network or parse failure so that callers can
+    /// fall back to summary-regex parsing without surfacing an error to the user.
     static func load(from url: URL, duration: TimeInterval?) async throws -> [EpisodeChapter] {
-        let (data, _) = try await URLSession.shared.data(from: url)
-        if let response = try? JSONDecoder().decode(ExternalChapterEnvelope.self, from: data) {
-            return EpisodeChapterParser.normalize(response.chapters.map(\.chapter), duration: duration)
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            chapterSyncLogger.debug("Chapter fetch failed for \(url.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return []
         }
-        if let response = try? JSONDecoder().decode([ExternalChapterRecord].self, from: data) {
-            return EpisodeChapterParser.normalize(response.map(\.chapter), duration: duration)
+
+        if let http = response as? HTTPURLResponse {
+            guard (200..<300).contains(http.statusCode) else {
+                chapterSyncLogger.debug("Chapter fetch HTTP \(http.statusCode) for \(url.absoluteString, privacy: .public)")
+                return []
+            }
+            if let ct = http.value(forHTTPHeaderField: "Content-Type"),
+               !isAcceptableChapterMIMEType(ct),
+               !ct.lowercased().contains("json") {
+                chapterSyncLogger.debug("Chapter fetch unexpected content-type=\(ct, privacy: .public) for \(url.absoluteString, privacy: .public)")
+                return []
+            }
+        }
+
+        return decode(data: data, duration: duration)
+    }
+
+    /// Decode a chapters JSON payload. Public-for-tests so we can validate parsing
+    /// without spinning up URLSession.
+    static func decode(data: Data, duration: TimeInterval?) -> [EpisodeChapter] {
+        let decoder = JSONDecoder()
+        if let response = try? decoder.decode(ExternalChapterEnvelope.self, from: data) {
+            return EpisodeChapterParser.normalize(response.chapters.compactMap(\.episodeChapter), duration: duration)
+        }
+        if let response = try? decoder.decode([ExternalChapterRecord].self, from: data) {
+            return EpisodeChapterParser.normalize(response.compactMap(\.episodeChapter), duration: duration)
         }
         return []
     }
@@ -1239,46 +1334,94 @@ private struct ExternalChapterEnvelope: Decodable {
     let chapters: [ExternalChapterRecord]
 }
 
+/// Decoder DTO mirroring https://github.com/Podcastindex-org/podcast-namespace/blob/main/proposal-docs/chapters/chapters.md
+/// Fields not used (location, image_url variants) are intentionally ignored.
 private struct ExternalChapterRecord: Decodable {
     let title: String
     let startSeconds: TimeInterval
+    let endSeconds: TimeInterval?
+    let imageURL: URL?
+    let linkURL: URL?
+    let toc: Bool
 
-    var chapter: EpisodeChapter {
-        EpisodeChapter(title: title, startTime: startSeconds)
+    /// Returns the model representation, or `nil` if the record had insufficient data
+    /// (empty title, etc). We DO NOT drop `toc == false` chapters here — the spec says
+    /// such chapters still affect playback boundaries, and the UI layer is responsible
+    /// for filtering them from any navigation list.
+    var episodeChapter: EpisodeChapter? {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return nil }
+        return EpisodeChapter(
+            title: trimmedTitle,
+            startTime: startSeconds,
+            endTime: endSeconds,
+            imageURL: imageURL,
+            linkURL: linkURL,
+            isInTableOfContents: toc
+        )
     }
 
     private enum CodingKeys: String, CodingKey {
         case title
         case startTime
         case start
+        case endTime
+        case img
+        case url
+        case toc
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.title = try container.decode(String.self, forKey: .title)
+        self.startSeconds = try Self.decodeSeconds(in: container, primaryKey: .startTime, fallbackKey: .start)
+        self.endSeconds = Self.decodeOptionalSeconds(in: container, key: .endTime)
+        self.imageURL = Self.decodeOptionalURL(in: container, key: .img)
+        self.linkURL = Self.decodeOptionalURL(in: container, key: .url)
+        self.toc = (try? container.decodeIfPresent(Bool.self, forKey: .toc)) ?? true
+    }
 
-        if let raw = try? container.decode(String.self, forKey: .startTime),
-           let seconds = EpisodeChapterParser.seconds(from: raw) ?? Double(raw) {
-            self.startSeconds = seconds
-            return
+    private static func decodeSeconds(
+        in container: KeyedDecodingContainer<CodingKeys>,
+        primaryKey: CodingKeys,
+        fallbackKey: CodingKeys
+    ) throws -> TimeInterval {
+        if let value = decodeOptionalSeconds(in: container, key: primaryKey) {
+            return value
         }
-
-        if let raw = try? container.decode(Double.self, forKey: .startTime) {
-            self.startSeconds = raw
-            return
+        if let value = decodeOptionalSeconds(in: container, key: fallbackKey) {
+            return value
         }
+        throw DecodingError.dataCorruptedError(
+            forKey: primaryKey,
+            in: container,
+            debugDescription: "Missing chapter start time"
+        )
+    }
 
-        if let raw = try? container.decode(String.self, forKey: .start),
-           let seconds = EpisodeChapterParser.seconds(from: raw) ?? Double(raw) {
-            self.startSeconds = seconds
-            return
+    private static func decodeOptionalSeconds(
+        in container: KeyedDecodingContainer<CodingKeys>,
+        key: CodingKeys
+    ) -> TimeInterval? {
+        if let raw = try? container.decodeIfPresent(Double.self, forKey: key) {
+            return raw
         }
-
-        if let raw = try? container.decode(Double.self, forKey: .start) {
-            self.startSeconds = raw
-            return
+        if let raw = try? container.decodeIfPresent(Int.self, forKey: key) {
+            return TimeInterval(raw)
         }
+        if let raw = try? container.decodeIfPresent(String.self, forKey: key),
+           !raw.isEmpty {
+            return EpisodeChapterParser.seconds(from: raw) ?? Double(raw)
+        }
+        return nil
+    }
 
-        throw DecodingError.dataCorruptedError(forKey: .startTime, in: container, debugDescription: "Missing chapter start time")
+    private static func decodeOptionalURL(
+        in container: KeyedDecodingContainer<CodingKeys>,
+        key: CodingKeys
+    ) -> URL? {
+        guard let raw = try? container.decodeIfPresent(String.self, forKey: key),
+              !raw.isEmpty else { return nil }
+        return URL(string: raw)
     }
 }

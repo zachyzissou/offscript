@@ -14,6 +14,7 @@ struct PodcastPickerView: View {
     @State private var selectedFeeds: Set<URL> = []
     @State private var livePodcasts: [Genre: [PodcastSearchResult]] = [:]
     @State private var allPodcasts: [PodcastSearchResult] = []
+    @State private var openedCollection: EditorialCollection?
 
     private var prioritizedGenres: [Genre] {
         let selected = Genre.allCases.filter { selectedGenres.contains($0) }
@@ -62,6 +63,11 @@ struct PodcastPickerView: View {
                         TunerLabel(text: "\(selectedGenreCount) BANDS")
                     }
                     .padding(.horizontal, 20)
+
+                    EditorialCollectionsStrip(
+                        collections: nonEmptyCollections,
+                        onOpen: { openedCollection = $0 }
+                    )
 
                     VStack(alignment: .leading, spacing: 22) {
                         ForEach(prioritizedGenres) { genre in
@@ -127,6 +133,22 @@ struct PodcastPickerView: View {
         }
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
         .task { await loadLivePodcasts() }
+        .sheet(item: $openedCollection) { collection in
+            EditorialCollectionDetailView(
+                collection: collection,
+                entries: CuratedPodcastCatalog.resolve(collection),
+                selectedFeeds: $selectedFeeds
+            )
+        }
+    }
+
+    /// Collections with at least one resolved entry. We never render a
+    /// shelf that points to an empty list — that would lie to the user
+    /// about what's behind the tap.
+    private var nonEmptyCollections: [EditorialCollection] {
+        CuratedPodcastCatalog.editorialCollections.filter {
+            !CuratedPodcastCatalog.resolve($0).isEmpty
+        }
     }
 
     private func mergedPodcasts(for genre: Genre) -> [PodcastSearchResult] {
@@ -240,5 +262,296 @@ private struct OnboardingPodcastCard: View {
         .sensoryFeedback(.impact(flexibility: .soft), trigger: isSelected)
         .accessibilityLabel("\(podcast.title) by \(podcast.author)\(isSelected ? ", selected" : "")")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+// MARK: - Editorial collections strip
+//
+// Horizontal rail of collection cards above the genre bank. Each card is a
+// hand-curated viewpoint (e.g. "Just under an hour") rendered with the
+// Tuner vocabulary — hairline border, tracked tuner label header, sample
+// artwork stack, optional curator italic, and a "N INSIDE" mono count.
+
+private struct EditorialCollectionsStrip: View {
+    let collections: [EditorialCollection]
+    let onOpen: (EditorialCollection) -> Void
+
+    var body: some View {
+        if collections.isEmpty {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    TunerLabel(text: "EDITORIAL · CURATED", color: .offscriptFnInfo)
+                    Spacer()
+                    TunerLabel(text: "\(collections.count) SHELVES")
+                }
+                .padding(.horizontal, 20)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 8) {
+                        ForEach(collections) { collection in
+                            EditorialCollectionCard(
+                                collection: collection,
+                                entries: CuratedPodcastCatalog.resolve(collection),
+                                onTap: { onOpen(collection) }
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+            }
+        }
+    }
+}
+
+private struct EditorialCollectionCard: View {
+    let collection: EditorialCollection
+    let entries: [CuratedEntry]
+    let onTap: () -> Void
+
+    private let cardWidth: CGFloat = 240
+    private let thumbnailSize: CGFloat = 44
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    ForEach(entries.prefix(4), id: \.result.feedURL) { entry in
+                        OffScriptArtworkView(url: entry.result.artworkURL, cornerRadius: 3)
+                            .frame(width: thumbnailSize, height: thumbnailSize)
+                            .overlay(
+                                Rectangle().stroke(Color.offscriptHairline, lineWidth: 1)
+                            )
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(collection.title)
+                        .font(.system(size: 14, weight: .semibold, design: .default))
+                        .tracking(0)
+                        .foregroundStyle(Color.offscriptPaperWhite)
+                        .lineLimit(1)
+
+                    if let subtitle = collection.subtitle {
+                        Text(subtitle)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(Color.offscriptSoftPaper)
+                            .lineLimit(1)
+                    }
+                }
+
+                if let note = collection.curatorNote {
+                    Text(note)
+                        .font(.system(size: 11, weight: .regular, design: .default).italic())
+                        .foregroundStyle(Color.offscriptFadedPaper)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack {
+                    TunerLabel(text: "\(entries.count) INSIDE", color: .offscriptSoftPaper)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Color.offscriptSoftPaper)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(12)
+            .frame(width: cardWidth, alignment: .leading)
+            .background(Color.offscriptStudioBlack)
+            .overlay(
+                Rectangle().stroke(Color.offscriptHairline, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var accessibilityLabel: String {
+        var parts: [String] = [collection.title]
+        if let subtitle = collection.subtitle {
+            parts.append(subtitle)
+        }
+        parts.append("\(entries.count) \(entries.count == 1 ? "podcast" : "podcasts") inside")
+        return parts.joined(separator: ". ")
+    }
+}
+
+// MARK: - Editorial collection detail
+//
+// Sheet that opens when a collection card is tapped. Lists every entry the
+// filter resolved to; tapping a row toggles selection in the parent
+// picker so the user can add a whole viewpoint's-worth of shows in one
+// sitting without losing what they already picked from the genre bank.
+
+private struct EditorialCollectionDetailView: View {
+    let collection: EditorialCollection
+    let entries: [CuratedEntry]
+    @Binding var selectedFeeds: Set<URL>
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    TunerLabel(text: "EDITORIAL · CURATED", color: .offscriptFnInfo)
+                    Text(collection.title)
+                        .font(.system(size: 28, weight: .bold, design: .default))
+                        .tracking(0)
+                        .foregroundStyle(Color.offscriptPaperWhite)
+                    if let subtitle = collection.subtitle {
+                        Text(subtitle)
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundStyle(Color.offscriptSoftPaper)
+                    }
+                    if let note = collection.curatorNote {
+                        Text(note)
+                            .font(.system(size: 13, weight: .regular).italic())
+                            .foregroundStyle(Color.offscriptFadedPaper)
+                            .padding(.top, 4)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.horizontal, 20)
+
+                HStack {
+                    TunerLabel(text: "\(entries.count) \(entries.count == 1 ? "CHANNEL" : "CHANNELS")")
+                    Spacer()
+                    TunerLabel(
+                        text: "\(selectedCountInsideCollection) PICKED",
+                        color: selectedCountInsideCollection > 0 ? .offscriptSignalYellow : .offscriptSoftPaper
+                    )
+                }
+                .padding(.horizontal, 20)
+
+                VStack(spacing: 0) {
+                    ForEach(entries, id: \.result.feedURL) { entry in
+                        EditorialDetailRow(
+                            entry: entry,
+                            isSelected: selectedFeeds.contains(entry.result.feedURL),
+                            onTap: { toggleSelection(entry.result.feedURL) }
+                        )
+                        Rectangle()
+                            .fill(Color.offscriptHairline)
+                            .frame(height: 1)
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+            .padding(.top, 24)
+            .padding(.bottom, 80)
+        }
+        .background(Color.offscriptStudioBlack.ignoresSafeArea())
+        .overlay(alignment: .bottom) {
+            Button(action: { dismiss() }) {
+                HStack {
+                    Spacer()
+                    Text("DONE")
+                        .font(.system(size: 13, weight: .bold, design: .default))
+                        .tracking(2)
+                        .foregroundStyle(Color.offscriptStudioBlack)
+                    Spacer()
+                }
+                .padding(.vertical, 16)
+                .background(Color.offscriptSignalYellow)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 16)
+        }
+    }
+
+    private var selectedCountInsideCollection: Int {
+        entries.filter { selectedFeeds.contains($0.result.feedURL) }.count
+    }
+
+    private func toggleSelection(_ feedURL: URL) {
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+            if selectedFeeds.contains(feedURL) {
+                selectedFeeds.remove(feedURL)
+            } else {
+                selectedFeeds.insert(feedURL)
+            }
+        }
+    }
+}
+
+private struct EditorialDetailRow: View {
+    let entry: CuratedEntry
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                OffScriptArtworkView(url: entry.result.artworkURL, cornerRadius: 3)
+                    .frame(width: 56, height: 56)
+                    .overlay(
+                        Rectangle().stroke(
+                            isSelected ? Color.offscriptSignalYellow : Color.offscriptHairline,
+                            lineWidth: 1
+                        )
+                    )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.result.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.offscriptPaperWhite)
+                        .lineLimit(1)
+
+                    Text(entry.result.author.uppercased())
+                        .tunerFont(size: 8, tracking: 1.2)
+                        .foregroundStyle(Color.offscriptSoftPaper)
+                        .lineLimit(1)
+
+                    if let durationLabel = durationLabel {
+                        TunerLabel(text: durationLabel, color: .offscriptFadedPaper)
+                    }
+                }
+
+                Spacer()
+
+                ZStack {
+                    Rectangle()
+                        .fill(isSelected ? Color.offscriptSignalYellow : Color.clear)
+                        .frame(width: 22, height: 22)
+                        .overlay(
+                            Rectangle().stroke(
+                                isSelected ? Color.offscriptSignalYellow : Color.offscriptHairline,
+                                lineWidth: 1
+                            )
+                        )
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color.offscriptStudioBlack)
+                            .accessibilityHidden(true)
+                    }
+                }
+            }
+            .padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.impact(flexibility: .soft), trigger: isSelected)
+        .accessibilityLabel("\(entry.result.title) by \(entry.result.author)\(isSelected ? ", selected" : "")")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// Curator's duration estimate as a mono tuner chip, e.g. "45–65 MIN".
+    /// Stays present until the runtime preview loader's measured duration
+    /// can replace it (deferred — `SearchPreviewLoader` exists but its
+    /// metadata isn't threaded into the picker yet).
+    private var durationLabel: String? {
+        guard let range = entry.typicalDuration else { return nil }
+        let lower = Int(range.lowerBound / 60)
+        let upper = Int(range.upperBound / 60)
+        if lower == upper { return "\(lower) MIN" }
+        return "\(lower)–\(upper) MIN"
     }
 }

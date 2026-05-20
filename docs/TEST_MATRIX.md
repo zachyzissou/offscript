@@ -77,9 +77,9 @@ Source of truth: `OffScript/AppSettings.swift`, `OffScript/ContentView.swift`.
 | Layer | Verification | Notes |
 |---|---|---|
 | Automated unit | `OffScriptTests` — `feedSyncOPMLBootstrapCapsEpisodesAndSkipsProfiles`, `feedSyncOnboardingBootstrapCapsEpisodesAndSkipsExpensiveEnrichment`, `onboardingPreferenceSignalFetchesNewestEpisodeWithoutSortingRelationship` | Bootstrap import + signal extraction. |
-| Automated UI | `OffScriptUITests/testOnboardingFirstScreenSmoke` | Verifies first screen, "POWER ON →", privacy copy. |
+| Automated UI | `OffScriptUITests/testOnboardingFirstScreenSmoke`, `testOnboardingFlowAdvancesFromWelcomeToGenrePicker`, `testOnboardingGenrePickerExposesDisabledCTAGate`, `testOnboardingBackFromGenrePickerReturnsToWelcome` | Verifies first screen + POWER ON → wiring, genre-picker CTA gating, BACK navigation. |
 | Simulator manual | `-offscript.hasSeenOnboarding NO` | Walk the entire onboarding flow including starter subscriptions. |
-| Real device | TestFlight install, fresh device | Required for Sign in with Apple flow validation. Tracked in #112. |
+| Real device | TestFlight install, fresh device | Required for Sign in with Apple flow validation. Tracked in #112. End-to-end onboarding completion (genre tap → podcast pick → import → home) is real-device-only — see `docs/superpowers/audits/2026-05-20-ui-test-coverage-phase5.md` for the GenreCard hit-test gap that blocks UI-level coverage. |
 
 ### Library — directory, filters, alphabet
 
@@ -113,9 +113,9 @@ Source of truth: `OffScript/AppSettings.swift`, `OffScript/ContentView.swift`.
 | Layer | Verification | Notes |
 |---|---|---|
 | Automated unit | `OffScriptTests` — `queueServiceMovesItemsAndPersistsOrder`, `queueServicePlayNextPromotesEpisodeToFront`, `queueServiceSkipsCurrentEpisodeWhenPoppingNext` | Queue logic. |
-| Automated UI | `OffScriptUITests/testPostOnboardingShellSmoke` | Tab visit smoke. |
+| Automated UI | `OffScriptUITests/testPostOnboardingShellSmoke`, `testQueueShowsEmptyStateOnFreshLaunch`, `testQueueClearAllRequiresConfirmation`, `testQueueRowOpensEpisodeDetail`, `testQueueRowsExposePlayAffordanceForEachSeededEpisode` | Tab visit smoke, empty state, × CLEAR ALL confirm strip, row → detail nav, per-row → PLAY / → RESUME / ● PLAYING affordances on a seeded queue. |
 | Simulator manual | `-offscript.debugSeedSampleData YES`, queue several episodes, reorder | Issue #126 covers heavy-listener queue ergonomics. |
-| Real device | TestFlight, multi-day queue use | Required to evaluate persistence and reorder gestures at scale. |
+| Real device | TestFlight, multi-day queue use | Required to evaluate persistence and reorder gestures at scale. Queue autoplay (end-of-episode → auto-advance) is real-device-only until `PlaybackController` gains a `debugSimulateEpisodeCompletion` hook — see `docs/superpowers/audits/2026-05-20-ui-test-coverage-phase5.md`. |
 
 ### Player & playback
 
@@ -131,7 +131,7 @@ Source of truth: `OffScript/AppSettings.swift`, `OffScript/ContentView.swift`.
 |---|---|---|
 | Automated UI | `OffScriptUITests/testSettingsPanelOpensFromHome`, `testSettingsPanelOpensFromLibrary`, `testSettingsPanelDismissAndReopenCycleStaysStable`, `testSettingsPanelOpensWithLargeLibrarySeed` | Open from Home, open from Library, present→dismiss→re-present cycle stability, large-library seeded counts and simulator iCloud `NOT CONFIG` state. |
 | Automated unit | `OffScriptTests` — `appSettingsRoundTripsPreferences`, identity/keychain breadcrumb tests | Preference round-trip, identity logging. |
-| Simulator manual | Open Settings, tap each Tuner key, present sign-out confirmation, dismiss | Tracks #114 audit work. |
+| Simulator manual | Open Settings, tap each Tuner key, present sign-out confirmation, dismiss | Tracks #114 audit work. Visual auto-capture of the Settings panel + DebugInspector sheet is not achievable through `xcrun simctl io` alone (taps require an XCUITest). See the pre-2.5.0 simulator walk for the "Auto-capture limitations" list. |
 | Real device | TestFlight Sign in with Apple, real iCloud account, sign-out + re-sign-in | Required for crash-report parity with #114 / #112. |
 
 ### Recommendations
@@ -189,3 +189,79 @@ When a new automated test or simulator/real-device flow is added:
    yet exist in code.
 3. If the flow is real-device-only, do not list a simulator command —
    leave the simulator column empty so the matrix stays honest.
+
+## Lurking Crash Class: SwiftData Refs Across Singleton Test Boundaries
+
+Surfaced during Phase 19 (PlaybackEvent emission tests, commit `9ecc9dd`).
+
+**Symptom:** A test that exercises `PlaybackController.shared` or any
+other `@MainActor` singleton publishing `@Model` references crashes on
+the *next* test in the run — not the test that wrote the bad state.
+Stack trace lands inside the singleton's own `body`/observer/Combine
+subscription, dereferencing a model object whose `ModelContainer` was
+torn down with the previous test's in-memory context.
+
+**Root cause:** `static let shared = X()` is process-scoped. SwiftData
+contexts are run-scoped. The singleton outlives the context, but its
+cached `currentEpisode` / `currentRecommendation` / etc. references
+point into the dead container.
+
+**The fix (when authoring a new test):**
+1. Add a `debugResetForTesting()` method on the singleton (already done
+   for `PlaybackController` and `NowPlayingPublisher`).
+2. Call it in the test's setup OR teardown.
+3. The reset method must (a) cancel any Combine subscription on the
+   model object, (b) `currentX = nil`, and (c) clear any background
+   `Task` holding model refs.
+
+If you're authoring a singleton that publishes `@Model`-typed values,
+ship a `debugResetForTesting()` alongside it. Future-you running tests
+six months from now will not enjoy debugging the inevitable flake
+without one.
+
+### Known siblings of this flake class (as of 2026-05-20)
+
+The pre-2.5.0 simulator walk
+(`docs/superpowers/audits/2026-05-20-pre-25-simulator-walk.md`) found
+that `TasteProfileDecayTests.decayHalfLifeIs14Days` also gets killed
+mid-run by the same SwiftData reset, even though `TasteProfileDecay`
+itself touches no singleton (it tests a pure `recencyWeight` function).
+The crash happens *before* the test body executes — the test process
+inherits a poisoned container from a prior suite. Re-running the
+suite in isolation passes 9/9. Add it to the
+"reset-in-setup-or-teardown" candidate list when expanding the
+hardening sweep.
+
+## Lurking UI-Test Class: Accessibility-Label Drift
+
+Surfaced during the pre-2.5.0 simulator walk (commit `c1668550`).
+
+**Symptom:** A UI test that queries `app.buttons["VISIBLE_TITLE"]`
+times out with `XCTAssertTrue failed - <chip> did not appear`, even
+though the chip is visible on screen and the app under test built
+cleanly.
+
+**Root cause:** `XCUIElement.buttons[<string>]` matches against
+`accessibilityIdentifier` and `accessibilityLabel`, *not* visible text.
+When a `.accessibilityLabel(...)` override is added to a button
+(typically to add VoiceOver dimension context like
+`"Sort: needs attention first"` instead of just `"ATTN"`), the visible
+title no longer resolves the element in the test query.
+
+**The fix (when authoring or auditing UI tests):**
+1. Prefer `.accessibilityIdentifier("StableTestHandle")` on buttons
+   that are exercised by tests. The identifier is independent of
+   spoken label changes and survives a11y refactors.
+2. If you can't add an identifier, query by the full accessibility
+   label (`app.buttons["Sort: needs attention first"]`) — but recognize
+   that any future label rewrite will silently re-break the test.
+3. When changing a button's `.accessibilityLabel`, grep the UI test
+   target for the old visible string + the old label string. Bring
+   the test along with the production change in the same PR.
+
+The concrete case at `c1668550`:
+`testLargeLibraryDirectoryControlsStayResponsive` queries
+`app.buttons["ATTN"]` while the Library `SORT` chip overrides its
+accessibilityLabel to `"Sort: needs attention first"` (commit
+`39a49e5`). Test goes red, ship goes through anyway because the
+failure is test-only.

@@ -1,15 +1,25 @@
-2.4.0 — VoiceOver pass + audit cycle
+2.5.0 — Podcast-native foundations + recommendation credibility
 
-— Hero card, Home rails, Library directory, Search, Queue, Player UP NEXT, EpisodeDetail action chips, and Settings now expose explicit, title-aware VoiceOver labels instead of mono visible text or icon names (~25 surfaces).
-— Spoken durations ("1 hour 5 minutes") replace the visible "1H 5M" glyphs for VoiceOver throughout.
-— New "More From Shows You Chose" Home lane separates your explicit like signal from passive completion affinity.
-— Search now supports pull-to-refresh; clear-recents requires confirmation.
-— Queue rows are tappable to open episode detail.
-— Performance: 258-show deterministic seed in UI tests pins the v2.3.11 LibraryView @Query optimization.
-— Audit-cycle fixes in this build: three decorative magnifying-glass icons no longer leak to VO; three artwork tiles now carry the hairline-stroke overlay per spec; two new UI tests (Queue empty state + row-tap) now use debugWipeLibrary for parallel-safe state.
-— Three polish items pulled forward: Library directory chips now read dimension-prefixed VO labels ("Scope: all shows", "Sort: A to Z", "Rows: artwork rows"); the × UNSUBSCRIBE confirm strip is now podcast-title aware; Home voiceOverMetadata now includes Season/Episode when the feed provides them, matching Library's conditional pattern.
-— Added 28 new unit tests pinning EpisodeDurationFormatter.spoken() contract and the voiceOverMetadata target shape.
+Builds on 2.4.0's accessibility pass. The audit cycle's findings drove deep wiring + feature work across the app.
 
-Known issues:
-— One pre-existing unit test (feedSyncFastBatchImportUsesCheapProfilesAndSkipsExternalChapters) still failing on main; unrelated to a11y or this release. Audited as a known issue.
-— Remaining deferred polish: ~41 mono-without-TunerLabel sites pending a `tunerFont(size:)` helper; comprehensive runtime VO focus-order walk; Instruments perf trace; airplane-mode retry-key walk. Recorded in docs/superpowers/audits/.
+— Podcast-native chapters: feed-provided `<podcast:chapters>` JSON parsed end-to-end. Chapter artwork swaps with the playhead, tappable → NOTES link opens chapter URLs, sponsor-break filtering, sparse-coverage endTime support.
+— Published transcripts: VTT / JSON / SRT / HTML decoders. Falls back to on-device Speech only when no published transcript exists. The transcript panel now scrolls to follow playhead, highlights current line, tap-to-seek, search-within-transcript, source provenance pill.
+— Siri & Spotlight: parameterized PlayEpisode intent + OpenLibrary/OpenQueue/OpenSearch/OpenHome intents. Five donate() sites so iOS Suggestions/Smart Stack/Lock Screen can learn your patterns. Spotlight indexing enriched from 9 to 13 fields per episode.
+— CarPlay scaffolding: 5-tab browse (Library / Queue / Recent / Recommendations / Search), CPSearchTemplate against on-device shows, Now Playing Up Next wired to queue. Ships dormant — requires Apple's `com.apple.developer.carplay-audio` entitlement grant to activate.
+— Recommendation engine fully wired: 14-day taste-decay half-life, per-show binge dampener, 5 PlaybackEvent emit sites driving negative-signal suppression + positive queue-trust credit. Explanations now cite specific evidence ("You finished 3 episodes of Hardcore History" not "Matches your taste").
+— Editorial collections in Search/Picker: hand-curated shelves (Just under an hour / Long-form interviews / News on the go / etc.) layered over the genre catalog.
+— Library row download badges: ambient download state visible on every row. Failed downloads are tappable to retry.
+— Lock-screen scrubber now actually seeks (was rendering but no-op on drag). Live Activity ends on episode change so the Dynamic Island doesn't show stale artwork.
+— Debug Inspector in Settings → Diagnostics: surfaces telemetry events, per-podcast sync history, download state, BGTaskScheduler schedule. Wi-Fi-only download toggle finally has UI.
+— ~50 new unit + UI tests covering the new wiring. Build green.
+
+Audit-cycle fixes
+— Real production bug: TopicExtractionService was silently producing zero tags on simulator + during real-device model-download warmup. Recommendations had been impoverished. Fixed with NLTokenizer fallback.
+— DownloadService configure() was dead code in production. The reconciliation, queue-resume, and model-context wiring never ran. Subway test now works.
+— Sentry sendDefaultPii explicitly false. Widget gets its own privacy manifest.
+— Ghost Live Activities frozen on Dynamic Island after force-quit now sweep on cold launch.
+
+Known issues
+— 4 PlaybackEventEmissionTests + 1 deep-link test fail in full-suite, pass in isolation. Architectural fix is instance-based context injection (multi-session refactor). Documented in TEST_MATRIX.md.
+— CarPlay won't appear until Apple grants the audio-app entitlement. Apply via developer.apple.com/contact/carplay/.
+— Push notifications scaffolded but not wired to BackgroundFeedRefresh yet (NotificationService.swift is ready; host-app wiring is the 4-line follow-up).

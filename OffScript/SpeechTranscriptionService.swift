@@ -105,14 +105,40 @@ final class SpeechTranscriptionService {
             return stored
         }
 
+        // If the feed publishes an authoritative transcript, prefer that
+        // over running Speech recognition. Publisher transcripts are faster
+        // to obtain (single HTTP fetch), more accurate (publisher-edited),
+        // and may carry speaker labels Speech can't produce. See
+        // PublishedTranscriptLoader for format/locale selection rules.
+        if !episode.transcriptReferences.isEmpty,
+           let loaded = await PublishedTranscriptLoader.fetchPublishedTranscript(
+                for: episode,
+                persistTo: context
+           ) {
+            storeTranscript(loaded.plainText, for: episode.id)
+            return loaded.plainText
+        }
+
         let status = await requestAuthorization()
         guard status == .authorized else {
             throw TranscriptionError.notAuthorized
         }
 
-        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US")),
-              recognizer.isAvailable,
-              recognizer.supportsOnDeviceRecognition else {
+        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US")) else {
+            speechLogger.warning("SFSpeechRecognizer init failed for locale=en-US — Speech framework refused locale")
+            throw TranscriptionError.onDeviceUnavailable
+        }
+        guard recognizer.isAvailable else {
+            speechLogger.warning("SFSpeechRecognizer unavailable (likely network/state) — refusing to fall back to cloud")
+            throw TranscriptionError.onDeviceUnavailable
+        }
+        guard recognizer.supportsOnDeviceRecognition else {
+            // Critical privacy guardrail: without on-device support, the
+            // Speech framework would otherwise ship audio to Apple servers.
+            // CLAUDE.md says "No cloud round-trip; no third-party API keys
+            // touch listening data" — surface this loudly rather than
+            // silently falling over.
+            speechLogger.warning("On-device Speech recognition not supported on this device/locale — aborting (no cloud fallback by policy)")
             throw TranscriptionError.onDeviceUnavailable
         }
 

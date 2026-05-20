@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import Network
 import OSLog
 import SwiftData
 
@@ -42,7 +43,17 @@ final class DownloadService: NSObject, ObservableObject {
         modelContext = context
         guard !hasReconciledPersistedState else { return }
         reconcilePersistedDownloads()
+        sweepOrphanDownloadFiles()
         hasReconciledPersistedState = true
+    }
+
+    /// Test-only hook to force a re-run of the launch reconciliation against a
+    /// freshly-injected context. Production callers go through `configure`,
+    /// which guards on a one-shot flag.
+    func reconcileForTesting(context: ModelContext) {
+        modelContext = context
+        reconcilePersistedDownloads()
+        sweepOrphanDownloadFiles()
     }
 
     func startDownload(for episode: Episode) {
@@ -73,15 +84,38 @@ final class DownloadService: NSObject, ObservableObject {
         episode.isDownloaded = false
         modelContext?.saveOrLog("DownloadService")
 
-        if activeDownloadCount < maximumConcurrentDownloads {
+        if activeDownloadCount < maximumConcurrentDownloads, isAllowedOnCurrentNetwork {
             beginDownload(for: episode)
         } else {
             TelemetryService.track(
                 "download_queued",
-                metadata: ["episode": episode.title, "podcast": episode.podcast.title],
+                metadata: [
+                    "episode": episode.title,
+                    "podcast": episode.podcast.title,
+                    "reason": isAllowedOnCurrentNetwork ? "concurrency" : "wifi_only"
+                ],
                 in: modelContext
             )
         }
+    }
+
+    /// Returns `false` when the user has Wi-Fi-only downloads enabled AND the
+    /// device is currently on cellular (or has no resolved interface yet).
+    /// `URLSessionConfiguration.allowsCellularAccess` would also enforce this,
+    /// but checking up front lets us keep episodes visibly `.queued` rather
+    /// than spinning up a background task that immediately fails or stalls.
+    private var isAllowedOnCurrentNetwork: Bool {
+        guard AppSettings.downloadsWiFiOnly else { return true }
+        // If the monitor hasn't resolved yet (`nil`), defer to be safe — we'll
+        // pick the queued episode back up once the network monitor fires.
+        return NetworkMonitor.shared.connectionType == .wifi
+    }
+
+    /// Called from a `NetworkMonitor` observer so freshly-allowed downloads
+    /// kick off when the device joins Wi-Fi. Public for the test suite.
+    func networkConditionsChanged() {
+        guard isAllowedOnCurrentNetwork else { return }
+        resumeQueuedDownloadsIfNeeded()
     }
 
     func cancelDownload(for episode: Episode) {
@@ -231,6 +265,43 @@ final class DownloadService: NSObject, ObservableObject {
         episodeIDToTask.count
     }
 
+    /// Test-only mirror of the in-flight task count. The production code
+    /// reads `activeDownloadCount` directly; tests reach in through this to
+    /// assert that cancel/delete drained the dictionaries.
+    var activeDownloadCountForTesting: Int { activeDownloadCount }
+    var trackedEpisodeIDsForTesting: Set<UUID> { Set(episodeIDToTask.keys) }
+
+    #if DEBUG
+    /// Drop singleton state that would otherwise leak across in-memory
+    /// `ModelContainer`s in the test suite. The URLSession delegate
+    /// callbacks (`didWriteData`, `didFinishDownloadingTo`, etc.) all
+    /// hop to the main actor and look up an `Episode` through the
+    /// cached `modelContext`; if that context was torn down by a
+    /// previous test, the fetch crashes inside SwiftData. Cancelling
+    /// every in-flight task and nil-ing the context here prevents that
+    /// cross-test crash class. Mirrors the lurking-crash playbook in
+    /// `docs/TEST_MATRIX.md`.
+    @MainActor
+    func debugResetForTesting() {
+        // 1. Cancel every in-flight URLSession download task before we
+        //    drop the dictionaries — without this the task's completion
+        //    callback would still fire and try to use the (now nil)
+        //    modelContext / the previous test's context.
+        for task in episodeIDToTask.values {
+            task.cancel()
+        }
+        episodeIDToTask.removeAll()
+        taskToEpisodeID.removeAll()
+        lastPersistedProgressByEpisodeID.removeAll()
+        lastProgressSaveDateByEpisodeID.removeAll()
+        hasReconciledPersistedState = false
+        backgroundCompletionHandler = nil
+        // 2. Drop the model context last — other steps may want to log
+        //    or read it on the way out.
+        modelContext = nil
+    }
+    #endif
+
     private func beginDownload(for episode: Episode) {
         let task = session.downloadTask(with: episode.audioURL)
         task.taskDescription = episode.id.uuidString
@@ -249,6 +320,7 @@ final class DownloadService: NSObject, ObservableObject {
 
     private func resumeQueuedDownloadsIfNeeded() {
         guard activeDownloadCount < maximumConcurrentDownloads, let modelContext else { return }
+        guard isAllowedOnCurrentNetwork else { return }
         let queuedState = Episode.DownloadState.queued.rawValue
         let descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { $0.downloadStateRawValue == queuedState },
@@ -310,6 +382,61 @@ final class DownloadService: NSObject, ObservableObject {
         }
 
         modelContext.saveOrLog("DownloadService")
+    }
+
+    /// Sweep the Downloads directory for files that no `Episode` claims.
+    ///
+    /// Orphans happen when:
+    ///   - The user unsubscribed mid-download and the URLSession landed the
+    ///     file after the model row was already gone.
+    ///   - SwiftData cascade-deletion ran but the file delete failed (low-
+    ///     disk, file system error, etc).
+    ///   - An upgrade path renamed the destination scheme and old files were
+    ///     left behind.
+    ///
+    /// Filenames are `<episodeUUID>.<ext>`, so we can match each file to a
+    /// live Episode by parsing the basename. Anything that doesn't resolve
+    /// gets deleted.
+    func sweepOrphanDownloadFiles() {
+        guard let modelContext else { return }
+        let supportURL = try? FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        )
+        guard let downloadsURL = supportURL?.appending(path: "Downloads", directoryHint: .isDirectory) else { return }
+        guard FileManager.default.fileExists(atPath: downloadsURL.path) else { return }
+
+        let files: [URL]
+        do {
+            files = try FileManager.default.contentsOfDirectory(at: downloadsURL, includingPropertiesForKeys: nil)
+        } catch {
+            downloadLogger.error("sweepOrphanDownloadFiles list failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        var removedCount = 0
+        for fileURL in files {
+            let basename = fileURL.deletingPathExtension().lastPathComponent
+            guard let episodeID = UUID(uuidString: basename) else {
+                // Unknown file format in the Downloads dir — leave it alone.
+                continue
+            }
+
+            let descriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.id == episodeID }
+            )
+            let owner = try? modelContext.fetch(descriptor).first
+            if owner == nil {
+                removeFileIfPresent(at: fileURL)
+                removedCount += 1
+            }
+        }
+
+        if removedCount > 0 {
+            downloadLogger.info("Removed \(removedCount) orphan download file(s)")
+        }
     }
 
     private func removeFileIfPresent(at url: URL) {

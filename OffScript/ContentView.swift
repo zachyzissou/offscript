@@ -146,6 +146,16 @@ struct ContentView: View {
             SpotlightIndexer.indexEpisodes(in: modelContext)
             NowPlayingPublisher.shared.start()
             BackgroundTranscriptionService.shared.configure(context: modelContext)
+            // Triggers on-launch reconciliation of any episodes left in
+            // `.queued` / `.downloading` state from a prior session, sweeps
+            // orphan files in the Downloads directory, and installs the
+            // delegate the URLSession background session needs to deliver
+            // didFinishDownloadingTo events. Without this call the entire
+            // offline pipeline is dead at launch — episodes that were
+            // mid-download when the app was killed stay stuck in
+            // `.downloading` forever, and the background URLSession's
+            // delegate dictionary fills up but never delivers.
+            DownloadService.shared.configure(context: modelContext)
 
             #if DEBUG
             configureDebugSeedDataIfNeeded()

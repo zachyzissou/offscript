@@ -91,7 +91,14 @@ struct NowPlayingWidgetView: View {
                 .progressViewStyle(.circular)
             Image(systemName: entry.snapshot.isPlaying ? "waveform" : "play.fill")
                 .font(.headline)
+                .accessibilityHidden(true)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            entry.snapshot.isActive
+                ? "\(entry.snapshot.isPlaying ? "Playing" : "Paused"), \(Int(entry.snapshot.progress * 100)) percent"
+                : "OffScript, nothing playing"
+        )
     }
 
     private var rectangularView: some View {
@@ -120,11 +127,13 @@ struct NowPlayingWidgetView: View {
                 Image(systemName: entry.snapshot.isPlaying ? "waveform" : "play.fill")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
                 Spacer()
                 Text("OFFSCRIPT")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .tracking(1.4)
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
 
             Spacer()
@@ -146,9 +155,16 @@ struct NowPlayingWidgetView: View {
             if entry.snapshot.isActive {
                 ProgressView(value: entry.snapshot.progress)
                     .tint(.orange)
+                    .accessibilityValue("\(Int(entry.snapshot.progress * 100)) percent")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            entry.snapshot.isActive
+                ? "OffScript, \(entry.snapshot.isPlaying ? "playing" : "paused"). \(entry.snapshot.episodeTitle) from \(entry.snapshot.podcastTitle)."
+                : "OffScript, nothing playing."
+        )
     }
 
     private var mediumView: some View {
@@ -169,10 +185,12 @@ struct NowPlayingWidgetView: View {
                     Image(systemName: entry.snapshot.isPlaying ? "waveform" : "play.fill")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.orange)
+                        .accessibilityHidden(true)
                     Text("NOW PLAYING")
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .tracking(1.4)
                         .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                     Spacer()
                 }
 
@@ -186,6 +204,7 @@ struct NowPlayingWidgetView: View {
                         .lineLimit(1)
                     ProgressView(value: entry.snapshot.progress)
                         .tint(.orange)
+                        .accessibilityValue("\(Int(entry.snapshot.progress * 100)) percent")
                 } else {
                     Text("Tap to open OffScript")
                         .font(.caption)
@@ -196,5 +215,11 @@ struct NowPlayingWidgetView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            entry.snapshot.isActive
+                ? "Now playing on OffScript: \(entry.snapshot.episodeTitle) from \(entry.snapshot.podcastTitle). \(entry.snapshot.isPlaying ? "Playing" : "Paused")."
+                : "OffScript. Tap to open."
+        )
     }
 }

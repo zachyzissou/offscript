@@ -66,18 +66,40 @@ enum SpotlightIndexer {
         for episode in episodes {
             let attributes = CSSearchableItemAttributeSet(contentType: UTType.audio)
             attributes.title = episode.title
+            // `displayName` is what Spotlight shows as the primary label in
+            // the result row on iOS 17+. Without it, some surfaces fall back
+            // to the filename derived from the audio URL, which is unreadable.
+            attributes.displayName = episode.title
             attributes.contentDescription = episode.summary?.strippingHTML
             attributes.artist = episode.podcast.author ?? episode.podcast.title
             attributes.album = episode.podcast.title
             attributes.containerTitle = episode.podcast.title
+            // Carry the podcast UUID alongside the episode so future podcast-
+            // level Spotlight donations can group results by show. Cheap to
+            // populate; ignored harmlessly today.
+            attributes.containerIdentifier = episode.podcast.id.uuidString
             attributes.contentCreationDate = episode.pubDate
+            // The pubDate doubles as the "added" timestamp for ranking — newer
+            // episodes outrank older ones when keywords tie.
+            attributes.addedDate = episode.pubDate
             if let duration = episode.duration {
                 attributes.duration = NSNumber(value: duration)
             }
             if let artworkURL = episode.artworkURL ?? episode.podcast.artworkURL {
                 attributes.thumbnailURL = artworkURL
             }
-            attributes.keywords = ["podcast", "OffScript", episode.podcast.title]
+            // Author + podcast name expand discoverability — searching for a
+            // host's name or show name now matches episodes from that show.
+            var keywords = ["podcast", "OffScript", episode.podcast.title]
+            if let author = episode.podcast.author, !author.isEmpty {
+                keywords.append(author)
+            }
+            attributes.keywords = keywords
+            // Deep-linkable URL so Spotlight can launch directly without
+            // ContentView reconstructing the URL from uniqueIdentifier on
+            // every tap. ContentView still handles the user-activity path
+            // for back-compat with iOS 16.
+            attributes.contentURL = URL(string: "offscript://episode/\(episode.id.uuidString)")
 
             let item = CSSearchableItem(
                 uniqueIdentifier: episode.id.uuidString,

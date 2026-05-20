@@ -102,8 +102,36 @@ final class TopicExtractionService {
         profile.tags = tags
         profile.entities = entities
         if summary != nil { profile.summary = summary }
+        profile.confidenceScore = Self.confidenceScore(tags: tags, entities: entities)
 
         if existing == nil { context.insert(profile) }
+    }
+
+    /// Heuristic [0,1] confidence in the extraction output for an episode.
+    ///
+    /// Higher when the extractor produced a richer, more diverse signal. The
+    /// formula caps each axis independently so a noisy tag stream can't
+    /// dominate, and gives entities a slight premium since named-entity
+    /// extraction is harder than noun extraction.
+    ///
+    /// Floor of 0.0 when there is no signal at all (empty extraction). This is
+    /// the only `EpisodeProfile` scoring field that has a cheap, honest,
+    /// on-device producer today — see Models.swift dormancy notes on the
+    /// other fields.
+    static func confidenceScore(tags: [String], entities: [String]) -> Double {
+        // Distinct, non-trivial signals only.
+        let distinctTags = Set(tags.map { $0.lowercased() }).filter { $0.count > 2 }
+        let distinctEntities = Set(entities.map { $0.lowercased() }).filter { $0.count > 1 }
+        if distinctTags.isEmpty && distinctEntities.isEmpty { return 0 }
+        // 7 tags = saturated tag axis (matches the Generable `.count(3...7)`
+        // upper bound). 4 entities = saturated entity axis (slightly under the
+        // Generable `.count(0...6)` cap; rare to see >4 distinct named entities
+        // in a one-paragraph episode description).
+        let tagAxis = min(Double(distinctTags.count) / 7.0, 1.0)
+        let entityAxis = min(Double(distinctEntities.count) / 4.0, 1.0)
+        // Tags weighted 0.6, entities 0.4 — entities are harder signal but
+        // tags are the primary recommendation input.
+        return min(1.0, tagAxis * 0.6 + entityAxis * 0.4)
     }
 
     func enrichHeuristically(episode: Episode, in context: ModelContext) throws {
@@ -126,6 +154,7 @@ final class TopicExtractionService {
         let (tags, entities) = Self.heuristicTagsAndEntities(from: baseText)
         profile.tags = tags
         profile.entities = entities
+        profile.confidenceScore = Self.confidenceScore(tags: tags, entities: entities)
 
         if existing == nil { context.insert(profile) }
     }
@@ -204,31 +233,89 @@ final class TopicExtractionService {
         var tagCounts: [String: Int] = [:]
         var entities: Set<String> = []
 
+        let range = cleanText.startIndex..<cleanText.endIndex
         let tagger = NLTagger(tagSchemes: [.nameType, .lexicalClass])
         tagger.string = cleanText
-        let range = cleanText.startIndex..<cleanText.endIndex
+        // Explicitly bind the language; on the iOS simulator (and on devices
+        // where the on-device lexical-class / name-type models are missing or
+        // not yet downloaded) NLTagger will silently emit no tags otherwise.
+        tagger.setLanguage(.english, range: range)
         let options: NLTagger.Options = [.omitWhitespace, .omitPunctuation, .omitOther]
 
-        tagger.enumerateTags(in: range, unit: .word, scheme: .nameType, options: options) { tag, tokenRange in
-            if tag == .personalName || tag == .organizationName || tag == .placeName {
-                let token = String(cleanText[tokenRange])
-                entities.insert(token)
+        // `availableTagSchemes` tells us whether the on-device model is loaded.
+        // On the simulator only Language/Script/TokenType are available for
+        // .word, so we have to fall back to a tokenizer-based heuristic that
+        // does not depend on lexical-class classification.
+        let wordSchemes = NLTagger.availableTagSchemes(for: .word, language: .english)
+        let hasLexicalClass = wordSchemes.contains(.lexicalClass)
+        let hasNameType = wordSchemes.contains(.nameType)
+
+        if hasNameType {
+            tagger.enumerateTags(in: range, unit: .word, scheme: .nameType, options: options) { tag, tokenRange in
+                if tag == .personalName || tag == .organizationName || tag == .placeName {
+                    let token = String(cleanText[tokenRange])
+                    entities.insert(token)
+                }
+                return true
             }
-            return true
         }
 
-        tagger.enumerateTags(in: range, unit: .word, scheme: .lexicalClass, options: options) { tag, tokenRange in
-            if tag == .noun {
-                let token = String(cleanText[tokenRange]).lowercased()
-                if token.count > 2, !stopwords.contains(token) {
+        if hasLexicalClass {
+            tagger.enumerateTags(in: range, unit: .word, scheme: .lexicalClass, options: options) { tag, tokenRange in
+                if tag == .noun {
+                    let token = String(cleanText[tokenRange]).lowercased()
+                    if token.count > 2, !stopwords.contains(token) {
+                        tagCounts[token, default: 0] += 1
+                    }
+                }
+                return true
+            }
+        } else {
+            // Fallback: tokenize words and count anything that isn't a stopword
+            // and isn't obviously a function word. This is dumber than the
+            // lexical-class path but produces *something* useful so downstream
+            // recommendation/topic plumbing has signal to work with.
+            let tokenizer = NLTokenizer(unit: .word)
+            tokenizer.string = cleanText
+            tokenizer.setLanguage(.english)
+            tokenizer.enumerateTokens(in: range) { tokenRange, _ in
+                let raw = String(cleanText[tokenRange]).lowercased()
+                // Strip trailing punctuation that the tokenizer leaves in.
+                let token = raw.trimmingCharacters(in: .punctuationCharacters)
+                if token.count > 2,
+                   !stopwords.contains(token),
+                   !Self.heuristicFunctionWords.contains(token),
+                   token.rangeOfCharacter(from: .letters) != nil {
                     tagCounts[token, default: 0] += 1
                 }
+                return true
             }
-            return true
         }
 
         let tags = tagCounts.sorted { $0.value > $1.value }.prefix(7).map { $0.key }
         return (tags, Array(entities))
     }
+
+    /// Closed-class English words to exclude from the tokenizer fallback when
+    /// the lexical-class model isn't available (e.g. iOS simulator). Keep this
+    /// list short — these are very common function words that would otherwise
+    /// dominate the tag count.
+    private static let heuristicFunctionWords: Set<String> = [
+        "the", "and", "but", "for", "with", "from", "this", "that", "these",
+        "those", "you", "your", "yours", "they", "them", "their", "theirs",
+        "have", "has", "had", "was", "were", "are", "been", "being", "will",
+        "would", "could", "should", "shall", "may", "might", "must", "can",
+        "cannot", "about", "into", "onto", "over", "under", "after", "before",
+        "between", "through", "during", "while", "until", "since", "because",
+        "where", "when", "what", "which", "who", "whom", "whose", "why", "how",
+        "all", "any", "both", "each", "few", "more", "most", "some", "such",
+        "only", "own", "same", "than", "too", "very", "just", "also", "then",
+        "there", "here", "him", "her", "his", "she", "out", "off", "got",
+        "get", "make", "made", "take", "took", "give", "gave", "going", "went",
+        "say", "said", "says", "let", "lets", "way", "ways", "thing", "things",
+        "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+        "ten", "yes", "yeah", "okay", "ok", "now", "still", "even", "back",
+        "well", "much", "many", "lot", "lots", "really"
+    ]
 
 }
