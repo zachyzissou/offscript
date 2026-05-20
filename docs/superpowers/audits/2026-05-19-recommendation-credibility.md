@@ -200,3 +200,67 @@ code. Specific deferrals:
   would let us drop a "you usually listen mornings — this is a morning-fit
   short episode" rail. Schema work + sensor of `played at time-of-day` data
   collection.
+
+## Phase 19 — emitter resolution (2026-05-20)
+
+The Phase 18 audit ("Strategic finding" above) flagged that
+`PlaybackEvent.Kind` had eight cases but only `.completed` was ever
+emitted — `TasteProfileService` scored all eight, and
+`RecommendationService.negativeEvidence` read `.skippedQuickly` /
+`.abandoned`, yet the stream never carried those events. Phase 19 wires
+the four missing user-facing emitters.
+
+| Event | Trigger | File:line |
+|---|---|---|
+| `.advancedFromQueue` | Inside `observePlaybackCompletion` callback after `skipToNextInQueue()` auto-advances, emitted **for the NEW episode** (positive signal about the queue's pick, not about the finished one) | `PlaybackController.swift:583` |
+| `.skippedQuickly` | `prepareItem` detects an outgoing episode with `playedPosition < 30s` OR (`duration > 0 && playedPosition/duration < 5%`) — the fraction gate catches a 4-hour episode at 1 minute as a quick skip | `PlaybackController.swift:303` (via `classifySwitchAway`) |
+| `.abandoned` | `prepareItem` detects an outgoing episode with `playedPosition >= 30s` AND `playedPosition/duration < 85%` — the 85% upper gate protects near-finished content from being mis-labeled as disliked | same path |
+| `.resumed` | `togglePlayPause` un-pausing with `currentTime >= 60s` — below that the user is still in the initial-listening phase, and emitting here would inflate positive signal on every queued episode | `PlaybackController.swift:374` |
+
+**Heuristics chosen:**
+
+- `skippedQuicklyThresholdSeconds = 30` — past the 5-15s "tapped wrong
+  episode" reaction window, well under genuine engagement.
+- `abandonedFractionThreshold = 0.85` — closes the "user abandoned at
+  92%" misclassification gap. Up there we trust the user got value.
+- `skippedQuicklyFractionThreshold = 0.05` — secondary gate for very
+  long episodes where the wall-clock floor alone would mis-bucket.
+- `resumedMinimumProgressSeconds = 60` — pin around 1 minute so the
+  test "queued episode, paused immediately, tapped play again"
+  doesn't emit a false positive.
+
+**System-induced state changes are guarded:** `handleInterruption` and
+`handleRouteChange` call `player.pause()` directly (not
+`togglePlayPause`), so the `.resumed` emit path is structurally
+unreachable from those. The completion observer marks
+`finishing.isPlayed = true` before triggering `skipToNextInQueue`, so
+`classifySwitchAway` returns `nil` and we never double-emit on top of
+`.completed`.
+
+**Test isolation surprise:** `PlaybackController` is a singleton that
+holds `currentEpisode` (a SwiftData `@Model` reference) across test
+runs. Once a test's in-memory `ModelContainer` was torn down, the
+controller's stale reference would crash the next test's
+`prepareItem` / `togglePlayPause`. Added `debugResetForTesting()` +
+`NowPlayingPublisher.debugStopForTesting()` so the singleton can be
+cleanly recycled. This is a broader issue worth flagging: any future
+test that exercises the live `PlaybackController.shared` singleton
+needs the reset, and any other `@MainActor` singleton that subscribes
+to its publishers (Combine `$currentEpisode`) needs an equivalent
+tear-down hook.
+
+**Test coverage:** 16 new tests in `PlaybackEventEmissionTests`. The
+seven deferred decay-tests from Phase 18 were aimed at
+`TasteProfileService` (already landed in Phase 18 itself); the
+equivalent emitter-side pinning is now in place. The integration
+test `playbackCompletionWithAutoplayEmitsAdvancedFromQueue` exercises
+the full `.AVPlayerItemDidPlayToEndTime` → completion observer →
+`skipToNextInQueue` → `.advancedFromQueue` emission chain by posting
+the AVPlayer end-time notification directly, which is the closest a
+unit test can come to the real auto-advance path without driving the
+player.
+
+**Deferred:** `.seekedForward` / `.seekedBackward` (mostly diagnostic,
+no scoring code reads them yet — would be Phase-19.5 work to thread
+them through the `seek(by:)` path), and `.started` (low-value vs.
+`.completed`'s coverage, and would create a noisy stream).
