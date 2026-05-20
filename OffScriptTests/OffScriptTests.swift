@@ -3930,3 +3930,264 @@ struct TranscriptPipelineTests {
     }
 }
 
+// MARK: - Offline Reliability Tests
+//
+// Phase 1 of NEXT_IMPLEMENTATION_BACKLOG — covers the on-launch
+// reconciliation, orphan-file sweep, cancel cleanup, and the
+// PodcastUnsubscribeService transcript-cache cleanup that Phase 14
+// flagged. These tests touch the real applicationSupportDirectory so
+// each test scopes its files to UUIDs that the rest of the suite
+// won't collide with, and cleans them up in a defer block.
+
+/// Helper — the real production Downloads dir. Lives in Application
+/// Support so it survives across launches in real use. Tests reuse it
+/// (instead of stubbing FileManager) because `DownloadService.sweepOrphanDownloadFiles`
+/// is the contract under test and it reads from this exact location.
+@MainActor
+private func productionDownloadsDirectory() throws -> URL {
+    let supportURL = try FileManager.default.url(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask,
+        appropriateFor: nil,
+        create: true
+    )
+    let downloadsURL = supportURL.appending(path: "Downloads", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: downloadsURL, withIntermediateDirectories: true)
+    return downloadsURL
+}
+
+@MainActor
+struct OfflineReliabilityTests {
+    @Test
+    func reconcileFlipsOrphanedDownloadingEpisodeToFailed() throws {
+        let container = try makeOfflineContainer()
+        let context = ModelContext(container)
+        let podcast = Podcast(title: "Reliability Show", feedURL: URL(string: "https://example.com/r.xml")!)
+        context.insert(podcast)
+        let episode = Episode(
+            title: "Interrupted",
+            pubDate: .now,
+            audioURL: URL(string: "https://example.com/interrupted.mp3")!,
+            podcast: podcast
+        )
+        context.insert(episode)
+        // Simulate an app kill mid-download: state persisted as .downloading
+        // with no local file landed.
+        episode.downloadState = .downloading
+        episode.downloadProgress = 0.42
+        episode.localFileURL = nil
+        try context.save()
+
+        DownloadService.shared.reconcileForTesting(context: context)
+
+        #expect(episode.downloadState == .failed)
+        #expect(episode.downloadProgress == 0)
+        #expect(episode.isDownloaded == false)
+        #expect(episode.downloadErrorMessage != nil)
+    }
+
+    @Test
+    func reconcilePromotesDownloadedRowWithMatchingFile() throws {
+        let container = try makeOfflineContainer()
+        let context = ModelContext(container)
+        let podcast = Podcast(title: "Disk Match", feedURL: URL(string: "https://example.com/d.xml")!)
+        context.insert(podcast)
+        let episode = Episode(
+            title: "Already Saved",
+            pubDate: .now,
+            audioURL: URL(string: "https://example.com/saved.mp3")!,
+            podcast: podcast
+        )
+        context.insert(episode)
+
+        // Seed a real file on disk that matches the episode's `localFileURL`.
+        let downloadsDir = try productionDownloadsDirectory()
+        let fileURL = downloadsDir.appending(path: "\(episode.id.uuidString).mp3")
+        try Data("synthetic".utf8).write(to: fileURL)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        // Persisted state says .queued (e.g. the request was queued but the
+        // file was finalized before the state save committed — possible on
+        // a force-kill between move-into-place and save).
+        episode.downloadState = .queued
+        episode.localFileURL = fileURL
+        try context.save()
+
+        DownloadService.shared.reconcileForTesting(context: context)
+
+        #expect(episode.downloadState == .downloaded)
+        #expect(episode.isDownloaded == true)
+        #expect(episode.downloadProgress == 1)
+    }
+
+    @Test
+    func reconcileClearsDownloadedRowWhenFileMissing() throws {
+        let container = try makeOfflineContainer()
+        let context = ModelContext(container)
+        let podcast = Podcast(title: "Vanished", feedURL: URL(string: "https://example.com/v.xml")!)
+        context.insert(podcast)
+        let episode = Episode(
+            title: "Lost File",
+            pubDate: .now,
+            audioURL: URL(string: "https://example.com/lost.mp3")!,
+            podcast: podcast
+        )
+        context.insert(episode)
+
+        // Persist a downloaded row pointing at a path that does NOT exist
+        // (user cleared via Files.app, low-disk eviction, etc).
+        let phantomURL = try productionDownloadsDirectory()
+            .appending(path: "\(episode.id.uuidString).mp3")
+        // Make sure no file is actually at the path.
+        try? FileManager.default.removeItem(at: phantomURL)
+        episode.downloadState = .downloaded
+        episode.isDownloaded = true
+        episode.downloadProgress = 1
+        episode.localFileURL = phantomURL
+        try context.save()
+
+        DownloadService.shared.reconcileForTesting(context: context)
+
+        #expect(episode.downloadState == .notDownloaded)
+        #expect(episode.isDownloaded == false)
+        #expect(episode.localFileURL == nil)
+    }
+
+    @Test
+    func sweepRemovesOrphanFilesWithNoOwningEpisode() throws {
+        let container = try makeOfflineContainer()
+        let context = ModelContext(container)
+        // Create a podcast/episode so the context isn't empty (otherwise the
+        // sweep would also touch its own files, but there shouldn't be any).
+        let podcast = Podcast(title: "Survivor", feedURL: URL(string: "https://example.com/s.xml")!)
+        context.insert(podcast)
+        let liveEpisode = Episode(
+            title: "Lives",
+            pubDate: .now,
+            audioURL: URL(string: "https://example.com/lives.mp3")!,
+            podcast: podcast
+        )
+        context.insert(liveEpisode)
+
+        let downloadsDir = try productionDownloadsDirectory()
+        // Orphan: filename UUID has no matching Episode.
+        let orphanID = UUID()
+        let orphanURL = downloadsDir.appending(path: "\(orphanID.uuidString).mp3")
+        try Data("orphan".utf8).write(to: orphanURL)
+        // Owned: filename UUID matches `liveEpisode`.
+        let ownedURL = downloadsDir.appending(path: "\(liveEpisode.id.uuidString).mp3")
+        try Data("owned".utf8).write(to: ownedURL)
+        defer {
+            try? FileManager.default.removeItem(at: orphanURL)
+            try? FileManager.default.removeItem(at: ownedURL)
+        }
+        liveEpisode.localFileURL = ownedURL
+        liveEpisode.downloadState = .downloaded
+        liveEpisode.isDownloaded = true
+        try context.save()
+
+        DownloadService.shared.reconcileForTesting(context: context)
+
+        // Orphan should be gone; owned file should still be there.
+        #expect(!FileManager.default.fileExists(atPath: orphanURL.path))
+        #expect(FileManager.default.fileExists(atPath: ownedURL.path))
+        // Owned episode should remain downloaded.
+        #expect(liveEpisode.downloadState == .downloaded)
+    }
+
+    @Test
+    func unsubscribeRemovesTranscriptCacheForPodcastEpisodes() throws {
+        let container = try makeOfflineContainer()
+        let context = ModelContext(container)
+        let leaving = Podcast(title: "Bye", feedURL: URL(string: "https://example.com/bye.xml")!)
+        let staying = Podcast(title: "Stay", feedURL: URL(string: "https://example.com/stay.xml")!)
+        context.insert(leaving)
+        context.insert(staying)
+
+        let leavingEp = Episode(
+            title: "Bye 1",
+            pubDate: .now,
+            audioURL: URL(string: "https://example.com/bye1.mp3")!,
+            podcast: leaving
+        )
+        let stayingEp = Episode(
+            title: "Stay 1",
+            pubDate: .now,
+            audioURL: URL(string: "https://example.com/stay1.mp3")!,
+            podcast: staying
+        )
+        context.insert(leavingEp)
+        context.insert(stayingEp)
+
+        let leavingCache = EpisodeTranscriptCache(
+            episodeID: leavingEp.id,
+            text: "Bye transcript",
+            source: "speech"
+        )
+        let stayingCache = EpisodeTranscriptCache(
+            episodeID: stayingEp.id,
+            text: "Stay transcript",
+            source: "speech"
+        )
+        context.insert(leavingCache)
+        context.insert(stayingCache)
+        try context.save()
+
+        let ok = PodcastUnsubscribeService.unsubscribe(leaving, in: context)
+        #expect(ok)
+
+        let descriptor = FetchDescriptor<EpisodeTranscriptCache>()
+        let remaining = try context.fetch(descriptor)
+        let remainingIDs = Set(remaining.map(\.episodeID))
+        #expect(!remainingIDs.contains(leavingEp.id))
+        #expect(remainingIDs.contains(stayingEp.id))
+    }
+
+    @Test
+    func cancelClearsTrackerEntriesAndPartialFile() throws {
+        let container = try makeOfflineContainer()
+        let context = ModelContext(container)
+        let podcast = Podcast(title: "Cancel", feedURL: URL(string: "https://example.com/c.xml")!)
+        context.insert(podcast)
+        let episode = Episode(
+            title: "Aborted",
+            pubDate: .now,
+            audioURL: URL(string: "https://example.com/abort.mp3")!,
+            podcast: podcast
+        )
+        context.insert(episode)
+        // Simulate a queued state: no URLSession task yet — DownloadService's
+        // queued-branch cancel path.
+        episode.downloadState = .queued
+        episode.downloadProgress = 0
+        try context.save()
+
+        DownloadService.shared.reconcileForTesting(context: context)
+        DownloadService.shared.cancelDownload(for: episode)
+
+        #expect(episode.downloadState == .notDownloaded)
+        #expect(episode.downloadProgress == 0)
+        #expect(episode.isDownloaded == false)
+        // Tracker dictionaries should not be holding the cancelled episode.
+        #expect(!DownloadService.shared.trackedEpisodeIDsForTesting.contains(episode.id))
+    }
+
+    private func makeOfflineContainer() throws -> ModelContainer {
+        // Wider schema than makeContainer above — we need EpisodeTranscriptCache
+        // for the unsubscribe-cleanup test.
+        let schema = Schema([
+            Podcast.self,
+            Episode.self,
+            EpisodeProfile.self,
+            PlaybackEvent.self,
+            PreferenceSignal.self,
+            QueueItem.self,
+            UserTasteProfile.self,
+            TelemetryEvent.self,
+            EpisodeTranscriptCache.self
+        ])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        return try ModelContainer(for: schema, configurations: [configuration])
+    }
+}
+

@@ -265,6 +265,12 @@ final class DownloadService: NSObject, ObservableObject {
         episodeIDToTask.count
     }
 
+    /// Test-only mirror of the in-flight task count. The production code
+    /// reads `activeDownloadCount` directly; tests reach in through this to
+    /// assert that cancel/delete drained the dictionaries.
+    var activeDownloadCountForTesting: Int { activeDownloadCount }
+    var trackedEpisodeIDsForTesting: Set<UUID> { Set(episodeIDToTask.keys) }
+
     private func beginDownload(for episode: Episode) {
         let task = session.downloadTask(with: episode.audioURL)
         task.taskDescription = episode.id.uuidString
