@@ -327,6 +327,33 @@ final class EpisodeProfile {
 
     // Recommendation-engine scoring inputs (added on origin/main).
     // Default values keep older stores migration-safe.
+    //
+    // Wiring status (see `docs/superpowers/audits/2026-05-20-deadcode-wiring-resweep.md`
+    // N1 resolution):
+    //   - confidenceScore: WIRED. Populated by TopicExtractionService.enrich(...)
+    //     from the size/diversity of extracted tags+entities. Higher value =
+    //     extractor produced more distinct signal for this episode.
+    //   - qualityScore: DORMANT. No honest on-device source exists yet
+    //     (audio-quality classification would need iOS 26 SoundAnalysis +
+    //     ground-truth labels). The reader at RecommendationService.swift:540
+    //     guards on `> 0` so dormancy doesn't silently kill the tiebreaker.
+    //   - estimatedListeningContext: DORMANT. Would require modeling user
+    //     playback contexts (commute/workout/wind-down) — out of scope for
+    //     Phase 36; honest population needs behavior data we don't yet collect
+    //     with user consent.
+    //   - freshnessBucket: DORMANT. Caching a bucket from `pubDate` would just
+    //     duplicate the inline freshness math at RecommendationService.swift
+    //     :545 and introduce a staleness bug as `now` moves forward. Read
+    //     sites have `episode.pubDate` trivially available — caching adds no
+    //     value. Kept as a column for forward-compat with a future
+    //     classifier that uses non-time-based signals (e.g. "evergreen").
+    //   - introSkipSeconds / outroSkipSeconds: DORMANT. Would require audio
+    //     fingerprinting across episodes of the same show — substantial
+    //     implementation cost, no current consumer.
+    //
+    // Dormant fields are retained (rather than deleted) to avoid a SwiftData
+    // V2 -> V3 schema migration. When a producer lands, flip the comment and
+    // wire it in the existing enrich() pipeline.
     var qualityScore: Double = 0.0
     var confidenceScore: Double = 0.0
     var estimatedListeningContext: String?

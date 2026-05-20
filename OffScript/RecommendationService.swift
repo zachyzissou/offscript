@@ -537,14 +537,26 @@ final class RecommendationService {
         let matchingTags = matchingLikedTags.union(matchingCompletedTags).union(matchingTopTags)
         let days = max(0, Date().timeIntervalSince(episode.pubDate) / 86_400.0)
         let minutes = (episode.duration ?? 30 * 60) / 60
-        let quality = min(max(profile?.qualityScore ?? 0, 0), 1)
+        // `qualityScore` is currently DORMANT (no producer — see Models.swift
+        // N1 notes). The explicit `> 0` guard keeps a future-populated value
+        // working without silently shipping a permanent 0 multiplier today.
+        // Once a producer lands (or the field is removed via a V3 migration),
+        // this guard can be dropped.
+        let rawQuality = profile?.qualityScore ?? 0
+        let quality: Double? = rawQuality > 0 ? min(max(rawQuality, 0), 1) : nil
+        // `confidenceScore` is WIRED by TopicExtractionService — reflects how
+        // much usable tag/entity signal the extractor produced for this
+        // episode. We use it as a small tiebreaker so episodes with richer
+        // extracted signal float over near-ties with sparse extraction.
+        let confidence = min(max(profile?.confidenceScore ?? 0, 0), 1)
         let durationFit = RecommendationScorer.durationScore(
             minutes: minutes,
             preferredMinutes: context.tasteProfile?.averageCompletedDurationMinutes
         )
         let freshnessTieBreak = max(0, 1 - min(days, 30) / 30) * 8
         let durationTieBreak = durationFit * 5
-        let qualityTieBreak = quality * 5
+        let qualityTieBreak = (quality ?? 0) * 5
+        let confidenceTieBreak = confidence * 4
 
         var evidence: [RecommendationEvidence] = []
 
@@ -727,6 +739,7 @@ final class RecommendationService {
             + (secondary.map { min($0.weight * 0.18, 72) } ?? 0)
             + freshnessTieBreak
             + qualityTieBreak
+            + confidenceTieBreak
             - negativePenalty
         var trace = primary.signals
         if let secondary {

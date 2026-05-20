@@ -102,8 +102,36 @@ final class TopicExtractionService {
         profile.tags = tags
         profile.entities = entities
         if summary != nil { profile.summary = summary }
+        profile.confidenceScore = Self.confidenceScore(tags: tags, entities: entities)
 
         if existing == nil { context.insert(profile) }
+    }
+
+    /// Heuristic [0,1] confidence in the extraction output for an episode.
+    ///
+    /// Higher when the extractor produced a richer, more diverse signal. The
+    /// formula caps each axis independently so a noisy tag stream can't
+    /// dominate, and gives entities a slight premium since named-entity
+    /// extraction is harder than noun extraction.
+    ///
+    /// Floor of 0.0 when there is no signal at all (empty extraction). This is
+    /// the only `EpisodeProfile` scoring field that has a cheap, honest,
+    /// on-device producer today — see Models.swift dormancy notes on the
+    /// other fields.
+    static func confidenceScore(tags: [String], entities: [String]) -> Double {
+        // Distinct, non-trivial signals only.
+        let distinctTags = Set(tags.map { $0.lowercased() }).filter { $0.count > 2 }
+        let distinctEntities = Set(entities.map { $0.lowercased() }).filter { $0.count > 1 }
+        if distinctTags.isEmpty && distinctEntities.isEmpty { return 0 }
+        // 7 tags = saturated tag axis (matches the Generable `.count(3...7)`
+        // upper bound). 4 entities = saturated entity axis (slightly under the
+        // Generable `.count(0...6)` cap; rare to see >4 distinct named entities
+        // in a one-paragraph episode description).
+        let tagAxis = min(Double(distinctTags.count) / 7.0, 1.0)
+        let entityAxis = min(Double(distinctEntities.count) / 4.0, 1.0)
+        // Tags weighted 0.6, entities 0.4 — entities are harder signal but
+        // tags are the primary recommendation input.
+        return min(1.0, tagAxis * 0.6 + entityAxis * 0.4)
     }
 
     func enrichHeuristically(episode: Episode, in context: ModelContext) throws {
@@ -126,6 +154,7 @@ final class TopicExtractionService {
         let (tags, entities) = Self.heuristicTagsAndEntities(from: baseText)
         profile.tags = tags
         profile.entities = entities
+        profile.confidenceScore = Self.confidenceScore(tags: tags, entities: entities)
 
         if existing == nil { context.insert(profile) }
     }
