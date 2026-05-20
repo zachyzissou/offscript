@@ -6248,3 +6248,178 @@ struct DebugInspectorTests {
         #expect(SyncHistoryService.statusLabel(for: never) == "○ NEVER")
     }
 }
+
+/// Pins the SRT + HTML decoder contracts from Phase 29
+/// (`2026-05-19-transcript-pipeline-audit.md`). All inputs are pure
+/// strings → `[TranscriptCue]`, so the fixtures live inline. The
+/// dispatch sniffs (leading `<` → HTML, integer + `-->` → SRT) are
+/// also covered here so the entry point's auto-detect stays honest.
+@Suite("TranscriptDecoder")
+struct TranscriptDecoderTests {
+    @Test
+    func srtDecoderHandlesCommaAndPeriodMsSeparators() {
+        // Canonical SRT uses comma; period is widely emitted and the
+        // parser normalises both. Two-block fixture exercises both.
+        let srt = """
+        1
+        00:00:01,500 --> 00:00:03,000
+        Comma-separated start.
+
+        2
+        00:00:04.250 --> 00:00:06.000
+        Period-separated start.
+        """
+        let cues = PublishedTranscriptLoader.decodeSRT(text: srt) ?? []
+        #expect(cues.count == 2)
+        #expect(abs((cues.first?.startTime ?? 0) - 1.5) < 0.001)
+        #expect(abs((cues[1].startTime) - 4.25) < 0.001)
+    }
+
+    @Test
+    func srtDecoderStripsHTMLTagsInCueText() {
+        let srt = """
+        1
+        00:00:00,000 --> 00:00:05,000
+        <i>Italic</i> and <b>bold</b> markup.
+        """
+        let cues = PublishedTranscriptLoader.decodeSRT(text: srt) ?? []
+        let text = cues.first?.text ?? ""
+        #expect(!text.contains("<i>"))
+        #expect(!text.contains("</b>"))
+        #expect(text.contains("Italic"))
+        #expect(text.contains("bold"))
+    }
+
+    @Test
+    func srtDecoderHandlesMultilineCueText() {
+        // Multi-line cues are joined with a space.
+        let srt = """
+        1
+        00:00:00,000 --> 00:00:10,000
+        Second line, possibly
+        spread across two rows.
+        """
+        let cues = PublishedTranscriptLoader.decodeSRT(text: srt) ?? []
+        #expect(cues.first?.text == "Second line, possibly spread across two rows.")
+    }
+
+    @Test
+    func srtDecoderToleratesWindowsLineEndings() {
+        // Windows feeds use \r\n. The parser normalises before
+        // splitting on \n\n.
+        let srt = "1\r\n00:00:01,000 --> 00:00:02,000\r\nWindows line endings.\r\n\r\n2\r\n00:00:03,000 --> 00:00:04,000\r\nAnother cue."
+        let cues = PublishedTranscriptLoader.decodeSRT(text: srt) ?? []
+        #expect(cues.count == 2)
+        #expect(cues.first?.text == "Windows line endings.")
+    }
+
+    @Test
+    func srtDecoderToleratesTrailingBlankBlocks() {
+        let srt = """
+        1
+        00:00:01,000 --> 00:00:02,000
+        First.
+
+
+
+        """
+        let cues = PublishedTranscriptLoader.decodeSRT(text: srt) ?? []
+        #expect(cues.count == 1)
+        #expect(cues.first?.text == "First.")
+    }
+
+    @Test
+    func srtDecoderReturnsNilForEmptyInput() {
+        // Edge: a string with no parseable blocks should return nil,
+        // not an empty array — the dispatch uses nil to fall through
+        // to the next decoder.
+        #expect(PublishedTranscriptLoader.decodeSRT(text: "") == nil)
+        #expect(PublishedTranscriptLoader.decodeSRT(text: "not a transcript") == nil)
+    }
+
+    @Test
+    func htmlDecoderExtractsTimedCuesFromDataStartAttributes() {
+        let html = """
+        <article>
+        <p data-start="0.5">First line at half a second.</p>
+        <p data-start="5.25">Second line, five and a quarter.</p>
+        </article>
+        """
+        let cues = PublishedTranscriptLoader.decodeHTML(text: html, episodeDuration: nil) ?? []
+        #expect(cues.count == 2)
+        #expect(abs((cues.first?.startTime ?? 0) - 0.5) < 0.001)
+        #expect(cues.first?.text == "First line at half a second.")
+        #expect(abs((cues[1].startTime) - 5.25) < 0.001)
+    }
+
+    @Test
+    func htmlDecoderExtractsTimedCuesFromDataTimeSpans() {
+        // `<span data-time="N">` is the alternate convention.
+        let html = #"""
+        <p><span data-time="12.0">Twelve seconds.</span> <span data-time="14.5">Fourteen and a half.</span></p>
+        """#
+        let cues = PublishedTranscriptLoader.decodeHTML(text: html, episodeDuration: nil) ?? []
+        #expect(cues.count == 2)
+        #expect(abs((cues.first?.startTime ?? 0) - 12.0) < 0.001)
+        #expect(cues[1].text == "Fourteen and a half.")
+    }
+
+    @Test
+    func htmlDecoderFallsBackToSingleCueWhenNoTimingPresent() {
+        // No data-start / data-time attributes → single cue spanning
+        // the episode duration so the prose is still searchable.
+        let html = """
+        <article>
+        <p>This transcript has no timing markers at all.</p>
+        <p>Just prose, paragraph after paragraph.</p>
+        </article>
+        """
+        let cues = PublishedTranscriptLoader.decodeHTML(text: html, episodeDuration: 1_800) ?? []
+        #expect(cues.count == 1)
+        #expect(cues.first?.startTime == 0)
+        #expect(cues.first?.endTime == 1_800)
+        #expect(cues.first?.text.contains("no timing markers") == true)
+        #expect(cues.first?.text.contains("paragraph") == true)
+    }
+
+    @Test
+    func htmlDecoderStripsCommonEntitiesInPlainText() {
+        // Entities the stripper explicitly decodes: &nbsp; &amp;
+        // &lt; &gt; &quot; &#39; &apos;.
+        let html = "<p>Tom &amp; Jerry &nbsp; &lt;3 &quot;hi&quot; &#39;ok&#39;</p>"
+        let cues = PublishedTranscriptLoader.decodeHTML(text: html, episodeDuration: 60) ?? []
+        let text = cues.first?.text ?? ""
+        #expect(text.contains("Tom & Jerry"))
+        #expect(text.contains("<3"))
+        #expect(text.contains("\"hi\""))
+        #expect(text.contains("'ok'"))
+        #expect(!text.contains("&amp;"))
+        #expect(!text.contains("&nbsp;"))
+    }
+
+    @Test
+    func parseDispatchSniffsSRTByIntegerPlusTiming() {
+        // No mimeType + content that starts with an integer + the
+        // SRT timing line. The dispatch should pick `decodeSRT`.
+        let srt = """
+        1
+        00:00:01,000 --> 00:00:02,000
+        Sniffed as SRT.
+        """
+        let data = Data(srt.utf8)
+        let cues = PublishedTranscriptLoader.parse(data: data, mimeType: nil) ?? []
+        #expect(cues.count == 1)
+        #expect(cues.first?.text == "Sniffed as SRT.")
+    }
+
+    @Test
+    func parseDispatchSniffsHTMLByLeadingAngleBracket() {
+        // No mimeType + content starting with `<`. The dispatch
+        // should pick `decodeHTML`.
+        let html = "<article><p data-start=\"7\">Hello.</p></article>"
+        let data = Data(html.utf8)
+        let cues = PublishedTranscriptLoader.parse(data: data, mimeType: nil) ?? []
+        #expect(cues.count == 1)
+        #expect(cues.first?.text == "Hello.")
+    }
+}
