@@ -4191,3 +4191,224 @@ struct OfflineReliabilityTests {
     }
 }
 
+// MARK: - CuratedDiscoveryTests
+//
+// Phase 3 "Discovery That Feels Curated" — latest-episode previews on
+// Search result rows. The tests pin the contract that matters: the
+// loader is lazy, capped, cancellation-aware, cache-stable, and the
+// metadata it produces is correctly bucketed and VO-friendly.
+
+@Suite("CuratedDiscovery")
+struct CuratedDiscoveryTests {
+    // Shared fixtures — small, focused helpers. The real
+    // `PodcastPreviewService.preview(for:)` does live HTTP, so every test
+    // injects a deterministic fetch closure via the `fetch:` seam.
+    private static let sampleResult = PodcastSearchResult(
+        title: "Sample Show",
+        author: "Sample Author",
+        feedURL: URL(string: "https://example.com/feed.xml")!,
+        artworkURL: nil,
+        websiteURL: nil,
+        summary: "Technology"
+    )
+
+    private static func makeSnapshot(
+        episodeTitle: String = "Latest Episode",
+        pubDate: Date? = Date(timeIntervalSince1970: 1_700_000_000),
+        duration: TimeInterval? = 47 * 60
+    ) -> PodcastPreviewSnapshot {
+        let episode = PodcastPreviewEpisode(
+            id: "ep-1",
+            title: episodeTitle,
+            pubDate: pubDate,
+            duration: duration,
+            summary: "Summary",
+            audioURL: URL(string: "https://example.com/ep1.mp3")!,
+            artworkURL: nil
+        )
+        return PodcastPreviewSnapshot(
+            title: "Sample Show",
+            author: "Sample Author",
+            summary: "Sample summary",
+            categories: ["Technology"],
+            websiteURL: nil,
+            latestEpisodes: [episode]
+        )
+    }
+
+    // MARK: SearchPreviewMetadata formatting
+
+    @Test
+    func freshnessLabelBucketsAcrossWindows() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        // Today: same instant should bucket as TODAY (and stay there for
+        // anything inside the first 24h window).
+        #expect(SearchPreviewMetadata.freshnessLabel(pubDate: now, now: now) == "TODAY")
+        // 18h ago is still < 1 day.
+        #expect(SearchPreviewMetadata.freshnessLabel(
+            pubDate: now.addingTimeInterval(-18 * 3600), now: now) == "TODAY")
+        // 1 day exactly.
+        #expect(SearchPreviewMetadata.freshnessLabel(
+            pubDate: now.addingTimeInterval(-86_400), now: now) == "1D AGO")
+        // 3 days.
+        #expect(SearchPreviewMetadata.freshnessLabel(
+            pubDate: now.addingTimeInterval(-3 * 86_400), now: now) == "3D AGO")
+        // 1 week edge — at 7 days exactly we jump to weeks.
+        #expect(SearchPreviewMetadata.freshnessLabel(
+            pubDate: now.addingTimeInterval(-7 * 86_400), now: now) == "1W AGO")
+        // 3 weeks.
+        #expect(SearchPreviewMetadata.freshnessLabel(
+            pubDate: now.addingTimeInterval(-21 * 86_400), now: now) == "3W AGO")
+    }
+
+    @Test
+    func freshnessLabelHandlesFutureDates() {
+        // RSS feeds occasionally publish with a future-dated pubDate due to
+        // timezone slips. We treat negative intervals as TODAY rather than
+        // surfacing a "-1D AGO" chip — the chip should never read negative.
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let future = now.addingTimeInterval(3600)
+        #expect(SearchPreviewMetadata.freshnessLabel(pubDate: future, now: now) == "TODAY")
+        #expect(SearchPreviewMetadata.freshnessSpoken(pubDate: future, now: now) == "today")
+    }
+
+    @Test
+    func metadataInitFailsOnEmptyEpisodes() {
+        // No episodes -> no preview. Otherwise we'd render a "● LATEST"
+        // chip with nothing underneath.
+        let snapshot = PodcastPreviewSnapshot(
+            title: "Empty",
+            author: "Author",
+            summary: nil,
+            categories: [],
+            websiteURL: nil,
+            latestEpisodes: []
+        )
+        #expect(SearchPreviewMetadata(snapshot: snapshot, now: Date()) == nil)
+    }
+
+    @Test
+    func metadataInitFailsOnBlankEpisodeTitle() {
+        // A whitespace-only title is just as useless as no episode — the
+        // row would render an empty title row. Treat as no preview.
+        let episode = PodcastPreviewEpisode(
+            id: "ep",
+            title: "   ",
+            pubDate: Date(),
+            duration: 1800,
+            summary: nil,
+            audioURL: URL(string: "https://example.com/a.mp3")!,
+            artworkURL: nil
+        )
+        let snapshot = PodcastPreviewSnapshot(
+            title: "Show", author: "Author", summary: nil, categories: [],
+            websiteURL: nil, latestEpisodes: [episode]
+        )
+        #expect(SearchPreviewMetadata(snapshot: snapshot, now: Date()) == nil)
+    }
+
+    @Test
+    func metadataPicksUpDurationLabelsAndSpokenForm() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = Self.makeSnapshot(
+            pubDate: now.addingTimeInterval(-3 * 86_400),
+            duration: 47 * 60
+        )
+        let metadata = SearchPreviewMetadata(snapshot: snapshot, now: now)
+        #expect(metadata?.freshnessLabel == "3D AGO")
+        #expect(metadata?.freshnessSpoken == "3 days ago")
+        #expect(metadata?.durationLabel == "47M")
+        #expect(metadata?.durationSpoken == "47 minutes")
+    }
+
+    @Test
+    func metadataDropsSubMinuteDurations() {
+        // A 35-second "episode" duration is almost always a feed quirk
+        // (chapter marker counted as duration, missing tag, etc.). Drop
+        // the duration label rather than show "0M" — the metadata strip
+        // hides the dot separator when durationLabel is empty.
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let snapshot = Self.makeSnapshot(pubDate: now, duration: 35)
+        let metadata = SearchPreviewMetadata(snapshot: snapshot, now: now)
+        #expect(metadata?.durationLabel == "")
+        #expect(metadata?.durationSpoken == "")
+    }
+
+    // MARK: SearchPreviewLoader behavior
+
+    @MainActor
+    @Test
+    func loaderReturnsNilForRowsBeyondPreviewCap() async {
+        // Rows past the cap should return nil — the row treats that the
+        // same as `.failed` (renders nothing) so the layout stays stable
+        // as the user scrolls. We assert no fetch was attempted by
+        // checking the call count.
+        var fetchCount = 0
+        let loader = SearchPreviewLoader(
+            previewCap: 3,
+            fetch: { _ in
+                fetchCount += 1
+                return Self.makeSnapshot()
+            }
+        )
+        // Rank 4 is outside the cap of 3.
+        #expect(loader.state(for: Self.sampleResult, rank: 4) == nil)
+        // Give any inadvertent async task a tick to run; it shouldn't.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        #expect(fetchCount == 0)
+    }
+
+    @MainActor
+    @Test
+    func loaderFetchesOnceAndCachesAcrossCalls() async {
+        // Two state(for:rank:) calls for the same feed should result in
+        // exactly one fetch — that's the cache contract. If the loader
+        // re-fetched on every render, a 25-row search would fan out into
+        // 25 × renders RSS parses on every keystroke.
+        var fetchCount = 0
+        let loader = SearchPreviewLoader(
+            previewCap: 8,
+            fetch: { _ in
+                fetchCount += 1
+                return Self.makeSnapshot()
+            }
+        )
+        _ = loader.state(for: Self.sampleResult, rank: 1)
+        // Yield so the in-flight Task completes; recordSuccess flips the
+        // state from .loading to .loaded.
+        for _ in 0..<10 {
+            await Task.yield()
+            if case .loaded = loader.state(for: Self.sampleResult, rank: 1) { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        // Calling state() again should hit the cache, not the fetcher.
+        _ = loader.state(for: Self.sampleResult, rank: 1)
+        _ = loader.state(for: Self.sampleResult, rank: 1)
+        #expect(fetchCount == 1)
+        if case .loaded(let metadata) = loader.state(for: Self.sampleResult, rank: 1) {
+            #expect(metadata.latestEpisodeTitle == "Latest Episode")
+        } else {
+            Issue.record("Expected loaded state after fetch")
+        }
+    }
+
+    @MainActor
+    @Test
+    func loaderRecordsFailureWhenFetchThrows() async {
+        // A fetch that throws (e.g. 500 from the RSS host, parse error)
+        // should land as .failed — the row falls back to the no-preview
+        // shape rather than spinning forever.
+        struct StubError: Error {}
+        let loader = SearchPreviewLoader(
+            previewCap: 8,
+            fetch: { _ in throw StubError() }
+        )
+        _ = loader.state(for: Self.sampleResult, rank: 1)
+        for _ in 0..<10 {
+            await Task.yield()
+            if case .failed = loader.state(for: Self.sampleResult, rank: 1) { break }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        #expect(loader.state(for: Self.sampleResult, rank: 1) == .failed)
+    }
+}
