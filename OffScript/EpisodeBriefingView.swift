@@ -66,8 +66,7 @@ struct EpisodeBriefingView: View {
                 ForEach(Array(bullets.enumerated()), id: \.offset) { idx, bullet in
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(String(format: "%02d", idx + 1))
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                            .tracking(1.0)
+                            .tunerFont(size: 10, tracking: 1.0)
                             .foregroundStyle(Color.offscriptSignalYellow)
                             .frame(width: 22, alignment: .leading)
                         Text(bullet)
