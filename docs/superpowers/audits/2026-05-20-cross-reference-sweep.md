@@ -105,10 +105,10 @@ Four docs deferred test coverage citing "Phase 31 owns
 - `2026-05-20-singleton-teardown-hardening.md` (verification of the
   flaky-tests-stabilize claim)
 
-Phase 31 has landed `f0852bb` (the Phase 18 decay tests) and `83dff2b`
-(the Phase 21 editorial-collection tests), but has NOT yet landed:
-- Phase 29 SRT/HTML decoder tests
-- Phase 27 Debug Inspector tests
+Phase 31 has landed `f0852bb` (the Phase 18 decay tests), `83dff2b`
+(the Phase 21 editorial-collection tests), `20420ca` (Phase 29 SRT/HTML
+decoder tests), and `732e10a` (Phase 27 Debug Inspector +
+SyncHistoryService tests). Still outstanding:
 - Phase 22 download-chip tests
 - Phase 26 singleton-teardown verification (wiring
   `DebugTeardown.resetAllSingletons()` into test setup)
