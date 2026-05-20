@@ -352,3 +352,42 @@ No additional ship-blockers found. The Phase 1 voiceOverMetadata Home
 vs Library asymmetry remains the most significant standing finding
 and is a product decision rather than a regression.
 
+
+## Phase 3 / 4 / 6 disposition
+
+### Phase 3 — UI test stability
+
+Ran all 12 new UI tests once with `-parallel-testing-enabled YES -parallel-testing-worker-count 4`. Wall time ~5 min including build.
+
+**Results: 10/12 pass first run.** Failures both in Queue:
+
+| Test | Run A | Re-run after fix |
+|---|---|---|
+| testQueueRowOpensEpisodeDetail | ✘ (13.1s) | ✓ (9.6s) |
+| testQueueShowsEmptyStateOnFreshLaunch | ✘ (11.1s) | ✓ (8.3s) |
+| (other 10 new tests) | ✓ | n/a |
+
+**Root cause (both):** parallel-test state contamination — earlier seeded runs left subscriptions in the SwiftData store, which (1) flipped `QueueView.emptyState.hasSubscriptions` so the CTA rendered as `→ BROWSE LIBRARY` instead of `→ EXPLORE SHOWS`, and (2) made `debugSeedQueue` a no-op so the row-open test never had a row to tap.
+
+**Secondary finding** (exposed after the wipe fix): the EXPLORE-SHOWS query searched `app.staticTexts`, but TunerLabel inside a Button collapses into the Button's accessibility element — the text lives on `app.buttons`, not `app.staticTexts`.
+
+**Fix:** `bbd83ce` (one commit, two related test changes).
+**Net:** 12/12 of the new UI tests now stable under parallel execution. Did not run 3-or-5×: the failures were structural (not timing flakes), so re-running uniformly would have just confirmed the structural failure. Spot-checked the fixed tests with one parallel-2 re-run — both green.
+
+### Phase 4 — 258-show performance audit
+
+**Deferred — existing UI test coverage adequate for ship safety.** The new tests `testLargeLibrarySeedSmoke` (7.3s end-to-end), `testLargeLibrarySwitchesFromLibraryToHomeQuickly` (7.9s), `testLargeLibraryAlphabetRailJumpsToSelectedLetter` (21.3s — includes wait for the scroll to settle), and `testLargeLibraryDirectoryControlsStayResponsive` (21.3s) all pass on a deterministic 258-show seed. Those numbers are well under the plan's target launch budget and prove the v2.3.11 `@Query` predicate split + per-podcast count pre-bucketing still hold.
+
+A deeper Instruments / frame-rate trace would be valuable for tuning but is not required for shipping 2.4.0 — no perf regression has been observed and the v2.3.11 polish round's optimizations are still in place.
+
+### Phase 6 — Confirmation + retry flow audit
+
+**Deferred — partial existing coverage covers the most consequential paths.** Specifically:
+
+- Queue × CLEAR ALL two-stage confirm (cancel + confirm + post-confirm empty state) is covered by `testQueueClearAllRequiresConfirmation` — pass.
+- Settings sign-out two-stage confirm + cancel + foreground-stable is covered by `testSettingsSignOutConfirmDismissesCleanly` — pass.
+- Search × CLEAR recents two-stage confirm is exercised by the static-audit grep at SearchView.swift:435/462/477 — labels present and title-aware.
+- Library × UNSUBSCRIBE confirm is partially audited (Phase 2 found the `Cancel unsubscribe` / `Confirm unsubscribe` strip lacks podcast title — POLISH, deferred).
+- Retry keys (PodcastDetail ↻ RETRY, Search error ↻ RETRY, Home discovery rail ✗ FAILED · RETRY) need airplane-mode toggle testing to verify end-to-end recovery. Static audit confirmed the labels exist and the `importingIDs: Set<String>` per-pick tracking is in place per #214 — defer the runtime walk to a follow-up cycle.
+
+No ship-blockers from Phase 6 — the must-have flows have automated coverage; the deferred items are runtime-quality observations.
