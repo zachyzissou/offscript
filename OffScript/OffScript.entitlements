@@ -10,7 +10,18 @@
 	<array>
 		<string>group.com.offscript.shared</string>
 	</array>
-	<key>com.apple.developer.carplay-audio</key>
-	<true/>
+	<!--
+	  CarPlay-audio entitlement removed pending Apple's developer-portal
+	  approval. Apple's App Store signing service rejects the build when
+	  this entitlement is declared but the App ID hasn't been granted the
+	  capability yet — that's what failed Xcode Cloud build #234/#235.
+	  Apply at https://developer.apple.com/contact/carplay/. Phase 16
+	  scaffolded the full CarPlay code path (CarPlaySceneDelegate.swift);
+	  re-adding the entitlement is a one-line follow-up the moment Apple
+	  grants the capability.
+
+	  <key>com.apple.developer.carplay-audio</key>
+	  <true/>
+	-->
 </dict>
 </plist>
