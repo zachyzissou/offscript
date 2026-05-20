@@ -131,7 +131,7 @@ Source of truth: `OffScript/AppSettings.swift`, `OffScript/ContentView.swift`.
 |---|---|---|
 | Automated UI | `OffScriptUITests/testSettingsPanelOpensFromHome`, `testSettingsPanelOpensFromLibrary`, `testSettingsPanelDismissAndReopenCycleStaysStable`, `testSettingsPanelOpensWithLargeLibrarySeed` | Open from Home, open from Library, present→dismiss→re-present cycle stability, large-library seeded counts and simulator iCloud `NOT CONFIG` state. |
 | Automated unit | `OffScriptTests` — `appSettingsRoundTripsPreferences`, identity/keychain breadcrumb tests | Preference round-trip, identity logging. |
-| Simulator manual | Open Settings, tap each Tuner key, present sign-out confirmation, dismiss | Tracks #114 audit work. |
+| Simulator manual | Open Settings, tap each Tuner key, present sign-out confirmation, dismiss | Tracks #114 audit work. Visual auto-capture of the Settings panel + DebugInspector sheet is not achievable through `xcrun simctl io` alone (taps require an XCUITest). See the pre-2.5.0 simulator walk for the "Auto-capture limitations" list. |
 | Real device | TestFlight Sign in with Apple, real iCloud account, sign-out + re-sign-in | Required for crash-report parity with #114 / #112. |
 
 ### Recommendations
@@ -218,3 +218,50 @@ If you're authoring a singleton that publishes `@Model`-typed values,
 ship a `debugResetForTesting()` alongside it. Future-you running tests
 six months from now will not enjoy debugging the inevitable flake
 without one.
+
+### Known siblings of this flake class (as of 2026-05-20)
+
+The pre-2.5.0 simulator walk
+(`docs/superpowers/audits/2026-05-20-pre-25-simulator-walk.md`) found
+that `TasteProfileDecayTests.decayHalfLifeIs14Days` also gets killed
+mid-run by the same SwiftData reset, even though `TasteProfileDecay`
+itself touches no singleton (it tests a pure `recencyWeight` function).
+The crash happens *before* the test body executes — the test process
+inherits a poisoned container from a prior suite. Re-running the
+suite in isolation passes 9/9. Add it to the
+"reset-in-setup-or-teardown" candidate list when expanding the
+hardening sweep.
+
+## Lurking UI-Test Class: Accessibility-Label Drift
+
+Surfaced during the pre-2.5.0 simulator walk (commit `c1668550`).
+
+**Symptom:** A UI test that queries `app.buttons["VISIBLE_TITLE"]`
+times out with `XCTAssertTrue failed - <chip> did not appear`, even
+though the chip is visible on screen and the app under test built
+cleanly.
+
+**Root cause:** `XCUIElement.buttons[<string>]` matches against
+`accessibilityIdentifier` and `accessibilityLabel`, *not* visible text.
+When a `.accessibilityLabel(...)` override is added to a button
+(typically to add VoiceOver dimension context like
+`"Sort: needs attention first"` instead of just `"ATTN"`), the visible
+title no longer resolves the element in the test query.
+
+**The fix (when authoring or auditing UI tests):**
+1. Prefer `.accessibilityIdentifier("StableTestHandle")` on buttons
+   that are exercised by tests. The identifier is independent of
+   spoken label changes and survives a11y refactors.
+2. If you can't add an identifier, query by the full accessibility
+   label (`app.buttons["Sort: needs attention first"]`) — but recognize
+   that any future label rewrite will silently re-break the test.
+3. When changing a button's `.accessibilityLabel`, grep the UI test
+   target for the old visible string + the old label string. Bring
+   the test along with the production change in the same PR.
+
+The concrete case at `c1668550`:
+`testLargeLibraryDirectoryControlsStayResponsive` queries
+`app.buttons["ATTN"]` while the Library `SORT` chip overrides its
+accessibilityLabel to `"Sort: needs attention first"` (commit
+`39a49e5`). Test goes red, ship goes through anyway because the
+failure is test-only.
