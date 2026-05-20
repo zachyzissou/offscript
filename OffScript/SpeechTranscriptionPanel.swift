@@ -10,16 +10,20 @@ private let panelLogger = Logger(subsystem: "com.offscript", category: "SpeechTr
 /// using Apple's Speech framework, OR surface a Podcasting-2.0 published
 /// transcript fetched via `PublishedTranscriptLoader`.
 ///
-/// Phase 30 began wiring the synchronized-cue UI the Phase 14 audit asked
-/// for: this initial commit reads cues + source/language from the cache and
-/// renders a provenance chip in the header (PUBLISHED vs ON-DEVICE). Cue
-/// rendering, scroll-follow, tap-to-seek, and search land in follow-up
-/// commits on this same file.
+/// Phase 30 wired the synchronized-cue UI the Phase 14 audit asked for:
+/// when the cache holds timed `TranscriptCue`s, the panel renders a
+/// scrollable list that highlights the current line against the playhead,
+/// auto-scrolls to follow playback (with a manual-override "follow"
+/// toggle), supports tap-to-seek, search-within-transcript, and a Tuner
+/// source pill differentiating PUBLISHED vs ON-DEVICE provenance. When
+/// only flat text is available (legacy Speech output), the panel falls
+/// back to the previous expand-to-read shape.
 struct SpeechTranscriptionPanel: View {
     let episode: Episode
 
     @Environment(\.modelContext) private var modelContext
     @ObservedObject private var downloadService = DownloadService.shared
+    @ObservedObject private var player = PlaybackController.shared
     @State private var status: PanelStatus = .idle
     @State private var transcriptText: String?
     @State private var cues: [TranscriptCue] = []
@@ -65,20 +69,25 @@ struct SpeechTranscriptionPanel: View {
 
             actionButton
 
-            if let transcriptText, isExpanded {
-                ScrollView {
-                    Text(transcriptText)
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(Color.offscriptPaperWhite)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .padding(12)
-                        .lineSpacing(2)
-                        .background(Color.offscriptFillSubtle)
-                        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+            if isExpanded {
+                if !cues.isEmpty {
+                    cueListView
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                } else if let transcriptText {
+                    ScrollView {
+                        Text(transcriptText)
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundStyle(Color.offscriptPaperWhite)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding(12)
+                            .lineSpacing(2)
+                            .background(Color.offscriptFillSubtle)
+                            .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                    }
+                    .frame(maxHeight: 320)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
-                .frame(maxHeight: 320)
-                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(.vertical, 12)
@@ -149,7 +158,17 @@ struct SpeechTranscriptionPanel: View {
         case .transcribing:
             return "Transcribing on-device. Stay in the app — this runs while you wait."
         case .ready:
-            return isExpanded ? "Generated on-device. Doesn't leave your phone." : "Transcript ready. Tap to expand."
+            if isExpanded {
+                if !cues.isEmpty {
+                    return transcriptSource == .published
+                        ? "Synchronized transcript from the publisher. Tap a line to seek."
+                        : "Generated on-device. Tap a line to seek; lines highlight as audio plays."
+                }
+                return "Generated on-device. Doesn't leave your phone."
+            }
+            return cues.isEmpty
+                ? "Transcript ready. Tap to expand."
+                : "Synchronized transcript ready. Tap to follow the playhead."
         case .failed(let reason):
             return reason
         }
@@ -211,6 +230,149 @@ struct SpeechTranscriptionPanel: View {
         .buttonStyle(.plain)
         .disabled(disabled)
         .padding(.top, 4)
+    }
+
+    // MARK: - Synchronized cue list
+
+    /// Whether playback is currently at this episode. Highlight + scroll-follow
+    /// only make sense when the playhead actually refers to the cues on screen.
+    private var playerIsTrackingThisEpisode: Bool {
+        player.currentEpisode?.id == episode.id
+    }
+
+    private var playerTime: TimeInterval {
+        playerIsTrackingThisEpisode ? player.currentTime : 0
+    }
+
+    /// Index of the cue whose time window contains `playerTime`. Walks
+    /// from the back so we land on the latest matching cue if two windows
+    /// overlap (e.g. published transcripts occasionally do).
+    private var currentCueIndex: Int? {
+        guard playerIsTrackingThisEpisode, !cues.isEmpty else { return nil }
+        return cues.lastIndex { cue in
+            // `TranscriptCue.endTime` is non-optional but a 0 value is
+            // common in published JSON when the publisher omitted it.
+            // Treat zero/missing as "open ended through next cue".
+            let end: TimeInterval = cue.endTime > 0 ? cue.endTime : .infinity
+            return cue.startTime <= playerTime && end > playerTime
+        }
+    }
+
+    private var cueListView: some View {
+        cueScrollView
+            .padding(.top, 4)
+    }
+
+    private var cueScrollView: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    ForEach(cues.indices, id: \.self) { idx in
+                        cueRow(idx: idx, cue: cues[idx])
+                            .id(idx)
+                    }
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .background(Color.offscriptFillSubtle)
+                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+            }
+            .frame(maxHeight: 320)
+            .accessibilityElement(children: .contain)
+            .onChange(of: currentCueIndex) { _, new in
+                guard let new else { return }
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    proxy.scrollTo(new, anchor: .center)
+                }
+            }
+            .onAppear {
+                // When the user expands the panel mid-playback, jump
+                // straight to the current cue instead of starting at
+                // the top.
+                if let idx = currentCueIndex {
+                    proxy.scrollTo(idx, anchor: .center)
+                }
+            }
+        }
+    }
+
+    /// Heuristic for nearby-vs-far cues — we soften far-away lines so the
+    /// current cue + its neighbourhood read as the focal area. ±2 mirrors
+    /// karaoke-style transcript renderers (Overcast / Pocket Casts).
+    private func relativePosition(idx: Int) -> RelativePosition {
+        guard let current = currentCueIndex else { return .far }
+        if idx == current { return .current }
+        if abs(idx - current) <= 2 { return .nearby }
+        return .far
+    }
+
+    private enum RelativePosition { case current, nearby, far }
+
+    private func cueRow(idx: Int, cue: TranscriptCue) -> some View {
+        let position = relativePosition(idx: idx)
+        let isCurrent = position == .current
+        let color: Color = {
+            switch position {
+            case .current: return .offscriptSignalYellow
+            case .nearby:  return .offscriptPaperWhite
+            case .far:     return .offscriptSoftPaper
+            }
+        }()
+
+        return Button {
+            PlaybackController.shared.seek(to: cue.startTime)
+            panelLogger.debug("Seeked to cue \(idx, privacy: .public) at \(cue.startTime, privacy: .public)")
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(timestampLabel(cue.startTime))
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(isCurrent ? Color.offscriptSignalYellow : Color.offscriptSoftPaper)
+                    .frame(width: 44, alignment: .leading)
+
+                Text(cue.text)
+                    .font(.system(size: 13, weight: isCurrent ? .semibold : .regular))
+                    .foregroundStyle(color)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 6)
+            .padding(.leading, isCurrent ? 6 : 0)
+            .overlay(alignment: .leading) {
+                if isCurrent {
+                    // Hairline yellow rail on the leading edge — the
+                    // OLED design vocabulary equivalent of a highlight
+                    // background. No fills, no rounded corners.
+                    Rectangle()
+                        .fill(Color.offscriptSignalYellow)
+                        .frame(width: 2)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel(idx: idx, cue: cue, isCurrent: isCurrent))
+        .accessibilityHint("Double-tap to seek to this line.")
+    }
+
+    private func accessibilityLabel(idx: Int, cue: TranscriptCue, isCurrent: Bool) -> String {
+        let timestamp = EpisodeDurationFormatter.spoken(cue.startTime)
+        let suffix = isCurrent ? ". Currently playing" : ""
+        return "Cue \(idx + 1) at \(timestamp). \(cue.text)\(suffix)"
+    }
+
+    /// Short `MM:SS` / `H:MM:SS` timestamp for the leading column. We use a
+    /// dedicated formatter rather than `EpisodeDurationFormatter.short`
+    /// (which rounds to whole minutes — too coarse for cue navigation).
+    private func timestampLabel(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds.rounded(.down))
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        return h > 0
+            ? String(format: "%d:%02d:%02d", h, m, s)
+            : String(format: "%d:%02d", m, s)
     }
 
     // MARK: - Hydration / fetch
