@@ -126,6 +126,104 @@ struct PlayNextInQueueIntent: AppIntent {
     }
 }
 
+// MARK: - Episode Entity (Siri parameter)
+
+/// `AppEntity` representation of an `Episode` so Siri can disambiguate by
+/// title when the user says "Play <episode name> in OffScript." Without an
+/// entity, the only intents Siri can offer are parameterless verbs like
+/// Resume/Pause. With it, episodes become first-class addressable nouns in
+/// the system search index and Shortcuts editor.
+struct EpisodeEntity: AppEntity, Identifiable {
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Episode"
+    static let defaultQuery = EpisodeEntityQuery()
+
+    let id: UUID
+    let title: String
+    let podcastTitle: String
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: "\(title)", subtitle: "\(podcastTitle)")
+    }
+}
+
+/// Resolves `EpisodeEntity` instances by UUID and by user-typed string in
+/// the Shortcuts editor. Both paths run out-of-process, so we open a
+/// short-lived `ModelContext` against the shared store.
+struct EpisodeEntityQuery: EntityQuery {
+    @MainActor
+    func entities(for identifiers: [UUID]) async throws -> [EpisodeEntity] {
+        guard !identifiers.isEmpty else { return [] }
+        let context = try OffScriptAppIntents.makeContext()
+        var descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { identifiers.contains($0.id) }
+        )
+        descriptor.fetchLimit = identifiers.count
+        let episodes = try context.fetch(descriptor)
+        return episodes.map { episode in
+            EpisodeEntity(
+                id: episode.id,
+                title: episode.title,
+                podcastTitle: episode.podcast.title
+            )
+        }
+    }
+
+    /// Suggestions for the Shortcuts UI: newest 25 episodes from subscribed
+    /// shows. Capped because Shortcuts renders these in a scroll list and
+    /// the user usually only wants something recent.
+    @MainActor
+    func suggestedEntities() async throws -> [EpisodeEntity] {
+        let context = try OffScriptAppIntents.makeContext()
+        var descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast.isSubscribed == true },
+            sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
+        )
+        descriptor.fetchLimit = 25
+        let episodes = try context.fetch(descriptor)
+        return episodes.map { episode in
+            EpisodeEntity(
+                id: episode.id,
+                title: episode.title,
+                podcastTitle: episode.podcast.title
+            )
+        }
+    }
+}
+
+// MARK: - Play Episode (parameterized)
+
+/// Plays a specific episode chosen via Siri / Shortcuts. Differs from
+/// `ResumeListeningIntent` in that it takes an `EpisodeEntity` parameter, so
+/// the user can wire a Shortcut to "Play <specific episode>" or pick one
+/// from a list when invoking the shortcut.
+struct PlayEpisodeIntent: AppIntent {
+    static let title: LocalizedStringResource = "Play Episode"
+    static let description = IntentDescription("Start playing a specific episode in OffScript.")
+    static let openAppWhenRun: Bool = false
+
+    @Parameter(title: "Episode")
+    var episode: EpisodeEntity
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let context = try OffScriptAppIntents.makeContext()
+        let targetID = episode.id
+        var descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.id == targetID }
+        )
+        descriptor.fetchLimit = 1
+        guard let model = try context.fetch(descriptor).first else {
+            return .result(dialog: "Couldn't find that episode anymore.")
+        }
+        let player = PlaybackController.shared
+        if !player.isModelContextConfigured {
+            player.configure(context: context)
+        }
+        player.play(model, in: context)
+        return .result(dialog: "Playing \(model.title).")
+    }
+}
+
 // MARK: - App Shortcuts
 
 /// Registers Siri phrases. iOS will pick these up automatically and surface
@@ -172,6 +270,16 @@ struct OffScriptShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Next in Queue",
             systemImageName: "forward.end.fill"
+        )
+
+        AppShortcut(
+            intent: PlayEpisodeIntent(),
+            phrases: [
+                "Play an episode in \(.applicationName)",
+                "Play \(\.$episode) in \(.applicationName)"
+            ],
+            shortTitle: "Play Episode",
+            systemImageName: "play.circle.fill"
         )
     }
 }
