@@ -30,6 +30,21 @@
 		<string>PlayfairDisplay-Variable.ttf</string>
 		<string>PlayfairDisplay-Italic-Variable.ttf</string>
 	</array>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>CPTemplateApplicationSceneSessionRoleAudio</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>OffScriptCarPlay</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
