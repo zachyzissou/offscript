@@ -3459,10 +3459,17 @@ struct VoiceOverMetadataTests {
 
     private static let locale = Locale(identifier: "en_US_POSIX")
 
-    /// Pure equivalent of the LibraryView 2996 / Home 1098 / Home 1330
-    /// builders. The Home builders currently omit Season/Episode (see
-    /// the audit walk); this helper encodes the full contract from
-    /// the CHANGELOG's "Unreleased" section.
+    /// Encodes the *target* voiceOverMetadata contract from the CHANGELOG's
+    /// "Unreleased" section — NOT a literal mirror of any single production
+    /// builder. Known divergences from production today (see the audit walk
+    /// in docs/superpowers/audits/2026-05-19-voiceover-walk.md):
+    ///   - Part order here is `[date, S/E, duration]`; LibraryView.swift:2996
+    ///     emits `[S/E, date, duration]`.
+    ///   - Duration is gated on `> 0` here; LibraryView only nil-checks,
+    ///     so a 0-duration episode would emit "0 minutes" in production.
+    ///   - Both HomeView builders (`HomeView.swift:1098`, `HomeView.swift:1330`)
+    ///     omit Season/Episode entirely.
+    /// Do NOT copy this helper into production — re-derive from the spec.
     private static func voiceOverMetadata(
         pubDate: Date?,
         seasonNumber: Int?,
