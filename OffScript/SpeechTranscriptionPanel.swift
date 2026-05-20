@@ -31,6 +31,7 @@ struct SpeechTranscriptionPanel: View {
     @State private var transcriptLanguage: String?
     @State private var isExpanded = false
     @State private var searchQuery: String = ""
+    @State private var followPlayhead: Bool = true
     @FocusState private var searchFieldFocused: Bool
 
     private enum PanelStatus: Equatable {
@@ -337,10 +338,34 @@ struct SpeechTranscriptionPanel: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Clear search")
             }
+
+            followPlayheadToggle
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+    }
+
+    /// Small Tuner "key" that re-engages auto-scroll after the user has
+    /// dragged the cue list away from the current line. Hidden when
+    /// auto-scroll is already engaged so we don't take up footprint.
+    @ViewBuilder
+    private var followPlayheadToggle: some View {
+        if !followPlayhead && playerIsTrackingThisEpisode {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    followPlayhead = true
+                }
+            } label: {
+                TunerLabel(text: "→ FOLLOW", color: .offscriptSignalYellow, size: 10)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Follow playhead. Currently off")
+            .accessibilityHint("Re-engages auto-scroll to the current cue.")
+        }
     }
 
     private var cueScrollView: some View {
@@ -359,8 +384,22 @@ struct SpeechTranscriptionPanel: View {
             }
             .frame(maxHeight: 320)
             .accessibilityElement(children: .contain)
+            .simultaneousGesture(
+                // User took manual control — suspend auto-scroll until
+                // they tap "follow". `.simultaneousGesture` lets the
+                // ScrollView keep handling the actual pan; we just
+                // observe the touch to flip the flag. Hairline-tight
+                // 6pt threshold so a cue-button tap doesn't accidentally
+                // disengage.
+                DragGesture(minimumDistance: 6)
+                    .onChanged { _ in
+                        if followPlayhead {
+                            followPlayhead = false
+                        }
+                    }
+            )
             .onChange(of: currentCueIndex) { _, new in
-                guard let new else { return }
+                guard followPlayhead, let new else { return }
                 withAnimation(.easeInOut(duration: 0.18)) {
                     proxy.scrollTo(new, anchor: .center)
                 }
@@ -407,6 +446,9 @@ struct SpeechTranscriptionPanel: View {
                 searchQuery = ""
                 searchFieldFocused = false
             }
+            // A deliberate seek should re-engage auto-scroll — the user
+            // just told us which cue they care about.
+            followPlayhead = true
             PlaybackController.shared.seek(to: cue.startTime)
             panelLogger.debug("Seeked to cue \(idx, privacy: .public) at \(cue.startTime, privacy: .public)")
         } label: {
