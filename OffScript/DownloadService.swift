@@ -42,7 +42,17 @@ final class DownloadService: NSObject, ObservableObject {
         modelContext = context
         guard !hasReconciledPersistedState else { return }
         reconcilePersistedDownloads()
+        sweepOrphanDownloadFiles()
         hasReconciledPersistedState = true
+    }
+
+    /// Test-only hook to force a re-run of the launch reconciliation against a
+    /// freshly-injected context. Production callers go through `configure`,
+    /// which guards on a one-shot flag.
+    func reconcileForTesting(context: ModelContext) {
+        modelContext = context
+        reconcilePersistedDownloads()
+        sweepOrphanDownloadFiles()
     }
 
     func startDownload(for episode: Episode) {
@@ -310,6 +320,61 @@ final class DownloadService: NSObject, ObservableObject {
         }
 
         modelContext.saveOrLog("DownloadService")
+    }
+
+    /// Sweep the Downloads directory for files that no `Episode` claims.
+    ///
+    /// Orphans happen when:
+    ///   - The user unsubscribed mid-download and the URLSession landed the
+    ///     file after the model row was already gone.
+    ///   - SwiftData cascade-deletion ran but the file delete failed (low-
+    ///     disk, file system error, etc).
+    ///   - An upgrade path renamed the destination scheme and old files were
+    ///     left behind.
+    ///
+    /// Filenames are `<episodeUUID>.<ext>`, so we can match each file to a
+    /// live Episode by parsing the basename. Anything that doesn't resolve
+    /// gets deleted.
+    func sweepOrphanDownloadFiles() {
+        guard let modelContext else { return }
+        let supportURL = try? FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        )
+        guard let downloadsURL = supportURL?.appending(path: "Downloads", directoryHint: .isDirectory) else { return }
+        guard FileManager.default.fileExists(atPath: downloadsURL.path) else { return }
+
+        let files: [URL]
+        do {
+            files = try FileManager.default.contentsOfDirectory(at: downloadsURL, includingPropertiesForKeys: nil)
+        } catch {
+            downloadLogger.error("sweepOrphanDownloadFiles list failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        var removedCount = 0
+        for fileURL in files {
+            let basename = fileURL.deletingPathExtension().lastPathComponent
+            guard let episodeID = UUID(uuidString: basename) else {
+                // Unknown file format in the Downloads dir — leave it alone.
+                continue
+            }
+
+            let descriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.id == episodeID }
+            )
+            let owner = try? modelContext.fetch(descriptor).first
+            if owner == nil {
+                removeFileIfPresent(at: fileURL)
+                removedCount += 1
+            }
+        }
+
+        if removedCount > 0 {
+            downloadLogger.info("Removed \(removedCount) orphan download file(s)")
+        }
     }
 
     private func removeFileIfPresent(at url: URL) {
