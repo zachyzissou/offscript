@@ -6,6 +6,7 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ### Fixed
 - Lock screen / Control Center now receive generated Tuner fallback artwork immediately when an episode has no feed artwork or while remote artwork is loading, so Now Playing metadata no longer publishes without cover art.
+- Search and onboarding subscription staging now detect existing RSS feeds by normalized URL, so `http`/`https`, `feed://`, case, and trailing-slash variants do not create duplicate library rows.
 - Shared artwork fallback now renders consistently across app surfaces, keeping missing/loading cover art inside the Tuner visual language.
 - Shared empty-state treatment now keeps no-content Library, Queue, Search, and related surfaces aligned on sharp hairlines, mono status copy, and clear recovery actions.
 - App-wide Tuner buttons now provide consistent press feedback so action keys feel responsive without falling back to native Liquid Glass chrome.
