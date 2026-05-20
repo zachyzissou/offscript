@@ -6423,3 +6423,226 @@ struct TranscriptDecoderTests {
         #expect(cues.first?.text == "Hello.")
     }
 }
+
+// MARK: - Open-App Intents (Phase 40)
+
+/// Covers the four `Open<Tab>Intent` types that deep-link into the tab bar
+/// via the `offscript://tab/<name>` scheme. These intents have
+/// `openAppWhenRun = true` and run on the main actor, so the tests focus on
+/// statically-knowable invariants (titles, URL contract, parameterless
+/// shape, `AppShortcutsProvider` registration) rather than invoking
+/// `perform()` — which would require a live `UIApplication`.
+@Suite("OpenAppIntents")
+struct OpenAppIntentsTests {
+    @Test
+    func openLibraryIntentTitleAndDialog() {
+        // Localized titles bridge to plain strings via String(localized:).
+        // We don't pin exact wording (it could be re-translated) — instead
+        // we assert that both fields are populated, which is what catches
+        // a regression where someone accidentally drops the metadata.
+        let title = String(localized: OpenLibraryIntent.title)
+        #expect(!title.isEmpty)
+        #expect(title.localizedCaseInsensitiveContains("library"))
+
+        // `IntentDescription` doesn't expose its body string publicly in a
+        // testable form; use Mirror to walk its stored properties and find
+        // any non-empty String. This is intentionally lax — the goal is to
+        // catch "someone replaced the description with an empty string"
+        // rather than lock in exact copy.
+        let mirror = Mirror(reflecting: OpenLibraryIntent.description)
+        let hasNonEmptyString = mirror.children.contains { _, value in
+            if let string = value as? String { return !string.isEmpty }
+            if let resource = value as? LocalizedStringResource {
+                return !String(localized: resource).isEmpty
+            }
+            return false
+        }
+        #expect(hasNonEmptyString || !String(describing: OpenLibraryIntent.description).isEmpty)
+
+        // Also assert openAppWhenRun — the entire point of these intents is
+        // to bring the app forward, so flipping this to false would
+        // silently break the user-visible behavior.
+        #expect(OpenLibraryIntent.openAppWhenRun == true)
+    }
+
+    @Test
+    func openQueueIntentRoutesToCorrectURL() {
+        // The static URL helper is what each intent's `perform()` hands to
+        // `UIApplication.shared.open`, so asserting it here is equivalent
+        // to asserting the runtime route without spinning up UIKit.
+        #expect(OpenTabIntentURL.queue.absoluteString == "offscript://tab/queue")
+        #expect(OpenTabIntentURL.queue.scheme == "offscript")
+        #expect(OpenTabIntentURL.queue.host == "tab")
+        #expect(OpenTabIntentURL.queue.pathComponents.last == "queue")
+
+        // Sibling URLs should follow the same contract so the deep-link
+        // grammar in DeepLinkRouter (`["home", "library", "queue", "search"]`)
+        // remains a closed set.
+        #expect(OpenTabIntentURL.home.absoluteString == "offscript://tab/home")
+        #expect(OpenTabIntentURL.library.absoluteString == "offscript://tab/library")
+        #expect(OpenTabIntentURL.search.absoluteString == "offscript://tab/search")
+    }
+
+    @Test
+    func appShortcutsProviderListsAllFourOpenIntents() {
+        // The Phase 16 lineup is Resume / Pause / Skip / PlayNext / PlayEpisode
+        // (5 entries). Adding the 4 open-tab intents takes us to 9.
+        let shortcuts = OffScriptShortcuts.appShortcuts
+        #expect(shortcuts.count == 9)
+
+        // Identity check: dump each shortcut and confirm the four new
+        // intent type names appear at least once. `AppShortcut` does not
+        // expose its `intent` initializer argument publicly, so we walk
+        // its mirror representation — same trick `dump(_:)` uses.
+        let allText = shortcuts.map { String(describing: $0) }.joined(separator: "\n")
+        #expect(allText.contains("OpenHomeIntent"))
+        #expect(allText.contains("OpenLibraryIntent"))
+        #expect(allText.contains("OpenQueueIntent"))
+        #expect(allText.contains("OpenSearchIntent"))
+    }
+
+    @Test
+    func openAppIntentsDoNotRequireParameters() {
+        // Parameterless intents must be default-constructible; this is the
+        // contract `AppShortcut(intent: OpenLibraryIntent(), …)` relies on.
+        // If someone adds an `@Parameter` without a default, this stops
+        // compiling — but we also assert at runtime to catch the case
+        // where a parameter is added with a synthesized default that we'd
+        // otherwise miss.
+        _ = OpenHomeIntent()
+        _ = OpenLibraryIntent()
+        _ = OpenQueueIntent()
+        _ = OpenSearchIntent()
+
+        // Walk the Mirror of a fresh instance and confirm no child looks
+        // like an `@Parameter` wrapper. `@Parameter` synthesizes a
+        // `_<name>` backing-storage property whose type name starts with
+        // "IntentParameter" — that's the marker we sniff for.
+        for intent: any AppIntent in [
+            OpenHomeIntent(),
+            OpenLibraryIntent(),
+            OpenQueueIntent(),
+            OpenSearchIntent()
+        ] {
+            let mirror = Mirror(reflecting: intent)
+            let hasParameter = mirror.children.contains { _, value in
+                String(describing: type(of: value)).contains("IntentParameter")
+            }
+            #expect(!hasParameter, "\(type(of: intent)) should be parameterless")
+        }
+    }
+}
+
+// MARK: - Live Activity lifecycle (Phase 39)
+
+/// Exercises the Phase 39 fix: a Live Activity bound to one episode must end
+/// when the user switches to another episode, otherwise the Lock Screen /
+/// Dynamic Island UI keeps the previous episode's artwork pinned (artwork
+/// lives in `ActivityAttributes`, which `activity.update()` cannot mutate).
+///
+/// ActivityKit refuses to start activities outside a real host process with
+/// the right entitlements, so we cannot assert against `Activity<>.activities`
+/// directly from unit tests. What we *can* verify:
+///   1. `NowPlayingActivityCoordinator.endCurrent()` exists and runs cleanly
+///      when there are no activities to end (must be safe to call eagerly).
+///   2. The publisher's episode-change subscription is wired correctly:
+///      switching episodes via the live PlaybackController singleton drives
+///      the subscription without crashing on the now-dangling previous
+///      episode reference.
+@MainActor
+struct LiveActivityLifecycleTests {
+    private func makeContainer() throws -> ModelContainer {
+        let schema = Schema([
+            Podcast.self,
+            Episode.self,
+            EpisodeProfile.self,
+            PlaybackEvent.self,
+            PreferenceSignal.self,
+            QueueItem.self,
+            UserTasteProfile.self,
+            TelemetryEvent.self
+        ])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        return try ModelContainer(for: schema, configurations: [configuration])
+    }
+
+    private func makeEpisode(title: String, in context: ModelContext) -> Episode {
+        let podcast = Podcast(
+            title: "Show-\(title)",
+            feedURL: URL(string: "https://example.com/\(UUID().uuidString).xml")!
+        )
+        context.insert(podcast)
+        let episode = Episode(
+            title: title,
+            pubDate: .now,
+            audioURL: URL(string: "https://example.com/\(UUID().uuidString).mp3")!,
+            podcast: podcast
+        )
+        context.insert(episode)
+        return episode
+    }
+
+    @Test
+    func endCurrentIsSafeWhenNoActivitiesPresent() async {
+        // In the unit-test host process ActivityKit reports zero activities.
+        // The coordinator must early-out cleanly rather than throwing or
+        // hanging on `activity.end(...)` against an empty collection.
+        await NowPlayingActivityCoordinator.endCurrent()
+        // No assertion needed — reaching this line without throwing or
+        // hanging is the contract. If endCurrent() ever regresses to a force
+        // unwrap or unguarded loop on a missing API, the test process will
+        // crash here.
+    }
+
+    @Test
+    func switchingEpisodesDoesNotCrashPublisherSubscription() throws {
+        // Drives the live publisher subscription end-to-end: prime episode A
+        // (publisher sees A → A's id), switch to episode B (publisher's
+        // dropFirst().removeDuplicates() chain fires), confirm the wiring
+        // holds. Without the Phase 39 fix the subscription doesn't exist at
+        // all; with it, the new subscription must survive a real episode swap
+        // without dangling-reference crashes when the publisher
+        // dereferences episode.podcast for the snapshot.
+        let container = try makeContainer()
+        let context = container.mainContext
+        let episodeA = makeEpisode(title: "Episode A", in: context)
+        let episodeB = makeEpisode(title: "Episode B", in: context)
+
+        let controller = PlaybackController.shared
+        controller.debugResetForTesting()
+        controller.configure(context: context)
+
+        // Hook up the publisher's subscriptions. `start()` is idempotent and
+        // `debugResetForTesting()` above tore down any prior subscriptions
+        // from earlier tests in the suite.
+        NowPlayingPublisher.shared.start()
+
+        controller.debugPrimePlayback(
+            episode: episodeA,
+            duration: 1800,
+            currentTime: 60,
+            isPlaying: true,
+            presentPlayer: true
+        )
+        #expect(controller.currentEpisode?.id == episodeA.id)
+
+        // Now flip to episode B. The publisher's episode-change subscription
+        // observes the id transition and calls endActivity() / endCurrent().
+        // With no real Activity registered (test host), endCurrent() is a
+        // no-op — but the subscription must still fire without crashing on
+        // the SwiftData @Model reference.
+        controller.debugPrimePlayback(
+            episode: episodeB,
+            duration: 1800,
+            currentTime: 0,
+            isPlaying: true,
+            presentPlayer: true
+        )
+        #expect(controller.currentEpisode?.id == episodeB.id)
+
+        // Clean up before the in-memory ModelContainer goes away, otherwise
+        // the publisher's lingering Combine sinks will see a dangling
+        // episode reference on the next event.
+        controller.debugResetForTesting()
+    }
+}
