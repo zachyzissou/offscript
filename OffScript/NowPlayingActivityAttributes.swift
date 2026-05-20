@@ -1,5 +1,6 @@
 import ActivityKit
 import Foundation
+import OSLog
 
 /// Mirror of `NowPlayingActivityAttributes` defined in OffScriptWidgets.
 /// ActivityKit requires both the producer (main app) and consumer (widget
@@ -37,5 +38,33 @@ public struct NowPlayingActivityAttributes: ActivityAttributes {
 
     public init(artworkURL: URL? = nil) {
         self.artworkURL = artworkURL
+    }
+}
+
+/// Lifecycle helpers for Live Activities. `NowPlayingPublisher` owns the
+/// happy-path start/update/end calls; this enum is the catch-all for edge
+/// cases (app re-launch with stale activities still pinned to the Dynamic
+/// Island, force-quit recovery, etc.).
+enum NowPlayingActivityCoordinator {
+    private static let logger = Logger(subsystem: "com.offscript", category: "LiveActivity")
+
+    /// Called once at app launch. ActivityKit doesn't auto-end activities
+    /// when the host app is force-quit — they keep ticking with frozen state
+    /// until the user dismisses them, which looks like a ghost. We
+    /// authoritatively end every still-running NowPlaying activity here so
+    /// the user gets a clean slate on each launch; `NowPlayingPublisher` will
+    /// re-create one on the first state change if playback resumes.
+    ///
+    /// `dismissalPolicy: .immediate` removes them from the Lock Screen and
+    /// Dynamic Island right away — anything else would leave the stale UI
+    /// visible during the dismissal grace period.
+    @MainActor
+    static func endStaleActivities() async {
+        let activities = Activity<NowPlayingActivityAttributes>.activities
+        guard !activities.isEmpty else { return }
+        logger.info("Ending \(activities.count, privacy: .public) stale Live Activities at launch")
+        for activity in activities {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
     }
 }
