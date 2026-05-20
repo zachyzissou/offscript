@@ -525,6 +525,7 @@ struct EpisodeDetailView: View {
             HStack(spacing: 12) {
                 OffScriptArtworkView(url: episode.podcast.artworkURL, cornerRadius: 3)
                     .frame(width: 44, height: 44)
+                    .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                 VStack(alignment: .leading, spacing: 3) {
                     TunerLabel(text: "FROM CHANNEL")
                     Text(episode.podcast.title)
