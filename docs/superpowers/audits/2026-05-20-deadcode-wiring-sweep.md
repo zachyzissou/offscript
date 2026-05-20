@@ -295,3 +295,33 @@ Of 10 distinct findings, the cluster is roughly:
 The dominant root cause looks like Phase-19-shaped: enum cases and writer
 properties get added eagerly when designing a domain model, but the
 reader/emitter side gets deferred and then never returned to.
+
+## Phase 25 — resolutions
+
+Surgical pass: delete the no-risk DEAD items, keep the items where deletion
+would force a SwiftData schema migration or a decode-safety regression,
+defer the item that requires a product decision.
+
+| # | Item | Verdict | Rationale |
+| --- | --- | --- | --- |
+| 1 | `AppSettings.LibrarySortMode` + `librarySortMode` + `libraryShowDownloadedOnly` | DELETED | Zero production consumers; only the `appSettingsRoundTripsPreferences` test exercised them. Test assertions trimmed; remaining preferences still covered. |
+| 2 | `AppSettings.lastCloudSyncDate` | DELETED | Zero writers, zero readers. Pure dead UserDefaults shim. |
+| 3 | `NetworkMonitor.isConnected` | DELETED (property only) | Zero read sites; only `connectionType` is consumed. `NWPathMonitor` plumbing kept since `connectionType` still flows through the same path-update handler. |
+| 4 | `Podcast.lastSyncAttemptAt` | KEPT (dormant) | Deletion would require a SwiftData V2→V3 schema migration with real existing-install impact. Field is harmless on disk; left as "dormant — kept for future read consumers". The 8 production write sites continue to record timestamps, and the 2 test assertions pin a non-zero invariant. |
+| 5 | `PlaybackEvent.Kind.seekedForward` + `.seekedBackward` | KEPT (decode-safe) | Enum case removal is decode-unsafe: `PlaybackEvent.kind` is persisted as a String raw value in SwiftData, and existing rows with `kind == "seekedForward"` (if any) would fail to decode. Reader switch arms already weight them 0, so behavioral impact of keeping is zero. |
+| 6 | `TelemetryEvent` model + `TelemetryService` | DEFERRED | Requires a product decision (delete the persistence + 16 call sites with V2→V3 migration, OR build a debug-only inspector surface). Neither path fits a quick surgical commit. Flagged for follow-up. |
+
+Commits:
+- e8f4eaa — `chore: delete dead-code LibrarySortMode + related AppSettings` (-32 lines)
+- b7c119a — `chore: delete dead-code AppSettings.lastCloudSyncDate` (-6 lines)
+- e2bd525 — `chore: delete dead-code NetworkMonitor.isConnected` (-2 lines)
+
+Total: 40 lines deleted across 2 files (`OffScript/AppSettings.swift`,
+`OffScriptTests/OffScriptTests.swift`). Build green after each commit.
+
+Deferred follow-ups still open:
+- TelemetryEvent (item 6) — needs product decision.
+- Items 4 & 5 remain as documented "kept-with-rationale" dormant surfaces.
+- Phase 23 BROKEN-WIRING items (`.started`, `BackgroundFeedRefresh` /
+  `BackgroundTranscriptionService` bootstrap) were addressed by commit
+  `b2fb431` and are not in this phase's scope.
