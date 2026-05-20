@@ -155,9 +155,8 @@ struct SettingsView: View {
     private func stat(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(value)
-                .font(.system(size: 22, weight: .bold, design: .monospaced))
+                .tunerFont(size: 22, weight: .bold, tracking: 0)
                 .foregroundStyle(Color.offscriptPaperWhite)
-                .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
             TunerLabel(text: label, color: .offscriptSoftPaper, size: 8)
@@ -487,8 +486,7 @@ struct SettingsView: View {
                     .foregroundStyle(Color.offscriptPaperWhite.opacity(0.65))
             } else {
                 Text(values.prefix(6).joined(separator: " · "))
-                    .font(.system(size: 12.5, weight: .semibold, design: .monospaced))
-                    .tracking(0.4)
+                    .tunerFont(size: 12.5, tracking: 0.4)
                     .foregroundStyle(Color.offscriptPaperWhite.opacity(0.82))
                     .textCase(.uppercase)
                     .fixedSize(horizontal: false, vertical: true)
