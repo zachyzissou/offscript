@@ -43,6 +43,18 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         static let queue = 50
         static let recent = 20
         static let recommendations = 10
+        /// Cap search hits so the in-car list renders quickly even on a long
+        /// library. Subscribed podcasts and recent episodes are both filtered
+        /// against this combined ceiling.
+        static let searchResults = 30
+        /// Minimum query length before we fire a search. CarPlay's input
+        /// surfaces (voice + steering-wheel scroll wheel) tend to emit
+        /// single-character noise during composition; a 2-char floor avoids
+        /// thrashing the SwiftData fetch on every keystroke.
+        static let searchMinChars = 2
+        /// Up Next list shown when the user taps the now-playing Up Next
+        /// button. Tight cap because this surface is presented while driving.
+        static let upNext = 10
     }
 
     private var interfaceController: CPInterfaceController?
@@ -99,7 +111,98 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         let recommendations = CPListTemplate(title: "Recommendations", sections: recommendationsSections())
         recommendations.tabImage = UIImage(systemName: "sparkles")
 
-        return CPTabBarTemplate(templates: [library, queue, recent, recommendations])
+        let search = makeSearchTemplate()
+        search.tabImage = UIImage(systemName: "magnifyingglass")
+        search.tabTitle = "Search"
+
+        return CPTabBarTemplate(templates: [library, queue, recent, recommendations, search])
+    }
+
+    // MARK: - Search
+
+    /// CarPlay's text-input surface. Returns matches against the on-device
+    /// library only — no network round-trip. The car is a poor place to be
+    /// waiting on iTunes search latency, and the entitlement-gated CarPlay
+    /// audio app surface is for *playing what you already follow*, not for
+    /// discovery (the recommendations tab covers that path).
+    private func makeSearchTemplate() -> CPSearchTemplate {
+        let search = CPSearchTemplate()
+        search.delegate = self
+        return search
+    }
+
+    /// Find subscribed podcasts and recent episodes whose title contains
+    /// `query` (case-insensitive). Podcasts always sort before episodes —
+    /// once a driver knows what show they want, surfacing the show first
+    /// lets them open the show and pick an episode in two glances rather
+    /// than scrolling a flat list of episodes from many shows.
+    private func searchPodcasts(matching query: String) -> [CPListItem] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= ListLimits.searchMinChars,
+              let context = makeModelContext() else {
+            return []
+        }
+
+        var hits: [CPListItem] = []
+        hits.reserveCapacity(ListLimits.searchResults)
+
+        // 1) Subscribed podcasts — title contains query (case-insensitive).
+        // SwiftData's #Predicate macro does not yet support
+        // `localizedCaseInsensitiveContains`, so we filter in memory after
+        // fetching subscribed shows (already capped by `ListLimits.podcasts`
+        // in the library section logic; here we widen to the full subscribed
+        // set because the user has explicitly opted in by typing).
+        do {
+            let descriptor = FetchDescriptor<Podcast>(
+                predicate: #Predicate<Podcast> { $0.isSubscribed },
+                sortBy: [SortDescriptor(\Podcast.title)]
+            )
+            let podcasts = try context.fetch(descriptor)
+            let matchingPodcasts = podcasts.filter { $0.title.range(of: trimmed, options: .caseInsensitive) != nil }
+            for podcast in matchingPodcasts {
+                guard hits.count < ListLimits.searchResults else { break }
+                hits.append(searchListItem(for: podcast))
+            }
+        } catch {
+            Self.logger.error("Search podcast fetch failed: \(String(describing: error), privacy: .public)")
+        }
+
+        // 2) Recent episodes — episodes the user has actually played
+        // (`lastPlayedAt != nil`) whose title contains the query. Sorted
+        // most-recently-played first so familiar episodes surface above
+        // ancient backlog. Same in-memory case-insensitive filter as above.
+        if hits.count < ListLimits.searchResults {
+            do {
+                let descriptor = FetchDescriptor<Episode>(
+                    predicate: #Predicate<Episode> { $0.lastPlayedAt != nil },
+                    sortBy: [SortDescriptor(\Episode.lastPlayedAt, order: .reverse)]
+                )
+                let episodes = try context.fetch(descriptor)
+                for episode in episodes where episode.title.range(of: trimmed, options: .caseInsensitive) != nil {
+                    guard hits.count < ListLimits.searchResults else { break }
+                    hits.append(listItem(for: episode))
+                }
+            } catch {
+                Self.logger.error("Search episode fetch failed: \(String(describing: error), privacy: .public)")
+            }
+        }
+
+        return hits
+    }
+
+    /// `CPListItem` for a podcast row in the search results. Tapping pushes
+    /// the existing episode list template for that podcast — same handler
+    /// the library tab uses, so the navigation feels consistent.
+    private func searchListItem(for podcast: Podcast) -> CPListItem {
+        let detail = podcast.author ?? "Podcast"
+        let item = CPListItem(text: podcast.title, detailText: detail)
+        item.accessoryType = .disclosureIndicator
+        attachArtwork(to: item, url: podcast.artworkURL)
+        item.handler = { [weak self] _, completion in
+            self?.pushEpisodeList(for: podcast)
+            completion()
+        }
+        return item
     }
 
     // MARK: - Section builders
@@ -321,3 +424,45 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 /// conformance here so future hook points (e.g. reacting to Up Next taps)
 /// have a place to land.
 extension CarPlaySceneDelegate: CPNowPlayingTemplateObserver {}
+
+// MARK: - CPSearchTemplateDelegate
+
+extension CarPlaySceneDelegate: CPSearchTemplateDelegate {
+    /// CarPlay invokes this on every keystroke / voice-recognized chunk.
+    /// We must respond on the main actor and call `completionHandler` with
+    /// the result list (or `[]` to clear).
+    nonisolated func searchTemplate(
+        _ searchTemplate: CPSearchTemplate,
+        updatedSearchText searchText: String,
+        completionHandler: @escaping ([CPListItem]) -> Void
+    ) {
+        Task { @MainActor in
+            // Short queries: clear results without burning a fetch. The
+            // floor lives in `searchPodcasts(matching:)` so the empty-string
+            // case (e.g. user backspaced everything) also clears cleanly.
+            guard searchText.count >= ListLimits.searchMinChars else {
+                completionHandler([])
+                return
+            }
+            let results = self.searchPodcasts(matching: searchText)
+            completionHandler(results)
+        }
+    }
+
+    /// User tapped a search hit. The `handler` we attached in
+    /// `listItem(for:)` / `searchListItem(for:)` already performs the right
+    /// action (play episode / push podcast episode list); just forward.
+    nonisolated func searchTemplate(
+        _ searchTemplate: CPSearchTemplate,
+        selectedResult item: CPListItem,
+        completionHandler: @escaping () -> Void
+    ) {
+        Task { @MainActor in
+            if let handler = item.handler {
+                handler(item, completionHandler)
+            } else {
+                completionHandler()
+            }
+        }
+    }
+}
