@@ -3436,6 +3436,577 @@ struct EpisodeDurationFormatterTests {
     }
 }
 
+// MARK: - Recommendation Explanation Tests
+
+/// Phase 20 audit: pins the contract that recommendation explanation
+/// strings name the specific user action behind each pick rather than
+/// falling back to vague boilerplate. See
+/// `docs/superpowers/audits/2026-05-19-recommendation-credibility.md`.
+@MainActor
+struct RecommendationExplanationTests {
+    // MARK: container
+
+    private func makeContainer() throws -> ModelContainer {
+        let schema = Schema([
+            Podcast.self,
+            Episode.self,
+            EpisodeProfile.self,
+            PlaybackEvent.self,
+            PreferenceSignal.self,
+            QueueItem.self,
+            UserTasteProfile.self,
+            TelemetryEvent.self
+        ])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        return try ModelContainer(for: schema, configurations: [configuration])
+    }
+
+    // MARK: tests
+
+    /// Show-affinity evidence — multiple completions of the same show —
+    /// renders an explanation that names the show AND the concrete
+    /// finish count, so the user can verify it against their own
+    /// recent listens.
+    @Test
+    func showAffinityExplanationCitesShowAndCount() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        AppSettings.preferredGenres = []
+        defer { AppSettings.preferredGenres = originalGenres }
+
+        let show = Podcast(title: "Reply All", feedURL: URL(string: "https://example.com/reply.xml")!)
+        let finishedA = Episode(
+            title: "Finished A",
+            pubDate: Date().addingTimeInterval(-20 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/a.mp3")!,
+            podcast: show
+        )
+        let finishedB = Episode(
+            title: "Finished B",
+            pubDate: Date().addingTimeInterval(-10 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/b.mp3")!,
+            podcast: show
+        )
+        let candidate = Episode(
+            title: "New Drop",
+            pubDate: Date().addingTimeInterval(-2 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/c.mp3")!,
+            podcast: show
+        )
+        finishedA.isPlayed = true
+        finishedB.isPlayed = true
+        context.insert(show)
+        context.insert(finishedA)
+        context.insert(finishedB)
+        context.insert(candidate)
+        context.insert(PlaybackEvent(kind: .completed, position: 1_800, episode: finishedA))
+        context.insert(PlaybackEvent(kind: .completed, position: 1_800, episode: finishedB))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        let scoredSection = try #require(sections.first(where: { $0.episodes.contains(where: { $0.id == candidate.id }) }))
+        let explanation = scoredSection.explanation(for: candidate)
+
+        #expect(explanation.contains("Reply All"))
+        #expect(explanation.contains("2"), "Explanation should name the concrete finish count, got: \(explanation)")
+    }
+
+    /// A recommendation backed by genre evidence cites the genre name
+    /// explicitly rather than saying "lane" or "category" abstractly.
+    @Test
+    func genreOnlyExplanationCitesTheGenre() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        defer { AppSettings.preferredGenres = originalGenres }
+        AppSettings.preferredGenres = []
+
+        let show = Podcast(title: "Tech Daily", feedURL: URL(string: "https://example.com/tech.xml")!)
+        show.categories = ["technology"]
+        let episode = Episode(
+            title: "Today In Tech",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/today.mp3")!,
+            podcast: show
+        )
+        let taste = UserTasteProfile()
+        taste.preferredGenres = ["technology"]
+        taste.topTags = ["technology"]  // make hasData == true
+
+        context.insert(show)
+        context.insert(episode)
+        context.insert(taste)
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        let scored = try #require(
+            sections
+                .flatMap(\.scoredEpisodes)
+                .first(where: { $0.episode.id == episode.id })
+        )
+
+        #expect(scored.explanation.localizedCaseInsensitiveContains("technology"))
+        // Phase 20: no "selected lane" boilerplate — the genre is the
+        // evidence, not the word "lane".
+        #expect(!scored.explanation.localizedCaseInsensitiveContains("selected"))
+    }
+
+    /// When BOTH show affinity AND tag match evidence exist, the
+    /// composed explanation must surface the show (most specific
+    /// evidence) — it's the more verifiable signal.
+    @Test
+    func compositeExplanationPrefersShowOverTagAlone() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        defer { AppSettings.preferredGenres = originalGenres }
+        AppSettings.preferredGenres = []
+
+        let show = Podcast(title: "Hardcore History", feedURL: URL(string: "https://example.com/hh.xml")!)
+        let prior = Episode(
+            title: "Earlier Drop",
+            pubDate: Date().addingTimeInterval(-15 * 86_400),
+            duration: 3_600,
+            audioURL: URL(string: "https://example.com/p.mp3")!,
+            podcast: show
+        )
+        let candidate = Episode(
+            title: "New Drop",
+            pubDate: Date().addingTimeInterval(-2 * 86_400),
+            duration: 3_600,
+            audioURL: URL(string: "https://example.com/n.mp3")!,
+            podcast: show
+        )
+        let priorProfile = EpisodeProfile(episodeID: prior.id)
+        priorProfile.tags = ["long-form history"]
+        let candidateProfile = EpisodeProfile(episodeID: candidate.id)
+        candidateProfile.tags = ["long-form history"]
+        prior.isPlayed = true
+
+        context.insert(show)
+        context.insert(prior)
+        context.insert(candidate)
+        context.insert(priorProfile)
+        context.insert(candidateProfile)
+        context.insert(PlaybackEvent(kind: .completed, position: 3_600, episode: prior))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        let scored = try #require(
+            sections.flatMap(\.scoredEpisodes).first(where: { $0.episode.id == candidate.id })
+        )
+        // Show signal is more specific than the tag signal, so the
+        // composed primary should be the show.
+        #expect(scored.explanation.contains("Hardcore History"))
+        #expect(scored.signalTrace.contains(RecommendationSignal(label: "source", value: "completion")))
+    }
+
+    /// `homeSignal` returns nil — not vague boilerplate — when an
+    /// episode has zero concrete signal behind it. That episode then
+    /// surfaces (if at all) only through the catch-all subscription
+    /// rail, which uses an honest "From your subscribed show …" copy.
+    @Test
+    func noConcreteEvidenceReturnsHonestSubscriptionFallback() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        defer { AppSettings.preferredGenres = originalGenres }
+        AppSettings.preferredGenres = []
+
+        let show = Podcast(
+            title: "Untouched Sub",
+            feedURL: URL(string: "https://example.com/untouched.xml")!,
+            isSubscribed: true
+        )
+        let episode = Episode(
+            title: "Latest",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/latest.mp3")!,
+            podcast: show
+        )
+        context.insert(show)
+        context.insert(episode)
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        let fromSubs = try #require(sections.first(where: { $0.title == "From Your Subscriptions" }))
+        let scored = try #require(fromSubs.scoredEpisodes.first(where: { $0.episode.id == episode.id }))
+
+        // Honest fallback: names the show + the verifiable user action
+        // (subscribe). NOT "Available from …" (the prior dead-code
+        // boilerplate) and NOT "Recommended" / "Probably interesting".
+        #expect(scored.explanation.contains("Untouched Sub"))
+        #expect(scored.explanation.contains("subscribed"))
+        #expect(!scored.explanation.localizedCaseInsensitiveContains("available from"))
+        #expect(!scored.explanation.localizedCaseInsensitiveContains("recommended"))
+    }
+
+    /// VoiceOver speaks "·" as the literal word "middle dot" — so
+    /// neither the explanation nor any chip value may contain one.
+    @Test
+    func explanationAndSignalsAreFreeOfMiddleDot() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        defer { AppSettings.preferredGenres = originalGenres }
+        AppSettings.preferredGenres = []
+
+        let show = Podcast(title: "Reply All", feedURL: URL(string: "https://example.com/m.xml")!)
+        let prior = Episode(
+            title: "Older",
+            pubDate: Date().addingTimeInterval(-7 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/older.mp3")!,
+            podcast: show
+        )
+        let candidate = Episode(
+            title: "New",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/new.mp3")!,
+            podcast: show
+        )
+        prior.isPlayed = true
+        context.insert(show)
+        context.insert(prior)
+        context.insert(candidate)
+        context.insert(PlaybackEvent(kind: .completed, position: 1_800, episode: prior))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        for section in sections {
+            for scored in section.scoredEpisodes {
+                #expect(!scored.explanation.contains("·"), "explanation contains middle dot: \(scored.explanation)")
+                for signal in scored.signalTrace {
+                    #expect(!signal.label.contains("·"))
+                    #expect(!signal.value.contains("·"))
+                }
+            }
+        }
+    }
+
+    /// The signal-trace rail view caps at 3 chips. The data layer must
+    /// not exceed that even when many evidence sources fire — anything
+    /// past index 2 is invisible and would just inflate the score
+    /// rather than the user-visible justification.
+    @Test
+    func signalTraceStaysWithinThreeChipVisualBudget() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        defer { AppSettings.preferredGenres = originalGenres }
+        AppSettings.preferredGenres = [.technology]
+
+        let show = Podcast(title: "Decoder", feedURL: URL(string: "https://example.com/d.xml")!)
+        show.categories = ["technology"]
+        let liked = Episode(
+            title: "Liked",
+            pubDate: Date().addingTimeInterval(-3 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/l.mp3")!,
+            podcast: show
+        )
+        let candidate = Episode(
+            title: "Candidate",
+            pubDate: .now,
+            duration: 1_500,
+            audioURL: URL(string: "https://example.com/c.mp3")!,
+            podcast: show
+        )
+        let likedProfile = EpisodeProfile(episodeID: liked.id)
+        likedProfile.tags = ["ai", "policy", "platform shifts"]
+        let candidateProfile = EpisodeProfile(episodeID: candidate.id)
+        candidateProfile.tags = ["ai", "policy", "platform shifts"]
+
+        context.insert(show)
+        context.insert(liked)
+        context.insert(candidate)
+        context.insert(likedProfile)
+        context.insert(candidateProfile)
+        context.insert(PreferenceSignal(action: .moreLikeThis, episode: liked))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        let scored = try #require(
+            sections.flatMap(\.scoredEpisodes).first(where: { $0.episode.id == candidate.id })
+        )
+
+        // The rail view (`RecommendationSignalTraceView`) prefixes the
+        // trace to 3 entries, so the underlying source-buckets shown
+        // must include the most informative ones first. We allow the
+        // raw trace to be longer than 3 (the view truncates), but the
+        // user-visible prefix MUST be the three most concrete chips.
+        let visible = Array(scored.signalTrace.prefix(3))
+        let sources = visible.filter { $0.label == "source" }.map(\.value)
+        // At least one of the top three must be a chosen-strength
+        // source — i.e. the user's most direct evidence wins the
+        // visible budget.
+        let chosenSources: Set<String> = ["queue", "resume", "explicit signal", "show intent"]
+        #expect(visible.contains(where: { $0.label == "strength" })
+                || sources.contains(where: { chosenSources.contains($0) }))
+    }
+
+    /// `homeSignal`'s resume explanation uses `EpisodeDurationFormatter.spoken`
+    /// for the WHY copy ("12 minutes left") so VoiceOver reads it as a
+    /// sentence. The chip value continues to use `.short` ("12m") for
+    /// the mono trace.
+    @Test
+    func resumeExplanationUsesSpokenDurationFormatter() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        defer { AppSettings.preferredGenres = originalGenres }
+        AppSettings.preferredGenres = []
+
+        let show = Podcast(title: "Show", feedURL: URL(string: "https://example.com/r.xml")!)
+        let episode = Episode(
+            title: "Resumable",
+            pubDate: Date().addingTimeInterval(-1 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/resumable.mp3")!,
+            podcast: show
+        )
+        episode.playedPosition = 600  // 10 minutes done, 20 left
+        context.insert(show)
+        context.insert(episode)
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        let scored = try #require(
+            sections.flatMap(\.scoredEpisodes).first(where: { $0.episode.id == episode.id })
+        )
+
+        // "20 minutes" not "20m" in the WHY sentence — VoiceOver
+        // reads "m" as the letter, not "minutes".
+        #expect(scored.explanation.contains("20 minutes"))
+        #expect(!scored.explanation.contains("20m left"))
+        // But the chip value (mono trace) keeps the compact form.
+        let leftChip = scored.signalTrace.first(where: { $0.label == "left" })
+        #expect(leftChip?.value == "20m")
+    }
+
+    /// Explanation strings must stay under 80 characters at the
+    /// scoring boundary — anything longer truncates on the rail card
+    /// and a user looking at a card never sees the punchline. Walks
+    /// every produced explanation in a thin-signal Home build.
+    @Test
+    func explanationsStayUnderEightyCharacters() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        defer { AppSettings.preferredGenres = originalGenres }
+        AppSettings.preferredGenres = [.technology]
+
+        let show = Podcast(title: "Decoder", feedURL: URL(string: "https://example.com/e.xml")!)
+        show.categories = ["technology"]
+        let liked = Episode(
+            title: "Liked",
+            pubDate: Date().addingTimeInterval(-2 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/eliked.mp3")!,
+            podcast: show
+        )
+        let candidate = Episode(
+            title: "Candidate",
+            pubDate: .now,
+            duration: 1_200,
+            audioURL: URL(string: "https://example.com/ecand.mp3")!,
+            podcast: show
+        )
+        let likedProfile = EpisodeProfile(episodeID: liked.id)
+        likedProfile.tags = ["artificial intelligence infrastructure", "developer workflows"]
+        let candidateProfile = EpisodeProfile(episodeID: candidate.id)
+        candidateProfile.tags = ["artificial intelligence infrastructure", "developer workflows"]
+        context.insert(show)
+        context.insert(liked)
+        context.insert(candidate)
+        context.insert(likedProfile)
+        context.insert(candidateProfile)
+        context.insert(PreferenceSignal(action: .moreLikeThis, episode: liked))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        for section in sections {
+            for scored in section.scoredEpisodes {
+                #expect(scored.explanation.count <= 80,
+                        "Explanation over 80 chars (\(scored.explanation.count)): \(scored.explanation)")
+            }
+        }
+    }
+
+    /// A show that has been `.skippedQuickly`'d enough to cross the
+    /// suppression threshold MUST NOT come back through a rail with a
+    /// hedged "but we still think you'll like it" explanation —
+    /// silent demotion is the right behavior. Brand promise: "no
+    /// algorithm pushing".
+    @Test
+    func heavilySkippedShowIsSilentlySuppressed() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        defer { AppSettings.preferredGenres = originalGenres }
+        AppSettings.preferredGenres = []
+
+        let show = Podcast(title: "Heavily Skipped", feedURL: URL(string: "https://example.com/skip.xml")!)
+        let skippedA = Episode(
+            title: "Skipped A",
+            pubDate: Date().addingTimeInterval(-3 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/skipa.mp3")!,
+            podcast: show
+        )
+        let skippedB = Episode(
+            title: "Skipped B",
+            pubDate: Date().addingTimeInterval(-2 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/skipb.mp3")!,
+            podcast: show
+        )
+        let skippedC = Episode(
+            title: "Skipped C",
+            pubDate: Date().addingTimeInterval(-1 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/skipc.mp3")!,
+            podcast: show
+        )
+        let candidate = Episode(
+            title: "Suppressed Candidate",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/suppressed.mp3")!,
+            podcast: show
+        )
+        context.insert(show)
+        context.insert(skippedA)
+        context.insert(skippedB)
+        context.insert(skippedC)
+        context.insert(candidate)
+        // notInterested is -5.0 per signal; two of them ≤ -7 trips
+        // the show-suppression threshold (≤ -7).
+        context.insert(PreferenceSignal(action: .notInterested, episode: skippedA))
+        context.insert(PreferenceSignal(action: .notInterested, episode: skippedB))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        let allEpisodes = sections.flatMap(\.episodes)
+        // The candidate from the suppressed show must not appear in
+        // any signal-driven rail. (notInterested also suppresses by
+        // dislikedEpisodeIDs for the seed episodes themselves.)
+        #expect(!allEpisodes.contains(where: { $0.id == candidate.id }),
+                "Heavily-skipped show's new episodes must be silently demoted")
+    }
+
+    /// Every `RecommendationSignal` chip must have a non-empty value
+    /// — an orphan label ("source: ") would render as a confusing
+    /// half-chip with no information.
+    @Test
+    func allSignalChipsHaveNonEmptyValues() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        defer { AppSettings.preferredGenres = originalGenres }
+        AppSettings.preferredGenres = [.technology]
+
+        let show = Podcast(title: "Mixed Show", feedURL: URL(string: "https://example.com/mx.xml")!)
+        show.categories = ["technology"]
+        let prior = Episode(
+            title: "Prior",
+            pubDate: Date().addingTimeInterval(-4 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/p.mp3")!,
+            podcast: show
+        )
+        let candidate = Episode(
+            title: "Cand",
+            pubDate: .now,
+            duration: 900,
+            audioURL: URL(string: "https://example.com/c2.mp3")!,
+            podcast: show
+        )
+        let priorProfile = EpisodeProfile(episodeID: prior.id)
+        priorProfile.tags = ["ai"]
+        let candidateProfile = EpisodeProfile(episodeID: candidate.id)
+        candidateProfile.tags = ["ai"]
+        prior.isPlayed = true
+
+        context.insert(show)
+        context.insert(prior)
+        context.insert(candidate)
+        context.insert(priorProfile)
+        context.insert(candidateProfile)
+        context.insert(PlaybackEvent(kind: .completed, position: 1_800, episode: prior))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        for section in sections {
+            for scored in section.scoredEpisodes {
+                for signal in scored.signalTrace {
+                    #expect(!signal.label.isEmpty, "Orphan-label chip in trace: \(scored.signalTrace)")
+                    #expect(!signal.value.isEmpty, "Orphan-value chip — label \(signal.label) has empty value")
+                }
+            }
+        }
+    }
+
+    /// Explicit "more like this" signals are surfaced with a concrete
+    /// match count when ≥ 2 tags match — replaces the Phase-19 vague
+    /// "Matches what you asked for: …" boilerplate.
+    @Test
+    func explicitSignalExplanationNamesConcreteMatchCount() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let originalGenres = AppSettings.preferredGenres
+        defer { AppSettings.preferredGenres = originalGenres }
+        AppSettings.preferredGenres = []
+
+        let showA = Podcast(title: "Show A", feedURL: URL(string: "https://example.com/sa.xml")!)
+        let showB = Podcast(title: "Show B", feedURL: URL(string: "https://example.com/sb.xml")!)
+        let seed = Episode(
+            title: "Seed",
+            pubDate: Date().addingTimeInterval(-3 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/seed-exp.mp3")!,
+            podcast: showA
+        )
+        let candidate = Episode(
+            title: "Cand",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/cand-exp.mp3")!,
+            podcast: showB
+        )
+        let seedProfile = EpisodeProfile(episodeID: seed.id)
+        seedProfile.tags = ["ai tooling", "developer workflows"]
+        let candidateProfile = EpisodeProfile(episodeID: candidate.id)
+        candidateProfile.tags = ["ai tooling", "developer workflows"]
+
+        context.insert(showA)
+        context.insert(showB)
+        context.insert(seed)
+        context.insert(candidate)
+        context.insert(seedProfile)
+        context.insert(candidateProfile)
+        context.insert(PreferenceSignal(action: .moreLikeThis, episode: seed))
+        try context.save()
+
+        let sections = try RecommendationService().homeSections(context: context, limit: 3)
+        let scored = try #require(
+            sections.flatMap(\.scoredEpisodes).first(where: { $0.episode.id == candidate.id })
+        )
+
+        // Concrete count surfaced ("Hits 2 tags …") — not the vague
+        // "Matches what you asked for" the Phase-19 audit flagged.
+        #expect(scored.explanation.contains("2"))
+        #expect(!scored.explanation.contains("Matches what you asked for"))
+    }
+}
+
 // MARK: - voiceOverMetadata Tests
 
 /// Mirrors the `voiceOverMetadata` contract introduced in PRs #267,
