@@ -354,10 +354,15 @@ final class OffScriptUITests: XCTestCase {
         XCTAssertTrue(app.screen("LibraryScreen").waitForExistence(timeout: 12))
         XCTAssertTrue(app.staticTexts["SHOWS · DIRECTORY"].waitForExistence(timeout: 8))
 
-        tapWhenReady(app.buttons["ATTN"].firstMatch, in: app, name: "ATTN sort")
+        // Phase 41 made chip a11y labels dimension-prefixed for VoiceOver
+        // disambiguation. XCUIElement.buttons[…] matches against the
+        // accessibility label, not the visible mono text, so these queries
+        // use the Phase 41 strings ("Sort: needs attention first", etc.)
+        // rather than the visible "ATTN" / "UNPLAYED" chips.
+        tapWhenReady(app.buttons["Sort: needs attention first"].firstMatch, in: app, name: "ATTN sort")
         XCTAssertTrue(app.staticTexts["● 1 IN PROGRESS"].waitForExistence(timeout: 10))
 
-        tapWhenReady(app.buttons["UNPLAYED"].firstMatch, in: app, name: "UNPLAYED scope")
+        tapWhenReady(app.buttons["Scope: unplayed only"].firstMatch, in: app, name: "UNPLAYED scope")
         XCTAssertTrue(app.staticTexts["A Channel 001"].waitForExistence(timeout: 10))
 
         let filter = libraryFilterField(in: app)
