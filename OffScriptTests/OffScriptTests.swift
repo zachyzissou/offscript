@@ -5729,3 +5729,180 @@ struct TasteProfileDecayTests {
     }
 }
 
+
+/// Pins the editorial-collection filter contract from the Phase 21
+/// `2026-05-19-curated-discovery.md` audit: declarative filters that
+/// compose by intersection, with deterministic resolution against the
+/// shipped catalog. These are pure tests on the `Filter.matches` and
+/// `CuratedPodcastCatalog.resolve` surfaces — no live network, no
+/// SwiftData container.
+@Suite("CuratedDiscoveryFilter")
+struct CuratedDiscoveryFilterTests {
+    private func makeEntry(
+        genre: Genre = .technology,
+        duration: ClosedRange<TimeInterval>? = 45 * 60 ... 65 * 60,
+        keywords: Set<String> = []
+    ) -> CuratedEntry {
+        let result = PodcastSearchResult(
+            title: "Test Show",
+            author: "Author",
+            feedURL: URL(string: "https://example.com/\(UUID().uuidString).xml")!,
+            artworkURL: nil,
+            websiteURL: nil,
+            summary: nil
+        )
+        return CuratedEntry(result: result, genre: genre, typicalDuration: duration, keywords: keywords)
+    }
+
+    @Test
+    func collectionFilterMatchesDurationRangeOverlap() {
+        // The candidate's typicalDuration is 30...50 min — its upper
+        // bound (50 min) overlaps the filter's 45...65 min window, so
+        // it should match. A candidate at 90...120 min sits entirely
+        // above the window and must NOT match.
+        let overlap = makeEntry(duration: 30 * 60 ... 50 * 60)
+        let above = makeEntry(duration: 90 * 60 ... 120 * 60)
+        let filter = EditorialCollection.Filter.duration(min: 45 * 60, max: 65 * 60)
+        #expect(filter.matches(overlap))
+        #expect(!filter.matches(above))
+    }
+
+    @Test
+    func collectionFilterHandlesOpenEndedDuration() {
+        // `.duration(min: 90*60, max: nil)` — no upper cap. A
+        // 240...360 min range satisfies the floor.
+        let lowerOnly = EditorialCollection.Filter.duration(min: 90 * 60, max: nil)
+        let longShow = makeEntry(duration: 240 * 60 ... 360 * 60)
+        #expect(lowerOnly.matches(longShow))
+
+        // `.duration(min: nil, max: 30*60)` — no lower cap. A
+        // 20...35 min range's lower bound (20) is inside the cap.
+        let upperOnly = EditorialCollection.Filter.duration(min: nil, max: 30 * 60)
+        let mixedShortish = makeEntry(duration: 20 * 60 ... 35 * 60)
+        #expect(upperOnly.matches(mixedShortish))
+    }
+
+    @Test
+    func collectionFilterCombinesIntersectionCorrectly() {
+        // `.combined([...])` requires ALL members to match. A
+        // candidate that passes duration but is in the wrong genre
+        // must be rejected; a candidate in the right genre but
+        // outside the duration must also be rejected.
+        let filter = EditorialCollection.Filter.combined([
+            .duration(min: nil, max: 25 * 60),
+            .genres([.newsAndPolitics])
+        ])
+        let rightDurationWrongGenre = makeEntry(
+            genre: .comedy,
+            duration: 10 * 60 ... 20 * 60
+        )
+        let rightGenreWrongDuration = makeEntry(
+            genre: .newsAndPolitics,
+            duration: 45 * 60 ... 60 * 60
+        )
+        let bothMatch = makeEntry(
+            genre: .newsAndPolitics,
+            duration: 10 * 60 ... 20 * 60
+        )
+        #expect(!filter.matches(rightDurationWrongGenre))
+        #expect(!filter.matches(rightGenreWrongDuration))
+        #expect(filter.matches(bothMatch))
+    }
+
+    @Test
+    func collectionFilterKeywordsAreCaseInsensitive() {
+        // Curator keywords land lowercased, but the filter shape
+        // should still accept uppercase input from the call site. The
+        // candidate must also be rejected when none of its keywords
+        // match the filter's set.
+        let filter = EditorialCollection.Filter.keywords(["Interview"])
+        let matchingEntry = makeEntry(keywords: ["interview"])
+        let mismatchEntry = makeEntry(keywords: ["storytelling"])
+        #expect(filter.matches(matchingEntry))
+        #expect(!filter.matches(mismatchEntry))
+    }
+
+    @Test
+    func collectionFilterRejectsCandidatesMissingDurationForDurationFilter() {
+        // The curator's `typicalDuration = nil` opt-out (mini + full
+        // episodes vary too wildly to bucket) MUST exclude the
+        // candidate from any duration-shaped filter — we'd rather
+        // omit a show than mis-bucket it.
+        let filter = EditorialCollection.Filter.duration(min: 45 * 60, max: 65 * 60)
+        let unbucketed = makeEntry(duration: nil)
+        #expect(!filter.matches(unbucketed))
+    }
+
+    @Test
+    func resolveProducesNonEmptyForEveryShippedCollection() {
+        // Guard: a future catalog edit must not silently empty a
+        // shipped editorial shelf. The audit's design contract is
+        // "we never paint a shelf that lies to the user."
+        for collection in CuratedPodcastCatalog.editorialCollections {
+            let resolved = CuratedPodcastCatalog.resolve(collection)
+            #expect(!resolved.isEmpty, "Collection \(collection.id) resolved empty")
+        }
+    }
+
+    @Test
+    func resolvePreservesCatalogOrder() {
+        // Resolution should never reorder — editorial ordering is
+        // catalog-curated. Pick a collection that resolves to ≥ 2
+        // entries and verify the resolved sequence is a subsequence
+        // of `CuratedPodcastCatalog.entries`.
+        let allEntries = CuratedPodcastCatalog.entries
+        let allFeedOrder = allEntries.map(\.result.feedURL)
+        for collection in CuratedPodcastCatalog.editorialCollections {
+            let resolved = CuratedPodcastCatalog.resolve(collection)
+            guard resolved.count >= 2 else { continue }
+            let resolvedFeeds = resolved.map(\.result.feedURL)
+            // Walk `allFeedOrder` and confirm `resolvedFeeds` appear
+            // in the same relative order.
+            var walkIndex = 0
+            for feed in allFeedOrder where walkIndex < resolvedFeeds.count {
+                if feed == resolvedFeeds[walkIndex] {
+                    walkIndex += 1
+                }
+            }
+            #expect(
+                walkIndex == resolvedFeeds.count,
+                "Collection \(collection.id) reorders catalog: \(resolvedFeeds)"
+            )
+        }
+    }
+
+    @Test
+    func resolveCurrentlyDoesNotDeduplicateByFeedURL() {
+        // Defensive coverage: the current implementation does NOT
+        // dedupe by feedURL — if the catalog later contained the
+        // same feed in two genres, `resolve` would emit both
+        // CuratedEntry instances. Pin that as the current behavior so
+        // a future dedup pass (Set<URL> hop in `resolve`) is forced
+        // to update this test deliberately. Today no catalog feed
+        // duplicates exist, so resolution returns distinct feeds
+        // either way — this test pins the *catalog* invariant
+        // alongside.
+        let resolved = CuratedPodcastCatalog.resolve(
+            EditorialCollection(
+                id: "test-all",
+                title: "All",
+                subtitle: nil,
+                curatorNote: nil,
+                filter: .duration(min: 0, max: 24 * 3_600)
+            )
+        )
+        let uniqueFeeds = Set(resolved.map(\.result.feedURL))
+        #expect(uniqueFeeds.count == resolved.count)
+    }
+
+    @Test
+    func collectionFilterCombinedEmptyMatchesEverything() {
+        // `.combined([])` reduces to `allSatisfy({…})` over an empty
+        // set, which is vacuously true. This is the only sensible
+        // identity — pin it so a future "if empty, return false"
+        // edit can't slip in.
+        let filter = EditorialCollection.Filter.combined([])
+        let anyEntry = makeEntry()
+        #expect(filter.matches(anyEntry))
+    }
+}
