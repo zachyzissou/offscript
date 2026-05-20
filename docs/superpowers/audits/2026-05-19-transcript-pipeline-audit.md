@@ -30,10 +30,10 @@ model persist → spec back-compat).
 - **MUST-FIX (resolved):** `SpeechTranscriptionService.transcribe()` now calls
   the loader before requesting Speech authorization. Episodes with feed-provided
   transcripts skip the Speech pipeline entirely.
-- **GAP (open, documented):** SRT and HTML decoders are stubbed (return `nil`).
+- ~~**GAP (open, documented):** SRT and HTML decoders are stubbed (return `nil`).
   SRT is a near-clone of VTT with a different timestamp separator and is the
   next obvious add. HTML transcripts carry no timing — would need a separate
-  flat-text storage path.
+  flat-text storage path.~~ **LANDED Phase 29, commit `71b7afe` (`feat(transcripts): land SRT + HTML decoders in PublishedTranscriptLoader`).** See Phase 29 section at the bottom of this doc.
 - **GAP (open):** The loader uses `URLSession.shared` directly. A future pass
   could route through a shared `URLSessionConfiguration` with a custom UA so
   publisher analytics can attribute requests to OffScript.
@@ -75,16 +75,16 @@ model persist → spec back-compat).
 - No expiration handler — the Task runs until the OS kills the app.
 
 **Gaps (deferred):**
-- **GAP (deferred):** The service is effectively foreground-only despite the
+- ~~**GAP (deferred):** The service is effectively foreground-only despite the
   filename. It opportunistically runs while the user is in-app on Wi-Fi +
   charging. Wiring it to `BGTaskScheduler` (matching `BackgroundFeedRefresh`)
   is the natural next step — would let transcripts arrive overnight while the
   device charges. Not landed this round to keep the audit scoped to the
-  pipeline itself.
-- **GAP (deferred):** No expiration handler. If we move to `BGTaskScheduler`,
+  pipeline itself.~~ **LANDED Phase 24, commit `43d92e2` (`refactor(transcripts): adopt .backgroundTask BGTaskScheduler pattern`); host-app wiring + Info.plist registration landed Phase 23, commit `b2fb431`.**
+- ~~**GAP (deferred):** No expiration handler. If we move to `BGTaskScheduler`,
   the task closure needs `task.expirationHandler` so we cancel the in-flight
   `SFSpeechRecognitionTask` cleanly. Today the in-app `Task` is just killed by
-  the OS when the user leaves the app — Speech state is leaked.
+  the OS when the user leaves the app — Speech state is leaked.~~ **RESOLVED via the `.backgroundTask` migration in `43d92e2` — Swift Concurrency cancellation replaces the manual `expirationHandler` contract.**
 - **Note:** The 90-min duration cap and battery+wifi gating are good defaults
   and were left untouched.
 
@@ -101,13 +101,13 @@ model persist → spec back-compat).
   is the only inter-process surface today).
 
 **Gaps + fixes applied:**
-- **GAP (deferred — file ownership):** Adding transcript cleanup to
+- ~~**GAP (deferred — file ownership):** Adding transcript cleanup to
   `PodcastUnsubscribeService.unsubscribe()` is a one-line side-effect insert
   but that file is outside this audit's owned-file list. **Flag for a Phase 15
   task: add `EpisodeTranscriptCache` cleanup after step 4 (Spotlight de-index)
   in `PodcastUnsubscribeService.unsubscribe`.** Suggested implementation:
   fetch all `EpisodeTranscriptCache` rows where `episodeID ∈ episodeIDs`,
-  `context.delete(...)` each, before the final `context.save()`.
+  `context.delete(...)` each, before the final `context.save()`.~~ **LANDED Phase 15, commit `ca4009f` (`fix(unsubscribe): clean up transcript cache when removing a podcast`).** See offline-pipeline audit § F for the contract test pinning the behavior.
 - **GAP (deferred):** No SwiftData-level LRU on transcripts. A 30-min episode
   transcript averages ~50KB of plain text; 1000 cached episodes ≈ 50MB which
   is acceptable today, but bulk-fetched JSON transcripts (with cues) trend
@@ -133,14 +133,14 @@ model persist → spec back-compat).
   with no awareness of whether published references exist. A future pass
   should show a "Published transcript" pill (read directly from
   `episode.transcriptReferences`) so the user understands which source they're
-  looking at. The plumbing for this is now in place.
+  looking at. The plumbing for this is now in place. **LANDED Phase 30, commit `d085c27`.**
 
 **Deferred items (Phase 15+ UI follow-up):**
 1. Render `transcriptText` as a list of `TranscriptCue` rows, highlight the
-   active row from `PlaybackController.shared.currentTime`.
+   active row from `PlaybackController.shared.currentTime`. **PARTIAL — cue state wired in Phase 30 (`d085c27`).**
 2. Tap-a-line to seek the player.
 3. Search bar within the transcript.
-4. Source pill (Published / On-device).
+4. ~~Source pill (Published / On-device).~~ **LANDED Phase 30, commit `d085c27` (`feat(transcripts): wire cue/source state + provenance pill (Phase 30)`).**
 
 ## Classification
 
@@ -151,15 +151,15 @@ model persist → spec back-compat).
   silent throws.
 
 **GAP (open, documented):**
-- SRT + HTML decoders unimplemented.
+- ~~SRT + HTML decoders unimplemented.~~ **LANDED Phase 29 (`71b7afe`).**
 - Speech locale hard-coded to `en-US`.
-- Background pipeline doesn't use `BGTaskScheduler`.
+- ~~Background pipeline doesn't use `BGTaskScheduler`.~~ **LANDED Phase 24 (`43d92e2`) + Phase 23 wiring (`b2fb431`).**
 - No SwiftData-level LRU on transcript cache.
 
 **DEFERRED (file ownership / scope):**
-- Transcript cleanup on unsubscribe (one-line edit to
-  `PodcastUnsubscribeService`, out of this audit's ownership).
-- UI surface: synchronized line highlight, in-transcript search, source pill.
+- ~~Transcript cleanup on unsubscribe (one-line edit to
+  `PodcastUnsubscribeService`, out of this audit's ownership).~~ **LANDED Phase 15 (`ca4009f`).**
+- UI surface: synchronized line highlight, in-transcript search, ~~source pill~~. **Source pill LANDED Phase 30 (`d085c27`); line highlight + search still deferred.**
 
 **STRATEGIC:** The transcript pipeline pre-audit was at roughly the same
 maturity stage as the chapter pipeline was pre-Phase-12: feed parser landed,
@@ -220,14 +220,14 @@ matching `BackgroundFeedRefresh`.
   compiling. The shims log at `.debug` and explicitly note the work has
   moved to the BGTaskScheduler path.
 
-### Host-app wiring required (DEFERRED — file ownership)
+### Host-app wiring required ~~(DEFERRED — file ownership)~~ **LANDED Phase 23, commit `b2fb431`.**
 
 This commit refactors the service into a callable entry point but does
 **not** wire it into the app's scene or register the identifier with
 the system. Until both edits below land, the new pattern won't fire —
 the static method is dead code. Both are 1-line additions to files
 owned by other phases (`OffScriptApp.swift` was touched by Phase 16
-CarPlay; `Info.plist` is project-config-shaped).
+CarPlay; `Info.plist` is project-config-shaped). **Both wiring edits landed in commit `b2fb431` along with the bootstrap-submit calls for both subsystems.**
 
 Add to `OffScriptApp.swift`'s scene body, after the existing
 `BackgroundFeedRefresh` `.backgroundTask` modifier (around line 137):
@@ -365,4 +365,106 @@ phase lands:
 All inputs are pure strings → `[TranscriptCue]`, so the test fixtures
 can live inline as Swift string literals rather than separate `.srt` /
 `.html` files in the test bundle.
+
+## Phase 30 — UI consumer landed (2026-05-20)
+
+Phase 14 surfaced timed `TranscriptCue`s to the model (cache stores
+`[TranscriptCue]` alongside flat text + `source` + `language`), but the
+audit at the top of this doc flagged that `SpeechTranscriptionPanel`
+"shows a flat-text panel with no synchronized line highlight, no
+search, no source pill." Phase 30 wired the consumer.
+
+### What landed in `SpeechTranscriptionPanel.swift`
+
+- **Direct cache read for cues.** The panel now does its own
+  `FetchDescriptor<EpisodeTranscriptCache>` lookup (same shape as
+  `SpeechTranscriptionService.persistedTranscript`) so it can read
+  `cues`, `source`, and `language` — not just flat text. Re-hydrates
+  on `.task(id: episode.id)` and again after a Speech run completes.
+- **Provenance pill.** Header renders a Tuner chip:
+  `● ON-DEVICE` (offscriptFnMode green) for `source == "speech"`,
+  `● PUBLISHED · <LANG>` (offscriptFnInfo cyan) for `"published"`,
+  `● MIXED` (offscriptSignalYellow) reserved for a future hybrid. The
+  panel title also flips between `TRANSCRIPT · PUBLISHED` and `· ON
+  DEVICE`.
+- **Synchronized cue list.** When `cues` is non-empty, the
+  expand-to-read fallback is replaced by a `LazyVStack` of cue rows
+  driven by `PlaybackController.shared.currentTime` (observed via
+  `@ObservedObject`, mirroring `EpisodeDetailView`'s existing
+  pattern). The current cue (computed as `cues.lastIndex { startTime
+  <= playerTime && endTime > playerTime }`) renders in
+  `offscriptSignalYellow` with a 2pt leading rail. ±2 neighbours
+  render in `offscriptPaperWhite`, far cues in `offscriptSoftPaper`.
+- **Scroll-follow.** `ScrollViewReader.scrollTo(idx, anchor: .center)`
+  inside an `onChange(of: currentCueIndex)` keeps the active line
+  centered. A `simultaneousGesture(DragGesture(minimumDistance: 6))`
+  flips `followPlayhead = false` when the user pans manually; a
+  "→ FOLLOW" Tuner key appears in the search row to re-engage.
+- **Tap-to-seek.** Each row is a `.buttonStyle(.plain)` Button that
+  calls `PlaybackController.shared.seek(to: cue.startTime)`. Seeking
+  also re-engages auto-scroll and clears any active search.
+- **Search-within.** A Tuner search field above the list filters cues
+  via `localizedCaseInsensitiveContains`. Match count surfaces as a
+  soft-paper TunerLabel. Tapping a match seeks + clears the query.
+- **Accessibility.** Container is `.accessibilityElement(children:
+  .contain)` so VO navigates cue-by-cue. Each row's label is `"Cue N
+  at <spoken timestamp>. <text>[. Currently playing]"` with a hint of
+  "Double-tap to seek". Search field and follow-playhead toggle labels
+  are state-aware.
+- **OLED design vocabulary.** No rounded backgrounds, no gradients,
+  no shadows. Highlight is a 2pt yellow rail on the leading edge (no
+  fill), rows are flat with hairline dividers, the cue scroller has a
+  1pt offscriptHairline outline over offscriptFillSubtle.
+
+### Edge cases handled
+
+- `TranscriptCue.endTime` is non-optional `TimeInterval`, but a `0`
+  sentinel is common when publishers omit it — the lookup treats
+  `endTime > 0 ? endTime : .infinity` so the last cue stays
+  highlighted instead of falling out of the window.
+- `currentCueIndex` returns `nil` when playback isn't on this episode,
+  which suppresses both the rail and the auto-scroll (so navigating
+  to an unrelated episode's detail view while something else plays
+  doesn't visually thrash).
+- Mid-playback expansion: `cueScrollView.onAppear` jumps directly to
+  the current cue with no animation, then subsequent updates animate.
+- Search and follow-playhead don't fight: tapping a search result
+  clears the query AND re-engages follow, so the user lands in the
+  linear flow at the right line.
+
+### Deferred (DEFERRED — schema / cross-file)
+
+- **Mixed-source provenance.** `EpisodeTranscriptCache.source` is a
+  single `String`; there's no per-cue source field. The pill renders
+  `● MIXED` if `source == "mixed"` ever lands, but no current writer
+  produces that value. A hybrid pass (on-device cues backfilling gaps
+  in a partial published transcript) would need a per-cue source flag
+  on `TranscriptCue` itself — a schema change outside Phase 30's file
+  ownership. Surfaced as a finding rather than mutating the model.
+- **Combine debounce instead of body-re-eval on every tick.** The
+  current implementation re-runs the body on every `currentTime`
+  republish because `PlaybackController` is `@ObservedObject`. For a
+  320pt scroller with at most ~200 cue rows that's fine; if the
+  rendered cue count ever climbs over ~500 we should switch to a
+  debounced Combine pipeline (e.g. `player.$currentTime
+  .removeDuplicates { abs($0 - $1) < 0.25 }.assign(to:)`) and store
+  `currentCueIndex` as derived `@State` instead of a computed
+  property. Out of scope here.
+- **Search-match in-text highlighting.** Matched substrings inside
+  cue text aren't visually highlighted (only the cue itself is
+  filtered in). `AttributedString.markdown`-style match emphasis is
+  a polish pass — not blocking the Phase 14 audit fix.
+
+### Files touched
+
+- `OffScript/SpeechTranscriptionPanel.swift` — wholesale view rewrite
+  across 4 feature commits (provenance pill / cue list + tap-seek /
+  search / follow-playhead toggle) plus this doc commit.
+
+### Verification
+
+`xcodebuild ... build` produces only one pre-existing failure in
+`OffScript/DebugInspectorView.swift` (an untracked file from another
+concurrent phase, outside Phase 30 file ownership).
+`SpeechTranscriptionPanel.swift` itself compiles clean.
 
