@@ -120,9 +120,24 @@ struct PlayerView: View {
     // MARK: artwork block
 
     private func artworkBlock(episode: Episode) -> some View {
-        HStack(alignment: .top, spacing: 14) {
+        // Chapter art swap: when the playhead is inside a chapter that
+        // carries its own imageURL (Overcast/Podcasting 2.0 style), render
+        // that image in place of the episode/podcast artwork. Falls back
+        // gracefully when the chapter has no imageURL OR while the image
+        // is loading OR if it fails to load — OffScriptArtworkView's
+        // CachedAsyncImage placeholder handles the loading/error branch,
+        // and the `??` chain below picks the episode-then-podcast art
+        // when the chapter URL is nil.
+        //
+        // Reads from episode.resolvedChapters every body invocation; the
+        // chapter list is small (typically 5–30 entries) and the lookup is
+        // a linear scan with an early exit, so the cost is negligible
+        // compared to the AsyncImage decode it triggers.
+        let chapterArtURL = currentChapter(in: episode.resolvedChapters)?.imageURL
+        let fallbackArtURL = episode.artworkURL ?? episode.podcast.artworkURL
+        return HStack(alignment: .top, spacing: 14) {
             OffScriptArtworkView(
-                url: episode.artworkURL ?? episode.podcast.artworkURL,
+                url: chapterArtURL ?? fallbackArtURL,
                 cornerRadius: 3
             )
             .frame(width: 120, height: 120)
