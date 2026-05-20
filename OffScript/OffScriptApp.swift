@@ -129,13 +129,27 @@ struct OffScriptApp: App {
                 // until the user swipes it away. Sweep stale activities on
                 // every cold launch — the helper checks `Activity<...>.activities`
                 // and ends any that don't match a current playback session.
+                //
+                // Also bootstraps the BGTaskScheduler subsystems. The
+                // .backgroundTask modifier below ONLY runs the handler when
+                // iOS already has a pending submission for that identifier;
+                // it doesn't self-submit on first launch. Without these
+                // scheduleNext...() calls the feed-refresh + background-
+                // transcription subsystems never fire because nothing
+                // ever submits a BGAppRefreshTaskRequest. Flagged by the
+                // 2026-05-20 dead-code-wiring sweep as BROKEN-WIRING #3.
                 .task {
                     await NowPlayingActivityCoordinator.endStaleActivities()
+                    BackgroundFeedRefresh.scheduleNextRefresh()
+                    BackgroundTranscriptionService.scheduleNextRound()
                 }
         }
         .modelContainer(sharedModelContainer)
         .backgroundTask(.appRefresh(BackgroundFeedRefresh.taskIdentifier)) {
             await BackgroundFeedRefresh.performRefresh(container: sharedModelContainer)
+        }
+        .backgroundTask(.appRefresh(BackgroundTranscriptionService.taskIdentifier)) {
+            await BackgroundTranscriptionService.performTranscriptionRound(container: sharedModelContainer)
         }
     }
 

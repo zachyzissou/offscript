@@ -5,6 +5,7 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.offscript.feed-refresh</string>
+		<string>com.offscript.background-transcription</string>
 	</array>
 	<key>CFBundleURLTypes</key>
 	<array>

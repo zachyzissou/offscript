@@ -343,6 +343,13 @@ final class PlaybackController: ObservableObject {
         player.rate = playbackRate
         isPlaying = true
         donatePlayEpisodeIntent(for: episode)
+        // Emit .started so TasteProfileService.unfinishedEpisodeAffinity has
+        // a meaningful denominator. The reader at TasteProfileService.swift:152
+        // counts `.started || .resumed` as the "began listening" denominator;
+        // without this emit it was only counting resumes past 60s, so
+        // unfinishedEpisodeAffinity was actually {abandons + skips} / {long-resumes}.
+        // Flagged by the 2026-05-20 dead-code-wiring sweep as a #2 broken-wiring.
+        recordPlaybackEvent(.started, position: 0, for: episode)
         // Persist the audio URL so ResumeListeningIntent's cold-launch fallback
         // (OffScriptAppIntents.swift:49) can locate the last-played episode
         // after the app is force-quit. Persist only on actual play (not the
