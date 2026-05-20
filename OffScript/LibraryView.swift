@@ -1836,9 +1836,8 @@ private struct LibraryTunerHeader: View {
     private func statReadout(label: String, value: Int) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(String(value))
-                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                .tunerFont(size: 18, weight: .bold, tracking: 0)
                 .foregroundStyle(Color.offscriptPaperWhite)
-                .monospacedDigit()
             TunerLabel(text: label, color: .offscriptSoftPaper, size: 8)
         }
         // Combine the value+label so VoiceOver reads "12 shows" once
@@ -2061,7 +2060,7 @@ private struct LibraryAlphabetRail: View {
         isReachable: Bool
     ) -> some View {
         Text(key)
-            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .tunerFont(size: 10, tracking: 0)
             .foregroundStyle(letterColor(isSelected: isSelected, isNearestJump: isNearestJump, isReachable: isReachable))
             .frame(width: 30, height: 30)
             .background(isSelected ? Color.offscriptSignalYellow.opacity(0.16) : Color.clear)
@@ -2287,8 +2286,7 @@ private struct PodcastShelfRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(String(format: "%02d", channelNumber))
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .tracking(1.0)
+                .tunerFont(size: 11, tracking: 1.0)
                 .foregroundStyle(Color.offscriptSignalYellow)
                 .frame(width: 28, alignment: .leading)
 
@@ -2323,9 +2321,8 @@ private struct PodcastShelfRow: View {
 
             if isCompact, unplayedCount > 0 {
                 Text("\(unplayedCount)")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .tunerFont(size: 12, weight: .bold, tracking: 0)
                     .foregroundStyle(Color.offscriptSignalYellow)
-                    .monospacedDigit()
                     .frame(minWidth: 24, alignment: .trailing)
             }
 
@@ -2921,8 +2918,7 @@ private struct PodcastEpisodeTunerRow: View {
             } label: {
                 HStack(alignment: .top, spacing: 12) {
                     Text(rankLabel)
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .tracking(1.0)
+                        .tunerFont(size: 11, tracking: 1.0)
                         .foregroundStyle(rank == nil ? Color.offscriptSoftPaper : Color.offscriptSignalYellow)
                         .frame(width: 32, alignment: .leading)
 
