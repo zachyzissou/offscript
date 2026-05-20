@@ -364,8 +364,12 @@ struct PlayerView: View {
     }
 
     /// A chapter is "current" when player time has crossed its startTime
-    /// but hasn't yet crossed the next chapter's startTime. The last chapter
-    /// stays current to the end of the episode.
+    /// but hasn't yet crossed the chapter's explicit `endTime` (when the
+    /// feed provides one — typical for sparse-coverage chapter feeds where
+    /// chapters have gaps between them, e.g. "intro 0:00–2:00 … main
+    /// 5:00–onward"). When `endTime` is nil we fall back to the next
+    /// chapter's `startTime`. The last chapter stays current to the end
+    /// of the episode.
     ///
     /// IMPORTANT: this operates on the FULL chapter array including
     /// `isInTableOfContents == false` entries so the playhead can sit on
@@ -374,6 +378,13 @@ struct PlayerView: View {
         guard let idx = chapters.firstIndex(of: chapter) else { return false }
         let now = player.currentTime
         guard now >= chapter.startTime else { return false }
+        // Explicit endTime from the feed wins. Without this the chapter
+        // would visually "stretch" until the next startTime even after
+        // its spec-declared end — wrong for sparse chapter coverage
+        // where chapters are bounded but not contiguous.
+        if let end = chapter.endTime {
+            return now < end
+        }
         if idx + 1 < chapters.count {
             return now < chapters[idx + 1].startTime
         }
