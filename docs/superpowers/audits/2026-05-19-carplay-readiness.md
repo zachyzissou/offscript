@@ -118,5 +118,39 @@ To exercise the current (passive) CarPlay surface without writing any new code:
 
 ### Deferred (intentional gaps to clean up post-grant)
 - No tests. CarPlay's `CPInterfaceController` / `CPListTemplate` types are awkward to mock and the integration value comes from running on a real head unit, not from unit coverage of section builders. Add an integration smoke test once we have access to a CarPlay simulator session that can be scripted.
-- No "Search" tab. CarPlay supports `CPSearchTemplate`; we punted because typing in-car is rare and the four-tab MVP matches the audit's recommended scope. Easy follow-up after entitlement grant.
-- No deep integration with the player suggestions surface (`RecommendationService.playerSuggestions`) for the Now Playing "Up Next" button. `isUpNextButtonEnabled = true` shows the button, but the tap is currently a no-op until a `nowPlayingButtonTapped` handler is wired. Follow-up when we have a CarPlay simulator session to actually exercise it.
+- No "Search" tab. CarPlay supports `CPSearchTemplate`; we punted because typing in-car is rare and the four-tab MVP matches the audit's recommended scope. Easy follow-up after entitlement grant. **(resolved in Phase 28 below)**
+- No deep integration with the player suggestions surface (`RecommendationService.playerSuggestions`) for the Now Playing "Up Next" button. `isUpNextButtonEnabled = true` shows the button, but the tap is currently a no-op until a `nowPlayingButtonTapped` handler is wired. Follow-up when we have a CarPlay simulator session to actually exercise it. **(resolved in Phase 28 below)**
+
+## Phase 28 — CPSearchTemplate + Up Next
+
+2026-05-20: Closed out the two follow-ups Phase 16 deferred.
+
+### What landed
+- **5th tab: Search.** `makeSearchTemplate()` returns a `CPSearchTemplate` with the scene delegate as its `CPSearchTemplateDelegate`. Wired into the existing `CPTabBarTemplate` with a `magnifyingglass` SF Symbol and the title "Search".
+- **On-device-only matching.** `searchPodcasts(matching:)` searches subscribed podcasts AND recently-played episodes (`Episode.lastPlayedAt != nil`) by case-insensitive `String.range(of:options:)` contains. Capped at 30 hits total (`ListLimits.searchResults`), with subscribed podcasts sorting before episodes (driver-first ergonomics: pick the show, then the episode). Explicitly does NOT hit iTunes / network catalogs — CarPlay's audio app surface is for *playing what you already follow*, and waiting on a network round-trip mid-drive is bad UX.
+- **Min-query floor.** `ListLimits.searchMinChars = 2` so single-character noise during voice composition / steering-wheel scroll-wheel entry doesn't thrash the SwiftData fetch.
+- **Search result handlers reuse existing item builders.** Podcast hits use a new `searchListItem(for: Podcast)` that pushes the existing `pushEpisodeList(for:)` template (same nav as the Library tab). Episode hits reuse `listItem(for: Episode)` and play through `PlaybackController.shared.play(_:in:)`. The `selectedResult` delegate just forwards to `item.handler` so the search surface inherits all behavior for free.
+- **Up Next button wired.** `CPNowPlayingTemplateObserver.nowPlayingTemplateUpNextButtonTapped(_:)` now pushes a `CPListTemplate` whose contents come from `fetchUpNext()`:
+  1. **`QueueService.orderedItems` first** — the user's explicit queue is the authoritative "what plays next" source (it's what `PlaybackController.advanceToNextQueuedEpisode` reads on episode completion). Excludes the currently-playing episode so the list shows what comes *after*.
+  2. **`RecommendationService.playerSuggestions` as fallback** — when the queue is empty, surface contextual suggestions for the current episode rather than an empty list. Same call shape `PlayerView` uses for its in-app Up Next strip.
+  3. Capped at 10 entries (`ListLimits.upNext`) — single-glance, not a scroll task.
+
+### Reuse notes
+- `QueueService.orderedItems(in:)` — already used by `queueSections()` for the Queue tab; reusing it for Up Next means both surfaces stay in sync with the same SwiftData source of truth.
+- `RecommendationService.playerSuggestions(currentEpisode:context:limit:)` — the public surface `PlayerView` uses for its own contextual recommendations strip. CarPlay just calls it with `limit: 10` and projects the resulting `ScoredEpisode` array onto `Episode`s for the list.
+- `PlaybackController.shared.currentEpisode` is `@Published private(set)`, so reading it from `fetchUpNext()` is safe and gives us the correct anchor episode without any new plumbing.
+
+### Validation (real-device-only, deferred)
+CarPlay UI cannot be exercised via XCUITest on the iPhone simulator — `CPInterfaceController` is only instantiated when an actual CarPlay head unit (or Xcode's CarPlay Simulator running against a paired device) connects. The smoke test for these additions has to run on real hardware:
+
+1. Connect iPhone to CarPlay (head unit) or attach Xcode CarPlay Simulator to a paired device.
+2. Verify 5 tabs visible in order: Library, Queue, Recent, Recommendations, Search.
+3. Tap **Search** → enter "rogan" (or any subscribed-show fragment). Expect: subscribed-podcast hits before episode hits, max 30 rows, two-char minimum (single-char doesn't query).
+4. Tap a podcast hit → expect the existing episode list template to push (same as Library tab).
+5. Tap an episode hit → expect playback to start (via `PlaybackController.shared.play`).
+6. Start any episode → swipe up on Now Playing → tap **Up Next**:
+   - If queue has items: expect those, in order, excluding the currently-playing episode.
+   - If queue is empty: expect player-suggestion episodes for the current show.
+   - Tap any row → expect playback to switch to that episode.
+
+This validation runs once per Apple entitlement-grant cycle and isn't worth a recurring CI gate. Logged here so the validator (human or future agent) has the script.
