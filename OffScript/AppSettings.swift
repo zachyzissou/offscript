@@ -35,7 +35,6 @@ enum AppSettings {
         static let recentSearches = "offscript.recentSearches"
         static let cloudSyncEnabled = "offscript.cloudSyncEnabled"
         static let cloudSyncRuntimeState = "offscript.cloudSyncRuntimeState"
-        static let lastCloudSyncDate = "offscript.lastCloudSyncDate"
         static let downloadsWiFiOnly = "offscript.downloadsWiFiOnly"
     }
 
@@ -142,11 +141,6 @@ enum AppSettings {
             return state
         }
         set { defaults.set(newValue.rawValue, forKey: Key.cloudSyncRuntimeState) }
-    }
-
-    static var lastCloudSyncDate: Date? {
-        get { defaults.object(forKey: Key.lastCloudSyncDate) as? Date }
-        set { defaults.set(newValue, forKey: Key.lastCloudSyncDate) }
     }
 
     /// When `true`, `DownloadService` defers starting new downloads while the
