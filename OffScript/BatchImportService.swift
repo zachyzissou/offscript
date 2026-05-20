@@ -65,6 +65,25 @@ final class BatchImportService: ObservableObject {
 
     private init() {}
 
+    #if DEBUG
+    /// Drop singleton state that would otherwise leak across in-memory
+    /// `ModelContainer`s in the test suite. The running `task` calls
+    /// into `syncService.importPodcast` which inserts/updates `Podcast`
+    /// + `Episode` rows via the cached `activeModelContext`; if that
+    /// context was torn down by a previous test, the next `save()` or
+    /// `fetch()` crashes inside SwiftData. Cancelling the task and
+    /// dropping the context here prevents that cross-test crash class.
+    /// Mirrors the lurking-crash playbook in `docs/TEST_MATRIX.md`.
+    func debugResetForTesting() {
+        task?.cancel()
+        task = nil
+        activeModelContext = nil
+        progress = [:]
+        entries = []
+        phase = .idle
+    }
+    #endif
+
     /// Kick off a batch import and return immediately. Caller is free to
     /// dismiss the sheet — work continues. Re-calling while a batch is
     /// running is a no-op (so a stray double-tap doesn't restart).

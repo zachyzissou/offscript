@@ -271,6 +271,37 @@ final class DownloadService: NSObject, ObservableObject {
     var activeDownloadCountForTesting: Int { activeDownloadCount }
     var trackedEpisodeIDsForTesting: Set<UUID> { Set(episodeIDToTask.keys) }
 
+    #if DEBUG
+    /// Drop singleton state that would otherwise leak across in-memory
+    /// `ModelContainer`s in the test suite. The URLSession delegate
+    /// callbacks (`didWriteData`, `didFinishDownloadingTo`, etc.) all
+    /// hop to the main actor and look up an `Episode` through the
+    /// cached `modelContext`; if that context was torn down by a
+    /// previous test, the fetch crashes inside SwiftData. Cancelling
+    /// every in-flight task and nil-ing the context here prevents that
+    /// cross-test crash class. Mirrors the lurking-crash playbook in
+    /// `docs/TEST_MATRIX.md`.
+    @MainActor
+    func debugResetForTesting() {
+        // 1. Cancel every in-flight URLSession download task before we
+        //    drop the dictionaries — without this the task's completion
+        //    callback would still fire and try to use the (now nil)
+        //    modelContext / the previous test's context.
+        for task in episodeIDToTask.values {
+            task.cancel()
+        }
+        episodeIDToTask.removeAll()
+        taskToEpisodeID.removeAll()
+        lastPersistedProgressByEpisodeID.removeAll()
+        lastProgressSaveDateByEpisodeID.removeAll()
+        hasReconciledPersistedState = false
+        backgroundCompletionHandler = nil
+        // 2. Drop the model context last — other steps may want to log
+        //    or read it on the way out.
+        modelContext = nil
+    }
+    #endif
+
     private func beginDownload(for episode: Episode) {
         let task = session.downloadTask(with: episode.audioURL)
         task.taskDescription = episode.id.uuidString
