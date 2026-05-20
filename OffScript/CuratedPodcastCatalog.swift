@@ -287,14 +287,11 @@ extension CuratedPodcastCatalog {
                 filter: .keywords(["storytelling"])
             ),
             EditorialCollection(
-                id: "hands-free-workouts",
-                title: "Hands-free workouts",
-                subtitle: "Pace yourself",
-                curatorNote: "Long enough for a run, short enough not to drag.",
-                filter: .combined([
-                    .duration(min: 30 * 60, max: 50 * 60),
-                    .keywords(["fitness", "running", "training"])
-                ])
+                id: "quick-hits",
+                title: "Quick hits",
+                subtitle: "Under 30 minutes",
+                curatorNote: "Lunch breaks, dog walks, the last leg of a commute.",
+                filter: .duration(min: nil, max: 30 * 60)
             ),
         ]
     }
