@@ -25,6 +25,23 @@ final class NowPlayingPublisher {
 
     private init() {}
 
+    #if DEBUG
+    /// Drop all Combine subscriptions and tear down any in-flight Live
+    /// Activity. Used by `PlaybackController.debugResetForTesting()` so
+    /// the publisher doesn't hold stale `Episode` references across
+    /// in-memory ModelContainers in the test suite.
+    func debugStopForTesting() {
+        cancellables.removeAll()
+        pendingWriteTask?.cancel()
+        pendingWriteTask = nil
+        if let activity = currentActivity {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+        }
+        currentActivity = nil
+        lastWriteAt = .distantPast
+    }
+    #endif
+
     /// Hooked once at app launch from ContentView .task. Idempotent.
     func start() {
         guard cancellables.isEmpty else { return }
