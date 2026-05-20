@@ -40,7 +40,7 @@ struct SearchView: View {
     }
 
     private var subscribedFeedURLs: Set<String> {
-        Set(podcasts.filter(\.isSubscribed).map { $0.feedURL.absoluteString })
+        Set(podcasts.filter(\.isSubscribed).map { $0.feedURL.normalizedFeedKey })
     }
 
     var body: some View {
@@ -218,12 +218,13 @@ struct SearchView: View {
 
             LazyVStack(spacing: 0) {
                 ForEach(Array(results.enumerated()), id: \.element.id) { index, result in
+                    let resultKey = result.feedURL.normalizedFeedKey
                     SearchResultRow(
                         result: result,
                         rank: index + 1,
-                        isAdded: subscribedFeedURLs.contains(result.feedURL.absoluteString),
-                        isImporting: importingIDs.contains(result.id),
-                        importError: importErrors[result.id],
+                        isAdded: subscribedFeedURLs.contains(resultKey),
+                        isImporting: importingIDs.contains(resultKey),
+                        importError: importErrors[resultKey],
                         // Pull preview state at render-time so the
                         // `@Observable` loader can update individual rows
                         // as fetches complete without re-running the
@@ -286,12 +287,13 @@ struct SearchView: View {
 
     @MainActor
     private func add(_ result: PodcastSearchResult) async {
-        importingIDs.insert(result.id)
-        defer { importingIDs.remove(result.id) }
+        let resultKey = result.feedURL.normalizedFeedKey
+        importingIDs.insert(resultKey)
+        defer { importingIDs.remove(resultKey) }
         // Clear any prior failure for this row before a retry so the
         // button doesn't render the stale `✗ FAILED · RETRY` state
         // while the new attempt is in flight.
-        importErrors[result.id] = nil
+        importErrors[resultKey] = nil
 
         // Stage the subscription synchronously so the row flips to
         // `● IN LIBRARY` immediately, then await the hydration sync so
@@ -308,7 +310,7 @@ struct SearchView: View {
             storeRecentSearch(result.title)
         } catch {
             searchLogger.error("Stage failed for ‘\(result.title, privacy: .public)’: \(error.localizedDescription, privacy: .public)")
-            importErrors[result.id] = error.localizedDescription
+            importErrors[resultKey] = error.localizedDescription
             return
         }
 
@@ -323,7 +325,7 @@ struct SearchView: View {
             // Row-scoped error state — the row button now communicates the
             // failure and offers a retry without the user re-typing the
             // query or hunting for which row failed in a long results list.
-            importErrors[result.id] = error.localizedDescription
+            importErrors[resultKey] = error.localizedDescription
         }
     }
 

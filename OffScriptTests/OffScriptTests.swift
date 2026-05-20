@@ -2973,6 +2973,45 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func feedSyncStagesSearchSubscriptionReusesNormalizedExistingFeed() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let existing = Podcast(
+            title: "Old Search Result",
+            author: "Old Author",
+            feedURL: URL(string: "http://example.com/search-feed/")!,
+            isSubscribed: false
+        )
+        context.insert(existing)
+        try context.save()
+
+        let result = PodcastSearchResult(
+            title: "Normalized Search Result",
+            author: "Fresh Author",
+            feedURL: URL(string: "https://EXAMPLE.com/search-feed")!,
+            artworkURL: URL(string: "https://example.com/search-feed.jpg")!,
+            websiteURL: URL(string: "https://example.com/search")!,
+            summary: "Same feed, different URL spelling."
+        )
+
+        let podcast = try FeedSyncService().stagePodcastSubscription(from: result, into: context)
+
+        let podcasts = try context.fetch(FetchDescriptor<Podcast>())
+        #expect(podcasts.count == 1)
+        #expect(podcast.id == existing.id)
+        #expect(podcast.isSubscribed)
+        #expect(podcast.title == "Normalized Search Result")
+        #expect(podcast.author == "Fresh Author")
+        #expect(podcast.feedURL == result.feedURL)
+        #expect(podcast.artworkURL == result.artworkURL)
+        #expect(podcast.websiteURL == result.websiteURL)
+        #expect(podcast.summary == result.summary)
+        #expect(podcast.syncStatus == "idle")
+        #expect(podcast.syncErrorMessage == nil)
+    }
+
+    @Test
+    @MainActor
     func feedSyncSubscribeThenHydrateCanReturnBeforeNetworkWork() throws {
         let container = try makeContainer()
         let context = container.mainContext

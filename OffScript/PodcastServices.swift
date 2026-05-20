@@ -382,6 +382,7 @@ final class FeedSyncService {
         )
         podcastDescriptor.fetchLimit = 1
         let existing = try context.fetch(podcastDescriptor).first
+            ?? findExistingPodcast(matching: result.feedURL, in: context)
 
         let podcast: Podcast
         if let existing {
@@ -389,6 +390,7 @@ final class FeedSyncService {
             podcast.isSubscribed = true
             podcast.title = result.title
             podcast.author = result.author
+            podcast.feedURL = result.feedURL
             podcast.artworkURL = result.artworkURL
             podcast.websiteURL = result.websiteURL
             podcast.summary = result.summary
@@ -410,6 +412,51 @@ final class FeedSyncService {
         }
 
         return podcast
+    }
+
+    @MainActor
+    private func findExistingPodcast(matching feedURL: URL, in context: ModelContext) throws -> Podcast? {
+        let variants = Self.feedURLLookupVariants(for: feedURL)
+        var descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { variants.contains($0.feedURL) }
+        )
+        descriptor.fetchLimit = variants.count
+        let candidates = try context.fetch(descriptor)
+        let normalizedKey = feedURL.normalizedFeedKey
+        return candidates.first { $0.feedURL.normalizedFeedKey == normalizedKey }
+    }
+
+    private static func feedURLLookupVariants(for feedURL: URL) -> Set<URL> {
+        guard var components = URLComponents(url: feedURL, resolvingAgainstBaseURL: false) else {
+            return [feedURL]
+        }
+
+        let normalized = URL(string: feedURL.normalizedFeedKey) ?? feedURL
+        let normalizedPath = URLComponents(url: normalized, resolvingAgainstBaseURL: false)?.path ?? components.path
+        let trimmedPath = normalizedPath.hasSuffix("/") && normalizedPath != "/"
+            ? String(normalizedPath.dropLast())
+            : normalizedPath
+        let slashPath = trimmedPath.isEmpty || trimmedPath.hasSuffix("/")
+            ? trimmedPath
+            : "\(trimmedPath)/"
+        let schemes = Set([components.scheme, "https", "http", "feed"].compactMap(\.self))
+        let hosts = Set([components.host, components.host?.lowercased()].compactMap(\.self))
+        let paths = Set([components.path, normalizedPath, trimmedPath, slashPath])
+
+        var variants: Set<URL> = [feedURL, normalized]
+        for scheme in schemes {
+            for host in hosts {
+                for path in paths {
+                    components.scheme = scheme
+                    components.host = host
+                    components.path = path
+                    if let url = components.url {
+                        variants.insert(url)
+                    }
+                }
+            }
+        }
+        return variants
     }
 
     @MainActor
@@ -448,22 +495,23 @@ final class FeedSyncService {
     func stagePodcastSubscriptions(from results: [PodcastSearchResult], into context: ModelContext) throws -> [Podcast] {
         guard !results.isEmpty else { return [] }
 
-        let feedURLs = Set(results.map(\.feedURL))
+        let feedURLs = Set(results.flatMap { Self.feedURLLookupVariants(for: $0.feedURL) })
         let existingPodcasts = try context.fetch(FetchDescriptor<Podcast>(
             predicate: #Predicate<Podcast> {
                 feedURLs.contains($0.feedURL)
             }
         ))
         var podcastByFeedKey = Dictionary(
-            existingPodcasts.map { ($0.feedURL, $0) },
+            existingPodcasts.map { ($0.feedURL.normalizedFeedKey, $0) },
             uniquingKeysWith: { first, _ in first }
         )
         let now = Date()
         var stagedPodcasts: [Podcast] = []
 
         for result in results {
+            let feedKey = result.feedURL.normalizedFeedKey
             let podcast: Podcast
-            if let existing = podcastByFeedKey[result.feedURL] {
+            if let existing = podcastByFeedKey[feedKey] {
                 podcast = existing
                 podcast.isSubscribed = true
                 podcast.title = result.title
@@ -487,7 +535,7 @@ final class FeedSyncService {
                 )
                 podcast.subscribedAt = now
                 context.insert(podcast)
-                podcastByFeedKey[result.feedURL] = podcast
+                podcastByFeedKey[feedKey] = podcast
             }
 
             podcast.syncStatus = "idle"
