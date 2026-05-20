@@ -48,8 +48,7 @@ struct PodcastPickerView: View {
                             .tracking(0)
                             .foregroundStyle(Color.offscriptPaperWhite)
                         Text("PICK 3+ CHANNELS · 2+ BANDS · WE'LL LEARN FROM HERE")
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .tracking(1.6)
+                            .tunerFont(size: 9)
                             .foregroundStyle(Color.offscriptSoftPaper)
                     }
                     .padding(.horizontal, 20)
@@ -231,8 +230,7 @@ private struct OnboardingPodcastCard: View {
                     .multilineTextAlignment(.leading)
 
                 Text(podcast.author.uppercased())
-                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                    .tracking(1.2)
+                    .tunerFont(size: 8, tracking: 1.2)
                     .foregroundStyle(Color.offscriptSoftPaper)
                     .lineLimit(1)
             }
