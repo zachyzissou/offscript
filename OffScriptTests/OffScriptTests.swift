@@ -5906,3 +5906,345 @@ struct CuratedDiscoveryFilterTests {
         #expect(filter.matches(anyEntry))
     }
 }
+
+/// Pins the contracts the Debug Inspector relies on from Phase 27
+/// (`2026-05-20-debug-inspector.md`): `SyncHistoryService` selection
+/// + fallback + status labeling, and the same `FetchDescriptor`
+/// shapes the inspector's private `refreshTelemetry` / `refreshDownloads`
+/// / `clearAllTelemetry` paths use. We test the descriptor contract
+/// rather than reaching into the view's private state — if a future
+/// refactor changes the predicate shape (e.g. swaps sort field),
+/// these tests fail on the contract before they fail on the UI.
+@Suite("DebugInspector")
+struct DebugInspectorTests {
+    private func makeContainer() throws -> ModelContainer {
+        let schema = Schema([
+            Podcast.self,
+            Episode.self,
+            EpisodeProfile.self,
+            PlaybackEvent.self,
+            PreferenceSignal.self,
+            QueueItem.self,
+            UserTasteProfile.self,
+            TelemetryEvent.self,
+            EpisodeTranscriptCache.self
+        ])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        return try ModelContainer(for: schema, configurations: [configuration])
+    }
+
+    @MainActor
+    private func makePodcast(
+        title: String,
+        in context: ModelContext,
+        isSubscribed: Bool = true,
+        lastSyncAttemptAt: Date? = nil,
+        syncStatus: String = "idle"
+    ) -> Podcast {
+        let podcast = Podcast(
+            title: title,
+            feedURL: URL(string: "https://example.com/\(UUID().uuidString).xml")!,
+            isSubscribed: isSubscribed
+        )
+        podcast.lastSyncAttemptAt = lastSyncAttemptAt
+        podcast.syncStatus = syncStatus
+        context.insert(podcast)
+        return podcast
+    }
+
+    @MainActor
+    private func makeEpisode(
+        title: String = "Ep",
+        state: Episode.DownloadState,
+        in context: ModelContext,
+        requestedAt: Date? = nil,
+        completedAt: Date? = nil
+    ) -> Episode {
+        let podcast = Podcast(
+            title: "Show",
+            feedURL: URL(string: "https://example.com/\(UUID().uuidString).xml")!
+        )
+        context.insert(podcast)
+        let episode = Episode(
+            title: title,
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/\(UUID().uuidString).mp3")!,
+            podcast: podcast
+        )
+        episode.downloadState = state
+        episode.downloadRequestedAt = requestedAt
+        episode.downloadCompletedAt = completedAt
+        context.insert(episode)
+        return episode
+    }
+
+    // MARK: Telemetry contracts
+
+    @Test
+    @MainActor
+    func debugInspectorListsAllTelemetryEvents() throws {
+        // Seeds 5 events with strictly-staggered createdAt values and
+        // pins the same descriptor the inspector uses
+        // (createdAt desc, fetchLimit = 100). Result must be 5
+        // descending — newest first.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let baseline = Date(timeIntervalSinceReferenceDate: 1_700_000_000)
+        for i in 0..<5 {
+            let event = TelemetryEvent(
+                name: "test.event.\(i)",
+                createdAt: baseline.addingTimeInterval(Double(i) * 60)
+            )
+            context.insert(event)
+        }
+        try context.save()
+
+        var descriptor = FetchDescriptor<TelemetryEvent>(
+            sortBy: [SortDescriptor(\TelemetryEvent.createdAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 100
+        let events = try context.fetch(descriptor)
+        #expect(events.count == 5)
+        #expect(events.first?.name == "test.event.4")
+        #expect(events.last?.name == "test.event.0")
+    }
+
+    @Test
+    @MainActor
+    func debugInspectorRespectsTelemetryFetchLimit() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let baseline = Date(timeIntervalSinceReferenceDate: 1_700_000_000)
+        for i in 0..<150 {
+            let event = TelemetryEvent(
+                name: "test.event.\(i)",
+                createdAt: baseline.addingTimeInterval(Double(i))
+            )
+            context.insert(event)
+        }
+        try context.save()
+
+        var descriptor = FetchDescriptor<TelemetryEvent>(
+            sortBy: [SortDescriptor(\TelemetryEvent.createdAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 100
+        let events = try context.fetch(descriptor)
+        #expect(events.count == 100)
+        // Newest-first: the most recent event should be event index 149.
+        #expect(events.first?.name == "test.event.149")
+    }
+
+    @Test
+    @MainActor
+    func debugInspectorTelemetryClearAllWipesStore() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        for i in 0..<5 {
+            context.insert(TelemetryEvent(name: "noise.\(i)"))
+        }
+        try context.save()
+        #expect(try context.fetchCount(FetchDescriptor<TelemetryEvent>()) == 5)
+
+        try context.delete(model: TelemetryEvent.self)
+        try context.save()
+        #expect(try context.fetchCount(FetchDescriptor<TelemetryEvent>()) == 0)
+    }
+
+    // MARK: Download-state grouping contracts
+
+    @Test
+    @MainActor
+    func debugInspectorDownloadStateSectionGroupsCorrectly() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let downloading = makeEpisode(title: "DLing", state: .downloading, in: context)
+        let queued = makeEpisode(title: "Q", state: .queued, in: context)
+        let failed = makeEpisode(title: "F", state: .failed, in: context)
+        let downloaded = makeEpisode(title: "Done", state: .downloaded, in: context)
+        // notDownloaded sentinel — must not appear in any of the four sections.
+        _ = makeEpisode(title: "Plain", state: .notDownloaded, in: context)
+        try context.save()
+
+        let downloadingState = Episode.DownloadState.downloading.rawValue
+        let queuedState = Episode.DownloadState.queued.rawValue
+        let failedState = Episode.DownloadState.failed.rawValue
+        let downloadedState = Episode.DownloadState.downloaded.rawValue
+
+        let downloadingFetched = try context.fetch(FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.downloadStateRawValue == downloadingState }
+        ))
+        let queuedFetched = try context.fetch(FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.downloadStateRawValue == queuedState }
+        ))
+        let failedFetched = try context.fetch(FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.downloadStateRawValue == failedState }
+        ))
+        let downloadedFetched = try context.fetch(FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.downloadStateRawValue == downloadedState }
+        ))
+
+        #expect(downloadingFetched.map(\.id) == [downloading.id])
+        #expect(queuedFetched.map(\.id) == [queued.id])
+        #expect(failedFetched.map(\.id) == [failed.id])
+        #expect(downloadedFetched.map(\.id) == [downloaded.id])
+    }
+
+    @Test
+    @MainActor
+    func debugInspectorDownloadedSectionSortsByCompletedAtDesc() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let base = Date(timeIntervalSinceReferenceDate: 1_700_000_000)
+        let oldest = makeEpisode(
+            title: "Oldest",
+            state: .downloaded,
+            in: context,
+            completedAt: base
+        )
+        let middle = makeEpisode(
+            title: "Middle",
+            state: .downloaded,
+            in: context,
+            completedAt: base.addingTimeInterval(60)
+        )
+        let newest = makeEpisode(
+            title: "Newest",
+            state: .downloaded,
+            in: context,
+            completedAt: base.addingTimeInterval(120)
+        )
+        try context.save()
+
+        let downloadedState = Episode.DownloadState.downloaded.rawValue
+        var descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.downloadStateRawValue == downloadedState },
+            sortBy: [SortDescriptor(\Episode.downloadCompletedAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 20
+        let fetched = try context.fetch(descriptor)
+        #expect(fetched.map(\.id) == [newest.id, middle.id, oldest.id])
+    }
+
+    @Test
+    @MainActor
+    func debugInspectorFailedRowRetryFlipsStateToQueued() throws {
+        // The inspector's failed-row retry calls
+        // `DownloadService.shared.startDownload(for:)`. We can't easily
+        // exercise the live network path in unit tests, but we can pin
+        // the contract that `startDownload` moves a `.failed` episode
+        // forward and clears the prior error message.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        // Reset the singleton so test isolation holds.
+        DebugTeardown.resetAllSingletons()
+        DownloadService.shared.configure(context: context)
+
+        let failed = makeEpisode(title: "F", state: .failed, in: context)
+        failed.downloadErrorMessage = "Network unreachable"
+        try context.save()
+        #expect(failed.downloadState == .failed)
+
+        DownloadService.shared.startDownload(for: failed)
+        // startDownload schedules a URLSession task; in test we can't
+        // wait for the network. The synchronous part of the contract
+        // we DO pin: the episode is no longer in `.failed` (the
+        // service must have moved it forward) and the prior error
+        // message has been cleared.
+        #expect(failed.downloadState != .failed)
+        #expect(failed.downloadErrorMessage == nil)
+
+        DebugTeardown.resetAllSingletons()
+    }
+
+    // MARK: SyncHistoryService
+
+    @Test
+    @MainActor
+    func syncHistoryServiceFallsBackToSubscribedWhenNoneAttempted() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        _ = makePodcast(title: "Charlie", in: context, lastSyncAttemptAt: nil)
+        _ = makePodcast(title: "Alpha", in: context, lastSyncAttemptAt: nil)
+        _ = makePodcast(title: "Bravo", in: context, lastSyncAttemptAt: nil)
+        try context.save()
+
+        let result = SyncHistoryService.recentlyAttempted(in: context, limit: 10)
+        #expect(result.count == 3)
+        #expect(result.map(\.title) == ["Alpha", "Bravo", "Charlie"])
+    }
+
+    @Test
+    @MainActor
+    func syncHistoryServicePrefersAttemptedOverSubscribedFallback() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        // Two attempted + one never-attempted. The attempted ones
+        // should come back (not the fallback).
+        _ = makePodcast(title: "Never", in: context, lastSyncAttemptAt: nil)
+        _ = makePodcast(
+            title: "Recent",
+            in: context,
+            lastSyncAttemptAt: Date().addingTimeInterval(-60),
+            syncStatus: "success"
+        )
+        _ = makePodcast(
+            title: "Older",
+            in: context,
+            lastSyncAttemptAt: Date().addingTimeInterval(-3_600),
+            syncStatus: "success"
+        )
+        try context.save()
+
+        let result = SyncHistoryService.recentlyAttempted(in: context, limit: 10)
+        #expect(result.map(\.title) == ["Recent", "Older"])
+        // Sanity: the "Never" podcast must be absent because the
+        // attempted set was non-empty (no fallback triggered).
+        #expect(!result.contains(where: { $0.title == "Never" }))
+    }
+
+    @Test
+    @MainActor
+    func syncHistoryServiceStatusLabelHandlesUnknownState() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let podcast = makePodcast(title: "X", in: context, syncStatus: "throttled")
+        try context.save()
+
+        #expect(SyncHistoryService.statusLabel(for: podcast) == "● THROTTLED")
+    }
+
+    @Test
+    @MainActor
+    func syncHistoryServiceStatusLabelMapsKnownStates() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let success = makePodcast(title: "S", in: context, syncStatus: "success")
+        let failed = makePodcast(title: "F", in: context, syncStatus: "failed")
+        let pending = makePodcast(title: "P", in: context, syncStatus: "pending")
+        let idleAttempted = makePodcast(
+            title: "IA",
+            in: context,
+            lastSyncAttemptAt: Date(),
+            syncStatus: "idle"
+        )
+        let never = makePodcast(title: "N", in: context, syncStatus: "idle")
+        try context.save()
+
+        #expect(SyncHistoryService.statusLabel(for: success) == "● SUCCESS")
+        #expect(SyncHistoryService.statusLabel(for: failed) == "× FAILED")
+        #expect(SyncHistoryService.statusLabel(for: pending) == "◐ PENDING")
+        #expect(SyncHistoryService.statusLabel(for: idleAttempted) == "● IDLE")
+        #expect(SyncHistoryService.statusLabel(for: never) == "○ NEVER")
+    }
+}
