@@ -78,12 +78,22 @@ No other files touched.
 
 ## Tests to land in follow-up
 
-The Phase 20 subagent is editing `OffScriptTests/OffScriptTests.swift`
-concurrently, so this round defers all download-chip test coverage.
-Phase 20 has since committed (`9e653c7`), but the download-chip tests
-listed below are still **OPEN** — Phase 20's tests covered the
-RecommendationExplanation contract, not the download-chip contract.
-Tests to land once Phase 20 commits:
+**Status (2026-05-20, Phase 31 sweep):** **STILL DEFERRED.** The
+download-chip helpers (`DownloadChip` enum, `EpisodeDownloadStateChip`
+view, `PodcastEpisodeTunerRow.rowAccessibilityLabel`,
+`TunerLibraryCard.cardAccessibilityLabel`) are `private` /
+`fileprivate` inside `LibraryView.swift`. `@testable import` doesn't
+reach below `internal`, so none of the six tests below can be
+authored without a tiny visibility change in `LibraryView.swift`
+(e.g. moving `DownloadChip` to `internal` or extracting it to a
+sibling file). That change is owned by the next round's library-row
+phase, not this one. Re-document the tests here unchanged so the
+follow-up has the same target list.
+
+The original Phase 20 subagent edited `OffScriptTests` concurrently
+with this audit; Phase 20 has since committed (`9e653c7`), but those
+tests covered RecommendationExplanation, not the download-chip
+contract. Tests to land once the helpers are reachable:
 
 1. `func libraryRowShowsDownloadingChipWhenStateIsDownloading()` — seed
    an `Episode` with `.downloading`, render `PodcastEpisodeTunerRow`,

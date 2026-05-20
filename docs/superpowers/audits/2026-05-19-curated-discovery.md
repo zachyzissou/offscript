@@ -219,9 +219,14 @@ shorter wellness/fitness shows, reintroduce the workouts shelf.
 
 ### Tests to land in a follow-up
 
-`OffScriptTests/OffScriptTests.swift` is owned by a parallel subagent
+**Status (2026-05-20):** All 8 tests below landed in
+`CuratedDiscoveryFilterTests` plus one identity pin for the empty
+`.combined([])` case (commit `83dff2b`,
+`test(discovery): cover Phase 21 EditorialCollection filter intersection`).
+
+~~`OffScriptTests/OffScriptTests.swift` is owned by a parallel subagent
 (Phase 20) — I did not touch it. The following tests should land once
-that subagent's commit is in:
+that subagent's commit is in:~~
 
 1. `func collectionFilterMatchesDurationRangeOverlap()` — assert a
    `.duration(min: 45*60, max: 65*60)` filter matches a candidate with

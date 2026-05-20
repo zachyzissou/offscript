@@ -100,6 +100,16 @@ chrome). Same pattern as the Library import sheet stacking pattern.
 
 ## Tests to land in follow-up
 
+**Status (2026-05-20, Phase 31 sweep):** All 8 telemetry / download /
+SyncHistoryService tests landed in `DebugInspectorTests` plus one
+known-state mapping pin (commit `732e10a`,
+`test(inspector): cover Phase 27 Debug Inspector + SyncHistoryService`).
+The `settingsToggleBindsToWifiOnlyFlag()` test (item 9) is **STILL
+DEFERRED** — `SettingsView` rendering needs a host harness
+(`ViewInspector` or `XCUITest`) for a clean toggle round-trip; the
+plain `@AppStorage` UserDefaults binding is in any case driven by
+the UI layer, not testable from a pure unit test.
+
 Phase 31 owns `OffScriptTests.swift`. Tests to add:
 
 - `func debugInspectorListsAllTelemetryEvents()` — seed 5

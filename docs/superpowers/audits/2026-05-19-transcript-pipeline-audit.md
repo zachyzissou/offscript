@@ -346,11 +346,14 @@ gained two new shapes:
 
 These mirror the existing `WEBVTT` / `{` / `[` sniffs.
 
-### Tests (DEFERRED — Phase 31 owns `OffScriptTests.swift`)
+### Tests ~~(DEFERRED — Phase 31 owns `OffScriptTests.swift`)~~ **LANDED 2026-05-20**
 
-This phase ships the decoders but does not add tests — the test file is
-owned by another phase running in parallel. The cases to add when that
-phase lands:
+All 11 decoder + dispatch-sniff cases landed in
+`TranscriptDecoderTests` plus one nil-on-empty pin for the SRT
+decoder (commit `20420ca`,
+`test(transcripts): cover Phase 29 SRT + HTML decoders`).
+
+Original list:
 
 - `srtDecoderHandlesCommaAndPeriodMsSeparators()`
 - `srtDecoderStripsHTMLTagsInCueText()`
