@@ -67,4 +67,23 @@ enum NowPlayingActivityCoordinator {
             await activity.end(nil, dismissalPolicy: .immediate)
         }
     }
+
+    /// End every currently-running NowPlaying Live Activity. Unlike
+    /// `endStaleActivities()` (which is a launch-time sweep), this is the
+    /// in-session helper called on episode transitions: ActivityKit stores
+    /// `artworkURL` in the Activity's *attributes*, which can't be mutated
+    /// via `activity.update()` — only ContentState fields can. So a long-
+    /// running activity that survives an episode change keeps the previous
+    /// episode's artwork pinned to the Dynamic Island / Lock Screen even
+    /// though the title/progress update correctly. Ending here lets
+    /// `NowPlayingPublisher` re-request a fresh activity with the new
+    /// episode's artwork on the next state tick.
+    @MainActor
+    static func endCurrent() async {
+        let activities = Activity<NowPlayingActivityAttributes>.activities
+        guard !activities.isEmpty else { return }
+        for activity in activities {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
+    }
 }

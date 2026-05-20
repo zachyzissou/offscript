@@ -48,6 +48,32 @@ final class NowPlayingPublisher {
 
         let player = PlaybackController.shared
 
+        // End the previous Live Activity whenever the user switches episodes.
+        // ActivityKit pins `artworkURL` to the Activity's *attributes*, which
+        // `activity.update()` cannot mutate — only ContentState fields can.
+        // Without an explicit end-on-change the activity keeps the previous
+        // episode's artwork even as the title/progress refresh, producing the
+        // "wrong cover art on the Lock Screen" bug deferred from Phase 22.
+        // The next state tick (a few ms later) re-enters `updateActivity` with
+        // `currentActivity == nil` and starts a fresh activity carrying the
+        // new artwork URL.
+        //
+        // Stored first so its sink runs before the combineLatest write below
+        // — Combine delivers subscribers in registration order, so by the time
+        // the write sink fires, `currentActivity` is already cleared and
+        // `updateActivity` takes the start-new-activity branch.
+        player.$currentEpisode
+            .map { $0?.id }
+            .removeDuplicates()
+            .dropFirst() // ignore the initial nil-or-restored value at hookup
+            .sink { [weak self] _ in
+                self?.endActivity()
+                Task { @MainActor in
+                    await NowPlayingActivityCoordinator.endCurrent()
+                }
+            }
+            .store(in: &cancellables)
+
         // React to episode + isPlaying changes immediately (cheap).
         player.$currentEpisode
             .combineLatest(player.$isPlaying)
