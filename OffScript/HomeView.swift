@@ -507,8 +507,7 @@ private struct HomeStarterRail: View {
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 12) {
                 Text(String(format: "%02d", idx + 1))
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .tracking(1.0)
+                    .tunerFont(size: 11, tracking: 1.0)
                     .foregroundStyle(Color.offscriptSignalYellow)
                     .frame(width: 28, alignment: .leading)
                     .padding(.top, 4)
