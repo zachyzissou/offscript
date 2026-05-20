@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import Network
 import OSLog
 import SwiftData
 
@@ -83,15 +84,38 @@ final class DownloadService: NSObject, ObservableObject {
         episode.isDownloaded = false
         modelContext?.saveOrLog("DownloadService")
 
-        if activeDownloadCount < maximumConcurrentDownloads {
+        if activeDownloadCount < maximumConcurrentDownloads, isAllowedOnCurrentNetwork {
             beginDownload(for: episode)
         } else {
             TelemetryService.track(
                 "download_queued",
-                metadata: ["episode": episode.title, "podcast": episode.podcast.title],
+                metadata: [
+                    "episode": episode.title,
+                    "podcast": episode.podcast.title,
+                    "reason": isAllowedOnCurrentNetwork ? "concurrency" : "wifi_only"
+                ],
                 in: modelContext
             )
         }
+    }
+
+    /// Returns `false` when the user has Wi-Fi-only downloads enabled AND the
+    /// device is currently on cellular (or has no resolved interface yet).
+    /// `URLSessionConfiguration.allowsCellularAccess` would also enforce this,
+    /// but checking up front lets us keep episodes visibly `.queued` rather
+    /// than spinning up a background task that immediately fails or stalls.
+    private var isAllowedOnCurrentNetwork: Bool {
+        guard AppSettings.downloadsWiFiOnly else { return true }
+        // If the monitor hasn't resolved yet (`nil`), defer to be safe — we'll
+        // pick the queued episode back up once the network monitor fires.
+        return NetworkMonitor.shared.connectionType == .wifi
+    }
+
+    /// Called from a `NetworkMonitor` observer so freshly-allowed downloads
+    /// kick off when the device joins Wi-Fi. Public for the test suite.
+    func networkConditionsChanged() {
+        guard isAllowedOnCurrentNetwork else { return }
+        resumeQueuedDownloadsIfNeeded()
     }
 
     func cancelDownload(for episode: Episode) {
@@ -259,6 +283,7 @@ final class DownloadService: NSObject, ObservableObject {
 
     private func resumeQueuedDownloadsIfNeeded() {
         guard activeDownloadCount < maximumConcurrentDownloads, let modelContext else { return }
+        guard isAllowedOnCurrentNetwork else { return }
         let queuedState = Episode.DownloadState.queued.rawValue
         let descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { $0.downloadStateRawValue == queuedState },

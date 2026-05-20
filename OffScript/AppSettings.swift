@@ -38,6 +38,7 @@ enum AppSettings {
         static let cloudSyncEnabled = "offscript.cloudSyncEnabled"
         static let cloudSyncRuntimeState = "offscript.cloudSyncRuntimeState"
         static let lastCloudSyncDate = "offscript.lastCloudSyncDate"
+        static let downloadsWiFiOnly = "offscript.downloadsWiFiOnly"
     }
 
     enum LibrarySortMode: String, CaseIterable {
@@ -170,6 +171,19 @@ enum AppSettings {
     static var lastCloudSyncDate: Date? {
         get { defaults.object(forKey: Key.lastCloudSyncDate) as? Date }
         set { defaults.set(newValue, forKey: Key.lastCloudSyncDate) }
+    }
+
+    /// When `true`, `DownloadService` defers starting new downloads while the
+    /// device is on cellular. Already-running URLSession tasks are not killed
+    /// (they may have started on Wi-Fi); only newly-requested downloads queue.
+    /// Default is `true` — most users expect podcast app downloads to respect
+    /// metered data unless they explicitly opt in. Surface in Settings.
+    static var downloadsWiFiOnly: Bool {
+        get {
+            if defaults.object(forKey: Key.downloadsWiFiOnly) == nil { return true }
+            return defaults.bool(forKey: Key.downloadsWiFiOnly)
+        }
+        set { defaults.set(newValue, forKey: Key.downloadsWiFiOnly) }
     }
 
     static var currentUserID: String? {
