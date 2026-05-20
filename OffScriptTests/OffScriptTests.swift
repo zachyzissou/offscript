@@ -3241,6 +3241,15 @@ struct OffScriptTests {
         let url = URL(string: "offscript://podcast/\(podcast.id.uuidString)")!
         DeepLinkRouter.handle(url, in: context)
 
+        // Read pendingPodcastDeepLink BEFORE pumping the runloop. Under
+        // full-suite execution a prior test's LibraryView observer can
+        // still be subscribed to .offscriptOpenPodcast; when we pump the
+        // loop it consumes the pending UUID + clears it (the "clear on
+        // consumption" contract documented on the property). Reading
+        // before pumping pins the synchronous-assignment contract in
+        // handlePodcast() at DeepLinkRouter.swift:170.
+        let pendingAfterHandle = DeepLinkRouter.pendingPodcastDeepLink
+
         // The notifications post on .main; pump the loop briefly so the
         // observers fire synchronously inside the test.
         let runLoop = RunLoop.current
@@ -3251,7 +3260,7 @@ struct OffScriptTests {
 
         #expect(receivedSwitchTab == "library")
         #expect(receivedOpenID == podcast.id)
-        #expect(DeepLinkRouter.pendingPodcastDeepLink == podcast.id)
+        #expect(pendingAfterHandle == podcast.id)
     }
 
     @Test
