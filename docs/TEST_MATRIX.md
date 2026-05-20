@@ -77,9 +77,9 @@ Source of truth: `OffScript/AppSettings.swift`, `OffScript/ContentView.swift`.
 | Layer | Verification | Notes |
 |---|---|---|
 | Automated unit | `OffScriptTests` — `feedSyncOPMLBootstrapCapsEpisodesAndSkipsProfiles`, `feedSyncOnboardingBootstrapCapsEpisodesAndSkipsExpensiveEnrichment`, `onboardingPreferenceSignalFetchesNewestEpisodeWithoutSortingRelationship` | Bootstrap import + signal extraction. |
-| Automated UI | `OffScriptUITests/testOnboardingFirstScreenSmoke` | Verifies first screen, "POWER ON →", privacy copy. |
+| Automated UI | `OffScriptUITests/testOnboardingFirstScreenSmoke`, `testOnboardingFlowAdvancesFromWelcomeToGenrePicker`, `testOnboardingGenrePickerExposesDisabledCTAGate`, `testOnboardingBackFromGenrePickerReturnsToWelcome` | Verifies first screen + POWER ON → wiring, genre-picker CTA gating, BACK navigation. |
 | Simulator manual | `-offscript.hasSeenOnboarding NO` | Walk the entire onboarding flow including starter subscriptions. |
-| Real device | TestFlight install, fresh device | Required for Sign in with Apple flow validation. Tracked in #112. |
+| Real device | TestFlight install, fresh device | Required for Sign in with Apple flow validation. Tracked in #112. End-to-end onboarding completion (genre tap → podcast pick → import → home) is real-device-only — see `docs/superpowers/audits/2026-05-20-ui-test-coverage-phase5.md` for the GenreCard hit-test gap that blocks UI-level coverage. |
 
 ### Library — directory, filters, alphabet
 
@@ -113,9 +113,9 @@ Source of truth: `OffScript/AppSettings.swift`, `OffScript/ContentView.swift`.
 | Layer | Verification | Notes |
 |---|---|---|
 | Automated unit | `OffScriptTests` — `queueServiceMovesItemsAndPersistsOrder`, `queueServicePlayNextPromotesEpisodeToFront`, `queueServiceSkipsCurrentEpisodeWhenPoppingNext` | Queue logic. |
-| Automated UI | `OffScriptUITests/testPostOnboardingShellSmoke` | Tab visit smoke. |
+| Automated UI | `OffScriptUITests/testPostOnboardingShellSmoke`, `testQueueShowsEmptyStateOnFreshLaunch`, `testQueueClearAllRequiresConfirmation`, `testQueueRowOpensEpisodeDetail`, `testQueueRowsExposePlayAffordanceForEachSeededEpisode` | Tab visit smoke, empty state, × CLEAR ALL confirm strip, row → detail nav, per-row → PLAY / → RESUME / ● PLAYING affordances on a seeded queue. |
 | Simulator manual | `-offscript.debugSeedSampleData YES`, queue several episodes, reorder | Issue #126 covers heavy-listener queue ergonomics. |
-| Real device | TestFlight, multi-day queue use | Required to evaluate persistence and reorder gestures at scale. |
+| Real device | TestFlight, multi-day queue use | Required to evaluate persistence and reorder gestures at scale. Queue autoplay (end-of-episode → auto-advance) is real-device-only until `PlaybackController` gains a `debugSimulateEpisodeCompletion` hook — see `docs/superpowers/audits/2026-05-20-ui-test-coverage-phase5.md`. |
 
 ### Player & playback
 
