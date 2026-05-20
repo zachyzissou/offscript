@@ -7,8 +7,9 @@
 — Queue rows are tappable to open episode detail.
 — Performance: 258-show deterministic seed in UI tests pins the v2.3.11 LibraryView @Query optimization.
 — Audit-cycle fixes in this build: three decorative magnifying-glass icons no longer leak to VO; three artwork tiles now carry the hairline-stroke overlay per spec; two new UI tests (Queue empty state + row-tap) now use debugWipeLibrary for parallel-safe state.
+— Three polish items pulled forward: Library directory chips now read dimension-prefixed VO labels ("Scope: all shows", "Sort: A to Z", "Rows: artwork rows"); the × UNSUBSCRIBE confirm strip is now podcast-title aware; Home voiceOverMetadata now includes Season/Episode when the feed provides them, matching Library's conditional pattern.
 — Added 28 new unit tests pinning EpisodeDurationFormatter.spoken() contract and the voiceOverMetadata target shape.
 
 Known issues:
 — One pre-existing unit test (feedSyncFastBatchImportUsesCheapProfilesAndSkipsExternalChapters) still failing on main; unrelated to a11y or this release. Audited as a known issue.
-— Deferred polish items (Library SCOPE/SORT/ROWS chip a11y, voiceOverMetadata Home vs Library asymmetry, ~41 mono-without-TunerLabel sites) recorded in docs/superpowers/audits/ for a follow-up cycle.
+— Remaining deferred polish: ~41 mono-without-TunerLabel sites pending a `tunerFont(size:)` helper; comprehensive runtime VO focus-order walk; Instruments perf trace; airplane-mode retry-key walk. Recorded in docs/superpowers/audits/.

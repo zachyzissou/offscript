@@ -391,3 +391,22 @@ A deeper Instruments / frame-rate trace would be valuable for tuning but is not 
 - Retry keys (PodcastDetail ↻ RETRY, Search error ↻ RETRY, Home discovery rail ✗ FAILED · RETRY) need airplane-mode toggle testing to verify end-to-end recovery. Static audit confirmed the labels exist and the `importingIDs: Set<String>` per-pick tracking is in place per #214 — defer the runtime walk to a follow-up cycle.
 
 No ship-blockers from Phase 6 — the must-have flows have automated coverage; the deferred items are runtime-quality observations.
+
+## Phase 8 — deferred polish pulled forward into 2.4.0
+
+After the initial release-cut commit (`c4e196d`), three deferred polish items from earlier phases were pulled forward into the 2.4.0 release:
+
+1. **Library SCOPE / SORT / ROWS chip a11y label ambiguity** (was DRIFT in Phase 2 / Check 5). Resolved in commit `39a49e5`. New `voiceOverLabel` computed properties on `LibraryDirectoryScope` / `LibraryDirectorySort` / `LibraryDirectoryDensity`; `modeButton` now takes an `accessibilityLabel:` parameter that callers compute as `"Scope: \(item.voiceOverLabel)"` etc. VO reads "Scope: all shows", "Sort: A to Z", "Rows: artwork rows" etc. Visible mono labels unchanged.
+
+2. **Library × UNSUBSCRIBE confirm strip not podcast-title-aware** (was POLISH in Phase 2 / Check 5). Resolved in commit `39a49e5`. `Cancel unsubscribe` / `Confirm unsubscribe` now read `Cancel unsubscribe from <podcast>` / `Confirm unsubscribe from <podcast>`.
+
+3. **voiceOverMetadata Home vs Library asymmetry** (was a Phase 1 finding). Resolved in commit `1f9c20b`. Both Home builders (`HomeView.swift:1098` and `:1330`) now include Season/Episode conditionally — same pattern Library uses. Per-surface order is preserved: Home `[date, S/E, duration]` mirrors its visible `[date, duration]`; Library `[S/E, date, duration]` mirrors its visible `[S/E, date, duration]`. Test-helper docstring at `OffScriptTests.swift:3462` updated to reflect that Home now matches the helper exactly.
+
+The 28 existing unit tests still pass after the Home alignment.
+
+### Remaining deferred items (carried into [Unreleased])
+
+- ~41 `design: .monospaced` sites that don't migrate cleanly to `TunerLabel` because they live inside `HStack { Image + Text }` button labels or use modifiers `TunerLabel` doesn't expose. The clean unlock is a new font-only `tunerFont(size:)` modifier. Recorded in `2026-05-19-design-token-audit.md`.
+- Comprehensive runtime VoiceOver focus-order + rotor walk (Phase 2b).
+- Instruments perf trace of the 258-show case.
+- Airplane-mode retry-key walk (PodcastDetail ↻ RETRY, Search error ↻ RETRY, Home discovery rail).
