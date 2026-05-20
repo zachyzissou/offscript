@@ -56,6 +56,18 @@ nonisolated enum LibraryDirectoryScope: String, CaseIterable, Identifiable, Send
         case .needsSync: "NEEDS SYNC"
         }
     }
+
+    /// Spelled-out form for VoiceOver. The visible `label` is uppercase
+    /// mono; this variant drops the all-caps emphasis (VO is loud) and
+    /// stays a fragment so callers can prefix it with a dimension label.
+    var voiceOverLabel: String {
+        switch self {
+        case .all: "all shows"
+        case .unplayed: "unplayed only"
+        case .inProgress: "in progress only"
+        case .needsSync: "needs sync only"
+        }
+    }
 }
 
 nonisolated enum LibraryDirectorySort: String, CaseIterable, Identifiable, Sendable {
@@ -72,6 +84,14 @@ nonisolated enum LibraryDirectorySort: String, CaseIterable, Identifiable, Senda
         case .attention: "ATTN"
         }
     }
+
+    var voiceOverLabel: String {
+        switch self {
+        case .title: "A to Z"
+        case .latest: "latest first"
+        case .attention: "needs attention first"
+        }
+    }
 }
 
 nonisolated enum LibraryDirectoryDensity: String, CaseIterable, Identifiable, Sendable {
@@ -84,6 +104,13 @@ nonisolated enum LibraryDirectoryDensity: String, CaseIterable, Identifiable, Se
         switch self {
         case .compact: "COMPACT"
         case .artwork: "ARTWORK"
+        }
+    }
+
+    var voiceOverLabel: String {
+        switch self {
+        case .compact: "compact rows"
+        case .artwork: "artwork rows"
         }
     }
 }
@@ -1839,7 +1866,11 @@ private struct LibraryDirectoryControls: View {
             VStack(alignment: .leading, spacing: 8) {
                 controlRow(label: "SCOPE") {
                     ForEach(LibraryDirectoryScope.allCases) { item in
-                        modeButton(item.label, isSelected: scope == item) {
+                        modeButton(
+                            item.label,
+                            accessibilityLabel: "Scope: \(item.voiceOverLabel)",
+                            isSelected: scope == item
+                        ) {
                             scope = item
                         }
                     }
@@ -1847,7 +1878,11 @@ private struct LibraryDirectoryControls: View {
 
                 controlRow(label: "SORT") {
                     ForEach(LibraryDirectorySort.allCases) { item in
-                        modeButton(item.label, isSelected: sort == item) {
+                        modeButton(
+                            item.label,
+                            accessibilityLabel: "Sort: \(item.voiceOverLabel)",
+                            isSelected: sort == item
+                        ) {
                             sort = item
                         }
                     }
@@ -1855,7 +1890,12 @@ private struct LibraryDirectoryControls: View {
 
                 controlRow(label: "ROWS") {
                     ForEach(LibraryDirectoryDensity.allCases) { item in
-                        modeButton(item.label, isSelected: effectiveDensity == item, isDisabled: isForcedCompact && item == .artwork) {
+                        modeButton(
+                            item.label,
+                            accessibilityLabel: "Rows: \(item.voiceOverLabel)",
+                            isSelected: effectiveDensity == item,
+                            isDisabled: isForcedCompact && item == .artwork
+                        ) {
                             guard !(isForcedCompact && item == .artwork) else { return }
                             density = item
                         }
@@ -1927,6 +1967,7 @@ private struct LibraryDirectoryControls: View {
 
     private func modeButton(
         _ title: String,
+        accessibilityLabel: String,
         isSelected: Bool,
         isDisabled: Bool = false,
         action: @escaping () -> Void
@@ -1951,7 +1992,10 @@ private struct LibraryDirectoryControls: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
-        .accessibilityLabel(title)
+        // Dimension-prefixed spoken label disambiguates chips that share
+        // a value across rows (e.g. "ALL" could mean Scope or any future
+        // dimension). Visible mono `title` is unchanged.
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
@@ -2808,7 +2852,7 @@ private struct PodcastDetailTunerHeader: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Cancel unsubscribe")
+                .accessibilityLabel("Cancel unsubscribe from \(podcast.title)")
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
@@ -2822,7 +2866,7 @@ private struct PodcastDetailTunerHeader: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Confirm unsubscribe")
+                .accessibilityLabel("Confirm unsubscribe from \(podcast.title)")
                 .accessibilityIdentifier("PodcastDetailConfirmUnsubscribeButton")
             }
         }
