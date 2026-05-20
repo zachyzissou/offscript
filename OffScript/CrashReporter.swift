@@ -90,6 +90,13 @@ enum CrashReporter {
             options.attachScreenshot = false
             options.attachViewHierarchy = false
 
+            // Privacy: never send default PII (IP address, cookies, request
+            // headers). The default is true in sentry-cocoa 8.x. CLAUDE.md
+            // promises "no third-party API keys touch listening data" — that
+            // promise covers crash telemetry too. Flagged by the 2026-05-19
+            // privacy + production-readiness audit.
+            options.sendDefaultPii = false
+
             // Useful crash context.
             options.attachStacktrace = true
             options.enableAutoSessionTracking = true
