@@ -1,3 +1,4 @@
+import AppIntents
 import AVFoundation
 import Combine
 import MediaPlayer
@@ -29,6 +30,11 @@ enum OffScriptAudioSessionConfiguration {
 final class PlaybackController: ObservableObject {
     static let shared = PlaybackController()
     private let logger = Logger(subsystem: "com.offscript", category: "Playback")
+    /// Dedicated logger for App Intent donation failures. Donations are
+    /// fire-and-forget for prediction-quality reasons (we don't want to
+    /// block playback on a Siri index write), but persistent failures
+    /// should still be diagnosable from sysdiagnose.
+    private let intentDonationLogger = Logger(subsystem: "com.offscript", category: "IntentDonation")
 
     @Published private(set) var currentEpisode: Episode?
     @Published private(set) var isPlaying = false
@@ -248,6 +254,7 @@ final class PlaybackController: ObservableObject {
         player.play()
         player.rate = playbackRate
         isPlaying = true
+        donatePlayEpisodeIntent(for: episode)
     }
 
     /// Load an episode into the player WITHOUT starting playback. Used by
@@ -309,6 +316,9 @@ final class PlaybackController: ObservableObject {
     }
 
     func togglePlayPause() {
+        // Capture the pre-toggle state so we know which donation maps to the
+        // user's actual action — `isPlaying.toggle()` below flips it.
+        let wasPlaying = isPlaying
         if isPlaying {
             player.pause()
         } else {
@@ -321,6 +331,15 @@ final class PlaybackController: ObservableObject {
         }
         isPlaying.toggle()
         updateNowPlayingPlaybackRate()
+        // Donate after the state change so we only signal user intent that
+        // actually took effect. Interruption / route-change handlers go
+        // through `player.pause()` directly, not this entry point, so they
+        // correctly bypass donation.
+        if wasPlaying {
+            donatePauseListeningIntent()
+        } else {
+            donateResumeListeningIntent()
+        }
     }
 
     func seek(by seconds: Double) {
@@ -329,6 +348,12 @@ final class PlaybackController: ObservableObject {
         player.seek(to: cmTime)
         currentTime = time
         persistPlaybackProgress(force: true)
+        // Only donate forward skips — we don't have a SkipBackwardIntent
+        // yet, and donating one direction's intent for the other would
+        // teach Siri the wrong thing.
+        if seconds > 0 {
+            donateSkipForwardIntent()
+        }
     }
 
     func seek(to seconds: Double) {
@@ -456,6 +481,14 @@ final class PlaybackController: ObservableObject {
                     self.updateNowPlayingPlaybackRate()
                 } else if UserDefaults.standard.object(forKey: "offscript.autoPlayNext") as? Bool ?? true {
                     self.skipToNextInQueue()
+                    // Auto-advance matches the `PlayNextInQueueIntent`
+                    // semantic ("play the next thing in the queue"), so
+                    // donate it here — but only when an episode actually
+                    // queued up (skipToNextInQueue is a no-op on an
+                    // empty queue).
+                    if self.currentEpisode?.id != episode.id {
+                        self.donatePlayNextInQueueIntent()
+                    }
                 }
             }
         }
@@ -711,5 +744,52 @@ final class PlaybackController: ObservableObject {
     private func updateNowPlayingPlaybackRate() {
         MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? Double(playbackRate) : 0.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
+    }
+
+    // MARK: - App Intent donations
+
+    /// Donate `PlayEpisodeIntent` so iOS can predict this episode in Siri
+    /// Suggestions, Smart Stack widgets, and the Lock Screen. Donations
+    /// only fire after playback actually starts — donating an intent that
+    /// didn't run pollutes the prediction model.
+    private func donatePlayEpisodeIntent(for episode: Episode) {
+        let entity = EpisodeEntity(
+            id: episode.id,
+            title: episode.title,
+            podcastTitle: episode.podcast.title
+        )
+        let intent = PlayEpisodeIntent()
+        intent.episode = entity
+        donate(intent, label: "PlayEpisodeIntent")
+    }
+
+    private func donateResumeListeningIntent() {
+        donate(ResumeListeningIntent(), label: "ResumeListeningIntent")
+    }
+
+    private func donatePauseListeningIntent() {
+        donate(PauseListeningIntent(), label: "PauseListeningIntent")
+    }
+
+    private func donateSkipForwardIntent() {
+        donate(SkipForwardIntent(), label: "SkipForwardIntent")
+    }
+
+    private func donatePlayNextInQueueIntent() {
+        donate(PlayNextInQueueIntent(), label: "PlayNextInQueueIntent")
+    }
+
+    /// Fire-and-forget donation helper. Wrapped in a detached Task so the
+    /// caller is never blocked by Siri index writes, and errors are logged
+    /// via OSLog rather than silently swallowed (CLAUDE.md bans `try?`).
+    private func donate<Intent: AppIntent>(_ intent: Intent, label: String) {
+        let donationLogger = intentDonationLogger
+        Task {
+            do {
+                try await intent.donate()
+            } catch {
+                donationLogger.warning("\(label, privacy: .public) donation failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
     }
 }
