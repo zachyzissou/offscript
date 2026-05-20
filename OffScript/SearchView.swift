@@ -147,7 +147,7 @@ struct SearchView: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Clear search")
             }
         }
@@ -182,17 +182,11 @@ struct SearchView: View {
     }
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Rectangle().fill(Color.offscriptHairline).frame(height: 1)
-            TunerLabel(text: "● NO MATCHES", color: .offscriptSoftPaper)
-            Text("No matches")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(Color.offscriptPaperWhite)
-            Text("Try a different show name, host, or topic. Exact titles work best.")
-                .font(.system(size: 13.5))
-                .foregroundStyle(Color.offscriptPaperWhite)
-                .lineSpacing(2)
-
+        TunerEmptyState(
+            status: "● NO MATCHES",
+            title: "No shows found",
+            message: "Try a different show name, host, or topic. Exact titles work best."
+        ) {
             // One-tap reset to the starter-topics + recent-searches
             // landing state. Mirrors the × CLEAR FILTER recovery key on
             // PodcastDetail (#208) and Library directory (#220).
@@ -206,7 +200,7 @@ struct SearchView: View {
                     .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .accessibilityLabel("Clear search query")
             .accessibilityIdentifier("SearchEmptyClearSearch")
         }
@@ -416,7 +410,7 @@ private struct StarterTopicsSection: View {
                             .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Search for \(topic)")
                 }
             }
@@ -445,7 +439,7 @@ private struct RecentSearchesSection: View {
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityIdentifier("RecentSearchesClear")
                 .accessibilityLabel("Clear recent searches")
                 .disabled(showClearConfirm)
@@ -472,7 +466,7 @@ private struct RecentSearchesSection: View {
                                 .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.tunerPress)
                         .accessibilityIdentifier("RecentSearchesClearCancel")
                         .accessibilityLabel("Cancel clear recent searches")
 
@@ -487,7 +481,7 @@ private struct RecentSearchesSection: View {
                                 .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.tunerPress)
                         .accessibilityIdentifier("RecentSearchesClearConfirm")
                         .accessibilityLabel("Confirm clear recent searches")
                     }
@@ -518,7 +512,7 @@ private struct RecentSearchesSection: View {
                         }
                         .padding(.vertical, 10)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Search again for \(item)")
                     if idx < items.count - 1 {
                         Rectangle().fill(Color.offscriptHairline).frame(height: 1)
@@ -534,12 +528,12 @@ private struct SearchErrorStrip: View {
     var onRetry: (() -> Void)? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TunerLabel(text: "● SEARCH ERROR", color: .offscriptFnRecord)
-            Text(message)
-                .font(.system(size: 12.5))
-                .foregroundStyle(Color.offscriptPaperWhite)
-
+        TunerEmptyState(
+            status: "● SEARCH ERROR",
+            title: "Search unavailable",
+            message: message,
+            statusColor: .offscriptFnRecord
+        ) {
             // Retry key — surfaces a way out for transient network errors
             // without requiring the user to mutate the query.
             if let onRetry {
@@ -552,16 +546,11 @@ private struct SearchErrorStrip: View {
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Retry search")
             }
         }
-        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(
-            Rectangle().fill(Color.offscriptFnRecord).frame(height: 1),
-            alignment: .top
-        )
     }
 }
 
@@ -753,7 +742,7 @@ private struct SearchResultRow: View {
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .disabled(isImporting || isAdded)
                 .accessibilityLabel(
                     isAdded
@@ -780,7 +769,7 @@ private struct SearchResultRow: View {
                             .frame(minHeight: 44)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Open \(result.title) website")
                 }
                 Spacer()

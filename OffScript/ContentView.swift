@@ -314,7 +314,7 @@ private struct TunerTabBar: View {
                             } label: {
                                 tabContent(for: tab)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.tunerPress)
                             .frame(width: segmentWidth)
                             .accessibilityLabel(tab.label.capitalized)
                             .accessibilityAddTraits(selection == tab ? .isSelected : [])

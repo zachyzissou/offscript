@@ -139,7 +139,7 @@ struct SettingsView: View {
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Close settings")
             }
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
@@ -265,7 +265,7 @@ struct SettingsView: View {
                     .padding(.vertical, 8)
                     .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("Default playback rate")
                 .accessibilityValue(String(format: "%.2g×", currentDefaultRate))
@@ -324,7 +324,7 @@ struct SettingsView: View {
                     .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .disabled(isConfirmingResetRates)
                 .accessibilityLabel("Reset per-podcast playback rates")
                 .accessibilityHint("Asks for confirmation before clearing every show's custom rate")
@@ -361,7 +361,7 @@ struct SettingsView: View {
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Cancel reset per-podcast playback rates")
                 .accessibilityIdentifier("SettingsResetRatesCancel")
 
@@ -376,7 +376,7 @@ struct SettingsView: View {
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Confirm reset per-podcast playback rates")
                 .accessibilityIdentifier("SettingsResetRatesConfirm")
             }
@@ -429,7 +429,7 @@ struct SettingsView: View {
             .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .accessibilityLabel(title)
         .accessibilityValue(isOn.wrappedValue ? "On" : "Off")
         .accessibilityAddTraits(isOn.wrappedValue ? [.isButton, .isSelected] : .isButton)
@@ -478,7 +478,7 @@ struct SettingsView: View {
             .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .accessibilityLabel("Download only on Wi-Fi. Currently \(downloadsWiFiOnly ? "on" : "off").")
         .accessibilityValue(downloadsWiFiOnly ? "On" : "Off")
         .accessibilityHint("Double-tap to toggle. When on, downloads pause on cellular.")
@@ -510,7 +510,7 @@ struct SettingsView: View {
                 .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .accessibilityLabel("Open debug inspector")
             .accessibilityHint("Shows telemetry, sync history, download state, and runtime metadata.")
             .accessibilityIdentifier("SettingsOpenDebugInspector")
@@ -559,7 +559,7 @@ struct SettingsView: View {
                         .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Rebuild signal profile from current listening history")
 
                 if let signalUpdatedAt {
@@ -637,7 +637,7 @@ struct SettingsView: View {
                         .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("\(mode.label) recommendation mode")
                     .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
@@ -689,7 +689,7 @@ struct SettingsView: View {
                             .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .padding(.top, 4)
                     .accessibilityLabel(showSignOutConfirmation ? "Hide sign out confirmation" : "Sign out of OffScript")
                     .accessibilityHint(showSignOutConfirmation ? "" : "Stops iCloud sync on next launch. Local data remains on this device.")
@@ -881,7 +881,7 @@ struct SettingsView: View {
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Cancel sign out")
 
                 Button {
@@ -895,7 +895,7 @@ struct SettingsView: View {
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Confirm sign out")
             }
         }

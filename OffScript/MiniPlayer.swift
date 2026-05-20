@@ -72,7 +72,7 @@ struct MiniPlayer: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Open player")
                     .accessibilityHint("Expand the now-playing screen for \(episode.title)")
 
@@ -93,7 +93,7 @@ struct MiniPlayer: View {
                                 .frame(width: 44, height: 44)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.tunerPress)
                         .accessibilityLabel("Skip back 15 seconds")
                     }
 
@@ -110,7 +110,7 @@ struct MiniPlayer: View {
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
 
                     // Skip-forward-30 — same vocabulary as skip-back. Used for
@@ -129,7 +129,7 @@ struct MiniPlayer: View {
                                 .frame(width: 44, height: 44)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.tunerPress)
                         .accessibilityLabel("Skip ahead 30 seconds")
                     }
                 }

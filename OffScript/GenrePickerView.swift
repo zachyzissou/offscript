@@ -83,13 +83,13 @@ struct GenrePickerView: View {
                         )
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .disabled(selectedGenres.isEmpty)
 
                 Button(action: onBack) {
                     TunerLabel(text: "← BACK")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
@@ -161,7 +161,7 @@ private struct GenreCard: View {
                 )
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .sensoryFeedback(.impact(flexibility: .soft), trigger: isSelected)
         .accessibilityLabel("\(genre.title)\(isSelected ? ", selected" : "")")
         .accessibilityAddTraits(isSelected ? .isSelected : [])

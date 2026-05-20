@@ -114,7 +114,7 @@ struct LibraryImportSheet: View {
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Close import")
             }
             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
@@ -172,7 +172,7 @@ struct LibraryImportSheet: View {
                         .padding(.vertical, 14)
                         .overlay(Rectangle().stroke(Color.offscriptFnInfo, lineWidth: 1))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                 }
             }
             .padding(.top, 8)
@@ -232,7 +232,7 @@ struct LibraryImportSheet: View {
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Clear URL")
                 }
             }
@@ -371,7 +371,7 @@ struct LibraryImportSheet: View {
             .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .accessibilityLabel("Back to import menu")
     }
 
@@ -389,7 +389,7 @@ struct LibraryImportSheet: View {
             .padding(.vertical, 14)
             .overlay(Rectangle().stroke(disabled ? Color.offscriptHairline : color, lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .disabled(disabled)
     }
 

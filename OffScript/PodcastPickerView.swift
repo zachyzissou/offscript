@@ -14,6 +14,7 @@ struct PodcastPickerView: View {
     @State private var selectedFeeds: Set<URL> = []
     @State private var livePodcasts: [Genre: [PodcastSearchResult]] = [:]
     @State private var allPodcasts: [PodcastSearchResult] = []
+    @State private var didLoadCatalog = false
     @State private var openedCollection: EditorialCollection?
 
     private var prioritizedGenres: [Genre] {
@@ -64,21 +65,31 @@ struct PodcastPickerView: View {
                     }
                     .padding(.horizontal, 20)
 
-                    EditorialCollectionsStrip(
-                        collections: nonEmptyCollections,
-                        onOpen: { openedCollection = $0 }
-                    )
+                    if didLoadCatalog && allPodcasts.isEmpty && nonEmptyCollections.isEmpty {
+                        TunerEmptyState(
+                            status: "● CHANNEL BANK EMPTY",
+                            title: "Starter channels unavailable",
+                            message: "The local starter catalog did not load. Go back, change taste bands, or continue setup later.",
+                            statusColor: .offscriptFnRecord
+                        )
+                        .padding(.horizontal, 20)
+                    } else {
+                        EditorialCollectionsStrip(
+                            collections: nonEmptyCollections,
+                            onOpen: { openedCollection = $0 }
+                        )
 
-                    VStack(alignment: .leading, spacing: 22) {
-                        ForEach(prioritizedGenres) { genre in
-                            let podcasts = mergedPodcasts(for: genre)
-                            if !podcasts.isEmpty {
-                                PodcastGenreRail(
-                                    genre: genre,
-                                    podcasts: podcasts,
-                                    selectedFeeds: $selectedFeeds,
-                                    isExplore: !selectedGenres.isEmpty && !selectedGenres.contains(genre)
-                                )
+                        VStack(alignment: .leading, spacing: 22) {
+                            ForEach(prioritizedGenres) { genre in
+                                let podcasts = mergedPodcasts(for: genre)
+                                if !podcasts.isEmpty {
+                                    PodcastGenreRail(
+                                        genre: genre,
+                                        podcasts: podcasts,
+                                        selectedFeeds: $selectedFeeds,
+                                        isExplore: !selectedGenres.isEmpty && !selectedGenres.contains(genre)
+                                    )
+                                }
                             }
                         }
                     }
@@ -115,13 +126,13 @@ struct PodcastPickerView: View {
                         )
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .disabled(!canContinue)
 
                 Button(action: onBack) {
                     TunerLabel(text: "← BACK")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
@@ -164,6 +175,7 @@ struct PodcastPickerView: View {
         // origin/main removed TopPodcastsService — fall back to the curated
         // catalog only. Reintroducing live top-by-genre is a follow-up.
         allPodcasts = CuratedPodcastCatalog.all
+        didLoadCatalog = true
     }
 }
 
@@ -258,7 +270,7 @@ private struct OnboardingPodcastCard: View {
             }
             .frame(width: 120, alignment: .leading)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .sensoryFeedback(.impact(flexibility: .soft), trigger: isSelected)
         .accessibilityLabel("\(podcast.title) by \(podcast.author)\(isSelected ? ", selected" : "")")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -367,7 +379,7 @@ private struct EditorialCollectionCard: View {
                 Rectangle().stroke(Color.offscriptHairline, lineWidth: 1)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(.isButton)
@@ -461,7 +473,7 @@ private struct EditorialCollectionDetailView: View {
                 .padding(.vertical, 16)
                 .background(Color.offscriptSignalYellow)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .padding(.horizontal, 20)
             .padding(.bottom, 16)
         }
@@ -537,7 +549,7 @@ private struct EditorialDetailRow: View {
             }
             .padding(.vertical, 12)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .sensoryFeedback(.impact(flexibility: .soft), trigger: isSelected)
         .accessibilityLabel("\(entry.result.title) by \(entry.result.author)\(isSelected ? ", selected" : "")")
         .accessibilityAddTraits(isSelected ? .isSelected : [])

@@ -65,7 +65,8 @@ final class PlaybackController: ObservableObject {
     private var modelContext: ModelContext?
     private var lastProgressSaveTime: TimeInterval = 0
     private var lastProgressSaveDate: Date = .distantPast
-    private var nowPlayingArtworkURL: URL?
+    private var nowPlayingArtworkKey: String?
+    private var nowPlayingArtwork: MPMediaItemArtwork?
     private var nowPlayingArtworkTask: Task<Void, Never>?
 
     private var interruptionObserver: NSObjectProtocol?
@@ -396,7 +397,8 @@ final class PlaybackController: ObservableObject {
         currentEpisode = episode
         lastProgressSaveTime = episode.playedPosition
         lastProgressSaveDate = .distantPast
-        nowPlayingArtworkURL = nil
+        nowPlayingArtworkKey = nil
+        nowPlayingArtwork = nil
         nowPlayingArtworkTask?.cancel()
         duration = episode.duration ?? 0
         // Resolve the rate this podcast should play at — per-podcast
@@ -560,6 +562,10 @@ final class PlaybackController: ObservableObject {
         isPlayerPresented = false
         playbackError = nil
         modelContext = nil
+        nowPlayingArtworkKey = nil
+        nowPlayingArtwork = nil
+        nowPlayingArtworkTask?.cancel()
+        nowPlayingArtworkTask = nil
         sleepTimerTask?.cancel()
         sleepTimerTask = nil
         sleepTimerEndDate = nil
@@ -836,6 +842,9 @@ final class PlaybackController: ObservableObject {
     }
 
     private func updateNowPlaying(episode: Episode) {
+        let artworkURL = episode.artworkURL ?? episode.podcast.artworkURL
+        let fallbackKey = Self.fallbackArtworkKey(for: episode)
+        let remoteKey = artworkURL.map { Self.artworkKey(for: $0) }
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: episode.title,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
@@ -845,26 +854,47 @@ final class PlaybackController: ObservableObject {
         ]
         info[MPMediaItemPropertyPodcastTitle] = episode.podcast.title
         info[MPMediaItemPropertyArtist] = episode.podcast.author ?? episode.podcast.title
+        if let artwork = nowPlayingArtwork(for: episode, remoteKey: remoteKey, fallbackKey: fallbackKey) {
+            info[MPMediaItemPropertyArtwork] = artwork
+        }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-        updateNowPlayingArtwork(for: episode)
+        updateNowPlayingArtwork(for: episode, artworkURL: artworkURL)
     }
 
-    /// Fetch the episode artwork off-main and hand it to the Now Playing
-    /// info center. Without this the lock screen and Control Center show
-    /// title + podcast but no image — looked broken next to Apple Podcasts.
-    /// Local file URLs read synchronously off the file system; remote URLs
-    /// hit the network on a utility-priority detached task.
-    private func updateNowPlayingArtwork(for episode: Episode) {
-        guard let url = episode.artworkURL ?? episode.podcast.artworkURL else { return }
-        guard nowPlayingArtworkURL != url else { return }
-        nowPlayingArtworkURL = url
+    private func nowPlayingArtwork(for episode: Episode, remoteKey: String?, fallbackKey: String) -> MPMediaItemArtwork? {
+        if let remoteKey, nowPlayingArtworkKey == remoteKey, let nowPlayingArtwork {
+            return nowPlayingArtwork
+        }
+        if nowPlayingArtworkKey == fallbackKey, let nowPlayingArtwork {
+            return nowPlayingArtwork
+        }
+        let artwork = Self.makeNowPlayingFallbackArtwork(
+            episodeTitle: episode.title,
+            podcastTitle: episode.podcast.title
+        )
+        nowPlayingArtworkKey = fallbackKey
+        nowPlayingArtwork = artwork
+        return artwork
+    }
+
+    /// Fetch the episode artwork off-main and hand it to the Now Playing info
+    /// center. The lock screen gets a Tuner-native fallback immediately, then
+    /// real feed artwork replaces it when the URL succeeds.
+    private func updateNowPlayingArtwork(for episode: Episode, artworkURL url: URL?) {
+        guard let url else {
+            nowPlayingArtworkTask?.cancel()
+            return
+        }
+        let key = Self.artworkKey(for: url)
+        guard nowPlayingArtworkKey != key else { return }
         nowPlayingArtworkTask?.cancel()
         let logger = self.logger
-        nowPlayingArtworkTask = Task.detached(priority: .utility) { [url] in
+        let episodeID = episode.id
+        nowPlayingArtworkTask = Task.detached(priority: .utility) { [url, key, episodeID] in
             // Failure here is non-fatal (the lock screen falls back to the
-            // app icon) but CLAUDE.md bans bare `try?` and we want a log
-            // line on persistent failures so an offline-only user with a
-            // missing artwork URL can be diagnosed from sysdiagnose.
+            // generated Tuner artwork) but CLAUDE.md bans bare `try?` and
+            // we want a log line on persistent failures so an offline-only
+            // user with a missing artwork URL can be diagnosed from sysdiagnose.
             // URLSession.shared.data(from:) doesn't treat HTTP 4xx/5xx as
             // a thrown error — explicitly check the status so a 404
             // artwork URL gets logged with its status code instead of
@@ -892,9 +922,104 @@ final class PlaybackController: ObservableObject {
             }
             let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
             await MainActor.run {
-                guard PlaybackController.shared.nowPlayingArtworkURL == url else { return }
+                let controller = PlaybackController.shared
+                guard controller.currentEpisode?.id == episodeID else { return }
+                controller.nowPlayingArtworkKey = key
+                controller.nowPlayingArtwork = artwork
                 MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] = artwork
             }
+        }
+    }
+
+    private static func artworkKey(for url: URL) -> String {
+        "url:\(url.absoluteString)"
+    }
+
+    private static func fallbackArtworkKey(for episode: Episode) -> String {
+        "fallback:\(episode.id.uuidString)"
+    }
+
+    static func makeNowPlayingFallbackArtwork(
+        episodeTitle: String,
+        podcastTitle: String,
+        size: CGSize = CGSize(width: 1024, height: 1024)
+    ) -> MPMediaItemArtwork {
+        let image = makeNowPlayingFallbackImage(
+            episodeTitle: episodeTitle,
+            podcastTitle: podcastTitle,
+            size: size
+        )
+        return MPMediaItemArtwork(boundsSize: image.size) { requestedSize in
+            guard requestedSize.width > 0, requestedSize.height > 0, requestedSize != image.size else {
+                return image
+            }
+            return makeNowPlayingFallbackImage(
+                episodeTitle: episodeTitle,
+                podcastTitle: podcastTitle,
+                size: requestedSize
+            )
+        }
+    }
+
+    private static func makeNowPlayingFallbackImage(
+        episodeTitle: String,
+        podcastTitle: String,
+        size: CGSize
+    ) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        return renderer.image { context in
+            let rect = CGRect(origin: .zero, size: size)
+            let cg = context.cgContext
+
+            UIColor.offscriptStudioBlack.setFill()
+            cg.fill(rect)
+
+            UIColor.offscriptHairline.setStroke()
+            cg.setLineWidth(max(2, size.width * 0.006))
+            cg.stroke(rect.insetBy(dx: size.width * 0.055, dy: size.height * 0.055))
+
+            let center = CGPoint(x: size.width / 2, y: size.height * 0.44)
+            let barWidth = max(8, size.width * 0.018)
+            let gap = max(10, size.width * 0.026)
+            let heights = [0.12, 0.22, 0.34, 0.48, 0.34, 0.22, 0.12].map { size.height * $0 }
+            UIColor.offscriptSignalYellow.setFill()
+            for (index, height) in heights.enumerated() {
+                let x = center.x + CGFloat(index - 3) * (barWidth + gap)
+                let barRect = CGRect(
+                    x: x - barWidth / 2,
+                    y: center.y - height / 2,
+                    width: barWidth,
+                    height: height
+                )
+                cg.fill(barRect)
+            }
+
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            paragraph.lineBreakMode = .byTruncatingTail
+
+            let podcastAttributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.monospacedSystemFont(ofSize: max(22, size.width * 0.043), weight: .semibold),
+                .foregroundColor: UIColor.offscriptFnInfo,
+                .kern: 4,
+                .paragraphStyle: paragraph
+            ]
+            (podcastTitle.uppercased() as NSString).draw(
+                in: CGRect(x: size.width * 0.09, y: size.height * 0.73, width: size.width * 0.82, height: size.height * 0.06),
+                withAttributes: podcastAttributes
+            )
+
+            let titleAttributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: max(30, size.width * 0.058), weight: .bold),
+                .foregroundColor: UIColor.offscriptPaperWhite,
+                .paragraphStyle: paragraph
+            ]
+            (episodeTitle as NSString).draw(
+                in: CGRect(x: size.width * 0.09, y: size.height * 0.81, width: size.width * 0.82, height: size.height * 0.09),
+                withAttributes: titleAttributes
+            )
         }
     }
 
