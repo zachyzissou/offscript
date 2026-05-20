@@ -68,7 +68,27 @@ struct OffScriptApp: App {
     // directory or in app-private dirs that break the second attempt with
     // the same error. Quarantining the entire OffScript subdirectory and
     // creating a fresh one sidesteps that.
+    /// Exposed for non-SwiftUI scene entry points (notably
+    /// `CarPlaySceneDelegate`) that cannot read the SwiftUI
+    /// `\.modelContext` environment. Set in the lazy initializer below as a
+    /// side effect of building `sharedModelContainer`. CarPlay scene-connect
+    /// can fire either before or after the main `WindowGroup` is constructed,
+    /// so this property must be safe to read at any point after `init()`.
+    /// `nonisolated(unsafe)` because the assignment happens once during
+    /// container init (single thread) and reads are guarded by the optional —
+    /// CarPlay reads on the main actor.
+    nonisolated(unsafe) static var carPlayModelContainer: ModelContainer?
+
     var sharedModelContainer: ModelContainer = {
+        let container = Self.buildModelContainer()
+        // Publish for non-SwiftUI scene entry points (CarPlay). Safe to
+        // assign here because this initializer runs exactly once during
+        // `OffScriptApp.init()`.
+        Self.carPlayModelContainer = container
+        return container
+    }()
+
+    private static func buildModelContainer() -> ModelContainer {
         let schema = Schema(versionedSchema: SchemaV2.self)
         do {
             return try Self.makeModelContainer(schema: schema)
@@ -98,7 +118,7 @@ struct OffScriptApp: App {
                 }
             }
         }
-    }()
+    }
 
     var body: some Scene {
         WindowGroup {
