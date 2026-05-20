@@ -116,6 +116,14 @@ final class NotificationService {
             trigger: trigger
         )
 
+        // Snapshot the @Model-typed `episode`'s title into a value-type
+        // String BEFORE the @Sendable completion closure captures it.
+        // SwiftData `@Model` types aren't Sendable; capturing `episode`
+        // directly into a UNUserNotificationCenter completion handler
+        // (which is `@Sendable` on iOS 26) emits a warning that the
+        // Release-config archive treats as a hard error under strict
+        // concurrency.
+        let episodeTitle = episode.title
         UNUserNotificationCenter.current().add(request) { [logger] error in
             if let error {
                 logger.error(
@@ -123,7 +131,7 @@ final class NotificationService {
                 )
             } else {
                 logger.debug(
-                    "Scheduled new-episode notification for \(episode.title, privacy: .public)"
+                    "Scheduled new-episode notification for \(episodeTitle, privacy: .public)"
                 )
             }
         }

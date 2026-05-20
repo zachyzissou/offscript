@@ -108,10 +108,16 @@ final class SearchPreviewLoader {
             do {
                 let snapshot = try await self.fetch(result)
                 if Task.isCancelled { return }
-                await self.recordSuccess(for: result, snapshot: snapshot)
+                // recordSuccess/recordFailure are non-async @MainActor methods
+                // and this Task inherits the MainActor isolation from its
+                // surrounding @MainActor class — no actor hop needed, so no
+                // `await`. The Release-config archive treats the vestigial
+                // `await` as a warning that escalates to an error under strict
+                // concurrency.
+                self.recordSuccess(for: result, snapshot: snapshot)
             } catch {
                 if Task.isCancelled { return }
-                await self.recordFailure(for: result, error: error)
+                self.recordFailure(for: result, error: error)
             }
         }
         inFlight[result.feedURL] = task
