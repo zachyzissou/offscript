@@ -284,25 +284,34 @@ struct PlayerView: View {
     /// patterns in the summary via EpisodeChapterParser). Each row is a
     /// tap-to-seek button; the current chapter is highlighted in
     /// signal-yellow with a `▶` glyph.
+    ///
+    /// Sponsor-break / interstitial chapters (`isInTableOfContents == false`
+    /// per the podcast namespace `toc` field) are filtered OUT of this list
+    /// so they don't clutter the user's chapter-jump surface, but they
+    /// remain in the full chapter array used for the now-playing-chapter
+    /// indicator (so the user still knows what they're hearing during an
+    /// ad break — see `currentChapter(in:)` which intentionally does not
+    /// filter).
     @ViewBuilder
     private func chaptersSection(episode: Episode) -> some View {
-        let chapters = episode.resolvedChapters
-        if !chapters.isEmpty {
+        let allChapters = episode.resolvedChapters
+        let listChapters = allChapters.filter { $0.isInTableOfContents }
+        if !listChapters.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     TunerLabel(text: "CHAPTERS · TAP TO SEEK", color: .offscriptSignalYellow)
                     Spacer()
-                    TunerLabel(text: "\(chapters.count) MARKS", color: .offscriptFnInfo)
+                    TunerLabel(text: "\(listChapters.count) MARKS", color: .offscriptFnInfo)
                 }
 
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(chapters.enumerated()), id: \.element.id) { idx, chapter in
+                    ForEach(Array(listChapters.enumerated()), id: \.element.id) { idx, chapter in
                         chapterRow(
                             idx: idx,
                             chapter: chapter,
-                            isCurrent: isCurrentChapter(chapter, in: chapters)
+                            isCurrent: isCurrentChapter(chapter, in: allChapters)
                         )
-                        if idx < chapters.count - 1 {
+                        if idx < listChapters.count - 1 {
                             Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                         }
                     }
@@ -332,6 +341,7 @@ struct PlayerView: View {
                     Image(systemName: "play.fill")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(Color.offscriptSignalYellow)
+                        .accessibilityHidden(true)
                 }
 
                 Text(chapter.title)
@@ -350,12 +360,16 @@ struct PlayerView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Chapter \(idx + 1): \(chapter.title) at \(time(chapter.startTime))")
+        .accessibilityLabel("Chapter \(idx + 1), \(chapter.title), at \(EpisodeDurationFormatter.spoken(chapter.startTime))")
     }
 
     /// A chapter is "current" when player time has crossed its startTime
     /// but hasn't yet crossed the next chapter's startTime. The last chapter
     /// stays current to the end of the episode.
+    ///
+    /// IMPORTANT: this operates on the FULL chapter array including
+    /// `isInTableOfContents == false` entries so the playhead can sit on
+    /// a sponsor break even though the row is filtered out of the list.
     private func isCurrentChapter(_ chapter: EpisodeChapter, in chapters: [EpisodeChapter]) -> Bool {
         guard let idx = chapters.firstIndex(of: chapter) else { return false }
         let now = player.currentTime
@@ -364,6 +378,16 @@ struct PlayerView: View {
             return now < chapters[idx + 1].startTime
         }
         return true
+    }
+
+    /// Resolve the chapter that contains the current playhead time. Uses
+    /// the FULL chapter list (no toc filter) so sponsor breaks still
+    /// surface for art swap + now-playing readouts. Returns nil when the
+    /// episode has no chapters or when the playhead is before the first
+    /// chapter starts.
+    private func currentChapter(in chapters: [EpisodeChapter]) -> EpisodeChapter? {
+        guard !chapters.isEmpty else { return nil }
+        return chapters.first { isCurrentChapter($0, in: chapters) }
     }
 
     // MARK: up next
