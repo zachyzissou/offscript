@@ -12,6 +12,11 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage("offscript.autoPlayNext") private var autoPlayNext = true
     @AppStorage("offscript.preferShortEpisodes") private var preferShortEpisodes = false
+    // Default `true` mirrors `AppSettings.downloadsWiFiOnly` so the toggle
+    // renders ON on first launch even though no value is stored yet — same
+    // pattern as `autoPlayNext` above. Once the user touches the toggle,
+    // the explicit value wins.
+    @AppStorage("offscript.downloadsWiFiOnly") private var downloadsWiFiOnly = true
     @AppStorage("offscript.cloudSyncEnabled") private var cloudSyncEnabled = false
     @State private var recommendationMode = AppSettings.recommendationMode
     @State private var signedInUserID: String?
@@ -30,6 +35,10 @@ struct SettingsView: View {
     /// custom speed) and otherwise irreversible — drop into a confirm
     /// strip first, mirroring the Queue × CLEAR ALL pattern from #200.
     @State private var isConfirmingResetRates = false
+    /// Phase 27 — entry point to the unified Debug Inspector. Presented as
+    /// a child sheet so we don't have to wrap SettingsView in a
+    /// NavigationStack (which would reintroduce Liquid Glass chrome).
+    @State private var isDebugInspectorPresented = false
 
     @State private var subscribedPodcastCount: Int = 0
     @State private var episodeCount: Int = 0
@@ -59,6 +68,7 @@ struct SettingsView: View {
                 recommendationSection
                 signalProfileSection
                 iCloudSection
+                diagnosticsSection
                 aboutSection
             }
             .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -91,6 +101,10 @@ struct SettingsView: View {
             }
         }
         .onDisappear { signInMessageClearTask?.cancel() }
+        .sheet(isPresented: $isDebugInspectorPresented) {
+            DebugInspectorView()
+                .tunerModalSurface()
+        }
     }
 
     // MARK: header + stats
@@ -193,6 +207,12 @@ struct SettingsView: View {
                     detail: "Push compact episodes and quick wins a little higher in your recommendations.",
                     isOn: $preferShortEpisodes
                 )
+                Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                // Phase 15 deferred the user-facing toggle for
+                // `AppSettings.downloadsWiFiOnly` — the flag was already
+                // enforced by `DownloadService.isAllowedOnCurrentNetwork`
+                // but invisible. Phase 27 lands it here.
+                wifiOnlyToggle
                 Rectangle().fill(Color.offscriptHairline).frame(height: 1)
                 defaultRateRow
                 Rectangle().fill(Color.offscriptHairline).frame(height: 1)
@@ -414,6 +434,99 @@ struct SettingsView: View {
         .accessibilityValue(isOn.wrappedValue ? "On" : "Off")
         .accessibilityAddTraits(isOn.wrappedValue ? [.isButton, .isSelected] : .isButton)
         .padding(.vertical, 10)
+    }
+
+    /// Phase 15 deferred → Phase 27 resolved. The Wi-Fi-only toggle binds
+    /// to `AppSettings.downloadsWiFiOnly` (via `@AppStorage` on the same
+    /// key). `tunerToggle` would have worked, but the row needs an
+    /// expanded accessibility label so VoiceOver reads
+    /// "Download only on Wi-Fi. Currently <on|off>." instead of the
+    /// generic title — hence the dedicated copy of the toggle shape.
+    private var wifiOnlyToggle: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                downloadsWiFiOnly.toggle()
+            }
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        TunerLabel(
+                            text: "DOWNLOADS · WI-FI ONLY",
+                            color: downloadsWiFiOnly ? .offscriptSignalYellow : .offscriptSoftPaper,
+                            size: 9
+                        )
+                    }
+                    Text("Downloads pause when on cellular. Saves data on metered plans.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .lineSpacing(2)
+                }
+
+                Spacer(minLength: 10)
+
+                TunerLabel(
+                    text: downloadsWiFiOnly ? "ON" : "OFF",
+                    color: downloadsWiFiOnly ? .offscriptStudioBlack : .offscriptSoftPaper,
+                    size: 10
+                )
+                .frame(width: 58, height: 30)
+                .background(downloadsWiFiOnly ? Color.offscriptSignalYellow : Color.clear)
+                .overlay(Rectangle().stroke(downloadsWiFiOnly ? Color.offscriptSignalYellow : Color.offscriptHairline, lineWidth: 1))
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Download only on Wi-Fi. Currently \(downloadsWiFiOnly ? "on" : "off").")
+        .accessibilityValue(downloadsWiFiOnly ? "On" : "Off")
+        .accessibilityHint("Double-tap to toggle. When on, downloads pause on cellular.")
+        .accessibilityAddTraits(downloadsWiFiOnly ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("SettingsDownloadsWifiOnlyToggle")
+        .padding(.vertical, 10)
+    }
+
+    // MARK: diagnostics
+
+    /// Phase 27 — entry point to the unified Debug Inspector. Tapping the
+    /// key opens the inspector as a child sheet so we don't have to wrap
+    /// SettingsView in a NavigationStack.
+    private var diagnosticsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TunerLabel(text: "DIAGNOSTICS", color: .offscriptSignalYellow)
+
+            Button {
+                isDebugInspectorPresented = true
+            } label: {
+                HStack(spacing: 10) {
+                    TunerLabel(text: "→ OPEN DEBUG INSPECTOR", color: .offscriptSignalYellow, size: 10)
+                    Spacer()
+                    TunerLabel(text: "DEBUG", color: .offscriptFnInfo, size: 8)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open debug inspector")
+            .accessibilityHint("Shows telemetry, sync history, download state, and runtime metadata.")
+            .accessibilityIdentifier("SettingsOpenDebugInspector")
+
+            Text("Surfaces telemetry events, per-podcast sync state, download queues, and runtime metadata.")
+                .font(.system(size: 12))
+                .foregroundStyle(Color.offscriptSoftPaper)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .top
+        )
     }
 
     // MARK: signal profile
