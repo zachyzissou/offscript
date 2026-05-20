@@ -103,6 +103,15 @@ struct OffScriptApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // ActivityKit doesn't auto-end Live Activities when the host
+                // app is force-quit, so a previously-pinned now-playing
+                // activity stays frozen on the Dynamic Island / Lock Screen
+                // until the user swipes it away. Sweep stale activities on
+                // every cold launch — the helper checks `Activity<...>.activities`
+                // and ends any that don't match a current playback session.
+                .task {
+                    await NowPlayingActivityCoordinator.endStaleActivities()
+                }
         }
         .modelContainer(sharedModelContainer)
         .backgroundTask(.appRefresh(BackgroundFeedRefresh.taskIdentifier)) {
