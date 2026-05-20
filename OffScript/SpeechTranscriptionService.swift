@@ -105,6 +105,20 @@ final class SpeechTranscriptionService {
             return stored
         }
 
+        // If the feed publishes an authoritative transcript, prefer that
+        // over running Speech recognition. Publisher transcripts are faster
+        // to obtain (single HTTP fetch), more accurate (publisher-edited),
+        // and may carry speaker labels Speech can't produce. See
+        // PublishedTranscriptLoader for format/locale selection rules.
+        if !episode.transcriptReferences.isEmpty,
+           let loaded = await PublishedTranscriptLoader.fetchPublishedTranscript(
+                for: episode,
+                persistTo: context
+           ) {
+            storeTranscript(loaded.plainText, for: episode.id)
+            return loaded.plainText
+        }
+
         let status = await requestAuthorization()
         guard status == .authorized else {
             throw TranscriptionError.notAuthorized
