@@ -30,6 +30,8 @@ struct SpeechTranscriptionPanel: View {
     @State private var transcriptSource: TranscriptSource = .unknown
     @State private var transcriptLanguage: String?
     @State private var isExpanded = false
+    @State private var searchQuery: String = ""
+    @FocusState private var searchFieldFocused: Bool
 
     private enum PanelStatus: Equatable {
         case idle
@@ -258,16 +260,94 @@ struct SpeechTranscriptionPanel: View {
         }
     }
 
+    /// Indices of cues that match the active search query. Empty array =
+    /// no query / no matches.
+    private var searchMatches: [Int] {
+        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return [] }
+        return cues.indices.filter { idx in
+            cues[idx].text.localizedCaseInsensitiveContains(q)
+        }
+    }
+
+    /// Cues to display. When the user is searching, narrow to matches —
+    /// keeps the highlight semantics simple (only render what's relevant).
+    private var visibleIndices: [Int] {
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return Array(cues.indices) }
+        return searchMatches
+    }
+
     private var cueListView: some View {
-        cueScrollView
-            .padding(.top, 4)
+        VStack(alignment: .leading, spacing: 8) {
+            searchField
+
+            if !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                TunerLabel(
+                    text: "\(searchMatches.count) MATCH\(searchMatches.count == 1 ? "" : "ES")",
+                    color: .offscriptSoftPaper,
+                    size: 10
+                )
+                .accessibilityLabel("\(searchMatches.count) match\(searchMatches.count == 1 ? "" : "es")")
+            }
+
+            cueScrollView
+        }
+        .padding(.top, 4)
+    }
+
+    /// Tuner search input — hairline rectangle with mono prompt + signal-yellow
+    /// magnifier glyph + inline × clear button. Same vocabulary as
+    /// `SearchView.tunerSearchField` (read once for shape, not copied
+    /// verbatim — this one is panel-local and skips the focus-clearing
+    /// notification observer).
+    private var searchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.offscriptSignalYellow)
+                .accessibilityHidden(true)
+
+            TextField(
+                "Search transcript",
+                text: $searchQuery,
+                prompt: Text("SEARCH TRANSCRIPT")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.offscriptSoftPaper)
+            )
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .submitLabel(.search)
+            .focused($searchFieldFocused)
+            .font(.system(size: 13))
+            .foregroundStyle(Color.offscriptPaperWhite)
+            .accentColor(Color.offscriptSignalYellow)
+            .accessibilityLabel("Search transcript")
+
+            if !searchQuery.isEmpty {
+                Button {
+                    searchQuery = ""
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.offscriptSoftPaper)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
     }
 
     private var cueScrollView: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
-                    ForEach(cues.indices, id: \.self) { idx in
+                    ForEach(visibleIndices, id: \.self) { idx in
                         cueRow(idx: idx, cue: cues[idx])
                             .id(idx)
                     }
@@ -320,6 +400,13 @@ struct SpeechTranscriptionPanel: View {
         }()
 
         return Button {
+            // Tap-from-search: clear the query and dismiss the keyboard
+            // so the user lands back in the linear cue flow at the right
+            // line. Search is a jump-tool, not a persistent filter.
+            if !searchQuery.isEmpty {
+                searchQuery = ""
+                searchFieldFocused = false
+            }
             PlaybackController.shared.seek(to: cue.startTime)
             panelLogger.debug("Seeked to cue \(idx, privacy: .public) at \(cue.startTime, privacy: .public)")
         } label: {
