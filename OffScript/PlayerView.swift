@@ -324,8 +324,7 @@ struct PlayerView: View {
         } label: {
             HStack(spacing: 12) {
                 Text(String(format: "%02d", idx + 1))
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .tracking(1.0)
+                    .tunerFont(size: 11, tracking: 1.0)
                     .foregroundStyle(isCurrent ? Color.offscriptSignalYellow : Color.offscriptSoftPaper)
                     .frame(width: 28, alignment: .leading)
 
@@ -343,9 +342,8 @@ struct PlayerView: View {
                 Spacer()
 
                 Text(time(chapter.startTime))
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .tunerFont(size: 10, tracking: 0)
                     .foregroundStyle(Color.offscriptSoftPaper)
-                    .monospacedDigit()
             }
             .padding(.vertical, 10)
             .frame(minHeight: 44)
@@ -949,8 +947,7 @@ private struct PlayerSuggestionRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(String(format: "%02d", rank))
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .tracking(1.0)
+                .tunerFont(size: 11, tracking: 1.0)
                 .foregroundStyle(Color.offscriptSignalYellow)
                 .frame(width: 22, alignment: .leading)
 

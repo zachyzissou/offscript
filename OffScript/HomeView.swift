@@ -507,8 +507,7 @@ private struct HomeStarterRail: View {
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 12) {
                 Text(String(format: "%02d", idx + 1))
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .tracking(1.0)
+                    .tunerFont(size: 11, tracking: 1.0)
                     .foregroundStyle(Color.offscriptSignalYellow)
                     .frame(width: 28, alignment: .leading)
                     .padding(.top, 4)
@@ -1094,11 +1093,24 @@ private struct HeroTunerCard: View {
 
     /// VoiceOver-friendly variant of `metadata` — same fix as the rail
     /// card (#267) and PodcastEpisodeTunerRow (#268). Drops uppercasing,
-    /// drops the "·" separator, uses the spoken duration form.
+    /// drops the "·" separator, uses the spoken duration form. Inserts
+    /// Season/Episode between date and duration when the feed provided
+    /// them — matches PodcastEpisodeTunerRow's spoken contract and gives
+    /// VO users the same structural context sighted users get from
+    /// visual scaffolding (episode-numbered shows like Hardcore History
+    /// rely on the number for identity).
     private var voiceOverMetadata: String {
-        let dateString = episode.pubDate.formatted(date: .abbreviated, time: .omitted)
-        guard let duration = episode.duration else { return dateString }
-        return "\(dateString), \(EpisodeDurationFormatter.spoken(duration))"
+        var parts: [String] = []
+        parts.append(episode.pubDate.formatted(date: .abbreviated, time: .omitted))
+        if let s = episode.seasonNumber, let e = episode.episodeNumber {
+            parts.append("Season \(s) Episode \(e)")
+        } else if let e = episode.episodeNumber {
+            parts.append("Episode \(e)")
+        }
+        if let duration = episode.duration {
+            parts.append(EpisodeDurationFormatter.spoken(duration))
+        }
+        return parts.joined(separator: ", ")
     }
 
     private var timeRemaining: String {
@@ -1326,10 +1338,21 @@ private struct TunerRailCard: View {
     /// VoiceOver-friendly variant of `metadata` — non-uppercased,
     /// comma-separated, with the spoken duration ("1 hour 5 minutes")
     /// so VO doesn't speak the "·" separator or the literal
-    /// abbreviated "1h 5m" form (#267 + #268 reviews).
+    /// abbreviated "1h 5m" form (#267 + #268 reviews). Inserts
+    /// Season/Episode between date and duration when present so VO
+    /// users get the same structural context sighted users get from
+    /// visual scaffolding (matches the TunerRailCard variant).
     private var voiceOverMetadata: String {
-        let dateString = episode.pubDate.formatted(date: .abbreviated, time: .omitted)
-        guard let duration = episode.duration else { return dateString }
-        return "\(dateString), \(EpisodeDurationFormatter.spoken(duration))"
+        var parts: [String] = []
+        parts.append(episode.pubDate.formatted(date: .abbreviated, time: .omitted))
+        if let s = episode.seasonNumber, let e = episode.episodeNumber {
+            parts.append("Season \(s) Episode \(e)")
+        } else if let e = episode.episodeNumber {
+            parts.append("Episode \(e)")
+        }
+        if let duration = episode.duration {
+            parts.append(EpisodeDurationFormatter.spoken(duration))
+        }
+        return parts.joined(separator: ", ")
     }
 }

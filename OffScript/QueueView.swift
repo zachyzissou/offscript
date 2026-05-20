@@ -449,8 +449,7 @@ private struct QueueItemRow: View {
             } label: {
                 HStack(spacing: 12) {
                     Text(String(format: "%02d", rank))
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .tracking(1.0)
+                        .tunerFont(size: 11, tracking: 1.0)
                         .foregroundStyle(Color.offscriptSignalYellow)
                         .frame(width: 28, alignment: .leading)
 

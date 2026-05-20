@@ -31,8 +31,7 @@ struct GenrePickerView: View {
                             .staggeredEntrance(index: 1)
 
                         Text("WE'LL TUNE TO THESE FREQUENCIES TO FIND YOUR CHANNELS")
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .tracking(1.6)
+                            .tunerFont(size: 9)
                             .foregroundStyle(Color.offscriptSoftPaper)
                             .staggeredEntrance(index: 2)
                     }
@@ -127,10 +126,8 @@ private struct GenreCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Text(String(format: "%02d", index))
-                        .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                        .tracking(1.4)
+                        .tunerFont(size: 8, tracking: 1.4)
                         .foregroundStyle(isSelected ? Color.offscriptSignalYellow : Color.offscriptFadedPaper)
-                        .monospacedDigit()
                     Spacer()
                     if isSelected {
                         Image(systemName: "checkmark")
@@ -148,8 +145,7 @@ private struct GenreCard: View {
                 Spacer().frame(height: 6)
 
                 Text(genre.title.uppercased())
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .tracking(1.2)
+                    .tunerFont(size: 9, tracking: 1.2)
                     .foregroundStyle(isSelected ? Color.offscriptPaperWhite : Color.offscriptSoftPaper)
                     .multilineTextAlignment(.leading)
                     .lineLimit(2)

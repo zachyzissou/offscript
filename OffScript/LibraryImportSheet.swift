@@ -324,8 +324,7 @@ struct LibraryImportSheet: View {
     private func opmlRow(idx: Int, entry: OPMLFeedEntry, status: ImportRowStatus) -> some View {
         HStack(alignment: .center, spacing: 12) {
             Text(String(format: "%02d", idx + 1))
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .tracking(1.0)
+                .tunerFont(size: 11, tracking: 1.0)
                 .foregroundStyle(Color.offscriptSignalYellow)
                 .frame(width: 28, alignment: .leading)
 
@@ -336,7 +335,7 @@ struct LibraryImportSheet: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Text(entry.feedURL.absoluteString)
-                    .font(.system(size: 9, weight: .regular, design: .monospaced))
+                    .tunerFont(size: 9, weight: .regular, tracking: 0)
                     .foregroundStyle(Color.offscriptSoftPaper)
                     .lineLimit(1)
                     .truncationMode(.middle)

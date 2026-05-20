@@ -628,9 +628,32 @@ struct TunerLabel: View {
 
     var body: some View {
         Text(text.uppercased())
-            .font(.system(size: size.offscriptScaled(), weight: .semibold, design: .monospaced))
-            .tracking(1.6)
+            .tunerFont(size: size)
             .foregroundStyle(color)
+    }
+}
+
+extension View {
+    /// Font-only counterpart to `TunerLabel`: applies the project's
+    /// monospaced typography vocabulary (Dynamic-Type-scaled size,
+    /// semibold semibold weight, monospaced design, 1.6 tracking, and
+    /// `.monospacedDigit()`) without wrapping the receiver in a
+    /// dedicated View. Use this when the text lives inside an
+    /// `HStack { Image + Text }` button label, or when the caller needs
+    /// a non-default weight / tracking and `TunerLabel`'s text-only
+    /// shape doesn't fit.
+    ///
+    /// Unlike `TunerLabel`, this does NOT uppercase the text — callers
+    /// uppercase explicitly when needed. Color is also caller-applied
+    /// via `.foregroundStyle(...)`.
+    func tunerFont(
+        size: CGFloat,
+        weight: Font.Weight = .semibold,
+        tracking: CGFloat = 1.6
+    ) -> some View {
+        self
+            .font(.system(size: size.offscriptScaled(), weight: weight, design: .monospaced))
+            .tracking(tracking)
             .monospacedDigit()
     }
 }

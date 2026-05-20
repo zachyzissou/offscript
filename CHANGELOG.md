@@ -4,6 +4,16 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+_See `docs/superpowers/audits/2026-05-19-voiceover-walk.md` and `docs/superpowers/audits/2026-05-19-design-token-audit.md` for remaining deferred audit-cycle items — primarily the `tunerFont(size:)` helper to migrate the ~41 `design: .monospaced` sites that currently bypass `TunerLabel`._
+
+## [2.4.0] — 2026-05-19
+
+### Added — audit-cycle a11y polish (pulled forward from deferred)
+
+- **Library directory SCOPE / SORT / ROWS chips now read dimension-prefixed VoiceOver labels** — `Scope: all shows`, `Sort: A to Z`, `Rows: artwork rows`, etc. Previously the chip's VO label was just the visible mono title (`ALL`, `A-Z`, `ARTWORK`), which couldn't disambiguate values that share text across dimensions. New `voiceOverLabel` properties on `LibraryDirectoryScope` / `LibraryDirectorySort` / `LibraryDirectoryDensity` keep visible mono labels unchanged.
+- **`× UNSUBSCRIBE` confirm strip is now podcast-title aware.** `Cancel unsubscribe` → `Cancel unsubscribe from <podcast>`; same for `Confirm unsubscribe`. The destructive action is per-podcast and a VO user who accidentally taps into a confirm strip on the wrong show needs the title to disambiguate intent.
+- **Home `voiceOverMetadata` now includes Season/Episode when the feed provided them** (`HomeView.swift:1098` `TunerRailCard` and `:1330` other card variant), matching the conditional pattern Library uses. Per-surface order is preserved: Home emits `[date, S/E, duration]` to mirror its visible `[date, duration]`; Library emits `[S/E, date, duration]` to mirror its visible `[S/E, date, duration]`. Episode-numbered shows like Hardcore History give VO users the same structural context sighted users get from titles.
+
 ### Added — UI QA swarm coverage
 - **New `-offscript.debugWipeLibrary YES` launch arg wipes the SwiftData store before seeding** so UI tests that need a guaranteed-empty Library or Queue can launch deterministically regardless of prior simulator state. Documented in `docs/TEST_MATRIX.md`. Closes #177.
 - **Library empty state now has UI smoke coverage** that asserts `● NO CHANNELS TUNED` and "Your library is empty" render on a freshly-wiped store, pinning the day-one Library experience against future header refactors (#115).

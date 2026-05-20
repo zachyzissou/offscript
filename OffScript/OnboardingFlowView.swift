@@ -124,10 +124,8 @@ struct OnboardingFlowView: View {
                     ForEach(Array(manifesto.enumerated()), id: \.offset) { i, line in
                         HStack(alignment: .firstTextBaseline, spacing: 14) {
                             Text(String(format: "%02d", i + 1))
-                                .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                                .tracking(0.6)
+                                .tunerFont(size: 14, tracking: 0.6)
                                 .foregroundStyle(Color.offscriptSignalYellow)
-                                .monospacedDigit()
                             Text(line)
                                 .font(.system(size: 17, weight: .semibold))
                                 .foregroundStyle(Color.offscriptPaperWhite)
@@ -166,8 +164,7 @@ struct OnboardingFlowView: View {
 
                     if let signInErrorMessage {
                         Text(signInErrorMessage)
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .tracking(0.5)
+                            .tunerFont(size: 11, tracking: 0.5)
                             .foregroundStyle(Color.offscriptFnRecord)
                             .padding(.vertical, 10)
                             .frame(maxWidth: .infinity, alignment: .leading)

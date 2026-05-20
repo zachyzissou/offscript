@@ -3339,3 +3339,258 @@ private final class RecordingAudioSession: OffScriptAudioSessionApplying {
     }
 }
 #endif
+
+// MARK: - EpisodeDurationFormatter Tests
+
+/// Pins the contract for `EpisodeDurationFormatter.short(_:)` and
+/// `.spoken(_:)` — both have 15+ call sites across HomeView,
+/// LibraryView, and the Now Playing surfaces, but had zero test
+/// coverage prior to the 2.4.0 audit (Phase 1.1).
+struct EpisodeDurationFormatterTests {
+    // MARK: short(_:)
+
+    @Test func shortZero() {
+        #expect(EpisodeDurationFormatter.short(0) == "0m")
+    }
+
+    @Test func shortSubMinuteRoundsDown() {
+        #expect(EpisodeDurationFormatter.short(59) == "0m")
+    }
+
+    @Test func shortExactlyOneMinute() {
+        #expect(EpisodeDurationFormatter.short(60) == "1m")
+    }
+
+    @Test func shortThirtyTwoMinutes() {
+        #expect(EpisodeDurationFormatter.short(32 * 60) == "32m")
+    }
+
+    @Test func shortExactlyOneHour() {
+        #expect(EpisodeDurationFormatter.short(60 * 60) == "1h")
+    }
+
+    @Test func shortOneHourFiveMinutes() {
+        #expect(EpisodeDurationFormatter.short(65 * 60) == "1h 5m")
+    }
+
+    @Test func shortTwoHoursExact() {
+        #expect(EpisodeDurationFormatter.short(2 * 3600) == "2h")
+    }
+
+    @Test func shortFiveHoursExact() {
+        #expect(EpisodeDurationFormatter.short(5 * 3600) == "5h")
+    }
+
+    /// Defensive contract: negative durations clamp to "0m" so a
+    /// stale `playedPosition > duration` arithmetic glitch never
+    /// surfaces a "-1m" glyph in the UI. `Int(-1.0/60)` truncates
+    /// toward zero, which is what we rely on.
+    @Test func shortNegativeClampsToZero() {
+        #expect(EpisodeDurationFormatter.short(-1) == "0m")
+    }
+
+    // MARK: spoken(_:)
+
+    @Test func spokenZero() {
+        #expect(EpisodeDurationFormatter.spoken(0) == "0 minutes")
+    }
+
+    @Test func spokenSubMinute() {
+        #expect(EpisodeDurationFormatter.spoken(45) == "0 minutes")
+    }
+
+    @Test func spokenSingularMinute() {
+        #expect(EpisodeDurationFormatter.spoken(60) == "1 minute")
+    }
+
+    @Test func spokenPluralMinutes() {
+        #expect(EpisodeDurationFormatter.spoken(32 * 60) == "32 minutes")
+    }
+
+    @Test func spokenSingularHour() {
+        #expect(EpisodeDurationFormatter.spoken(60 * 60) == "1 hour")
+    }
+
+    @Test func spokenSingularHourSingularMinute() {
+        #expect(EpisodeDurationFormatter.spoken(61 * 60) == "1 hour 1 minute")
+    }
+
+    @Test func spokenSingularHourPluralMinutes() {
+        #expect(EpisodeDurationFormatter.spoken(65 * 60) == "1 hour 5 minutes")
+    }
+
+    @Test func spokenPluralHoursSingularMinute() {
+        #expect(EpisodeDurationFormatter.spoken(2 * 3600 + 60) == "2 hours 1 minute")
+    }
+
+    @Test func spokenTwoHoursExact() {
+        #expect(EpisodeDurationFormatter.spoken(2 * 3600) == "2 hours")
+    }
+
+    @Test func spokenTwentyFourHoursExact() {
+        #expect(EpisodeDurationFormatter.spoken(24 * 3600) == "24 hours")
+    }
+
+    @Test func spokenNegativeClampsToZero() {
+        #expect(EpisodeDurationFormatter.spoken(-1) == "0 minutes")
+    }
+}
+
+// MARK: - voiceOverMetadata Tests
+
+/// Mirrors the `voiceOverMetadata` contract introduced in PRs #267,
+/// #268, and #270:
+///   - drop uppercasing
+///   - drop the "·" separator (VO speaks it literally)
+///   - expand "S2 E5" to "Season 2 Episode 5"
+///   - use `EpisodeDurationFormatter.spoken` so "1h 5m" is read as
+///     "1 hour 5 minutes" instead of "1 H 5 M"
+///
+/// Pure helper duplicated here so the test doesn't have to spin up
+/// SwiftData-backed `PodcastEpisode` instances. The three production
+/// builders are then walked manually against this logic (see
+/// docs/superpowers/audits/2026-05-19-voiceover-walk.md).
+struct VoiceOverMetadataTests {
+    private static let calendar: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC") ?? .gmt
+        return cal
+    }()
+
+    private static let locale = Locale(identifier: "en_US_POSIX")
+
+    /// Encodes the spoken voiceOverMetadata contract. As of 2.4.0 this
+    /// matches both HomeView builders (`HomeView.swift:1098`, `:1330`)
+    /// exactly — they emit `[date, S/E, duration]` with the same
+    /// conditional S/E inclusion.
+    /// Known divergences still in production (see the audit walk in
+    /// docs/superpowers/audits/2026-05-19-voiceover-walk.md):
+    ///   - LibraryView.swift:2996 emits `[S/E, date, duration]` — it
+    ///     mirrors its own visible mono metadata (`[S/E, date, duration]`),
+    ///     which differs from Home's visible order (`[date, duration]`).
+    ///     Each surface's voiceOverMetadata mirrors its own visible order.
+    ///   - Duration is gated on `> 0` here; both Home and Library only
+    ///     nil-check, so a 0-duration episode would emit "0 minutes" in
+    ///     production.
+    /// Do NOT copy this helper into production — re-derive from each
+    /// surface's visible metadata order.
+    private static func voiceOverMetadata(
+        pubDate: Date?,
+        seasonNumber: Int?,
+        episodeNumber: Int?,
+        duration: TimeInterval?
+    ) -> String {
+        var parts: [String] = []
+        if let pubDate {
+            // Match `Date.formatted(date: .abbreviated, time: .omitted)`
+            // with a fixed locale + calendar so the assertion is
+            // deterministic regardless of host settings.
+            let formatter = DateFormatter()
+            formatter.locale = locale
+            formatter.calendar = calendar
+            formatter.timeZone = calendar.timeZone
+            formatter.dateFormat = "MMM d, yyyy"
+            parts.append(formatter.string(from: pubDate))
+        }
+        if let s = seasonNumber, let e = episodeNumber {
+            parts.append("Season \(s) Episode \(e)")
+        } else if let e = episodeNumber {
+            parts.append("Episode \(e)")
+        }
+        if let duration, duration > 0 {
+            parts.append(EpisodeDurationFormatter.spoken(duration))
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private static func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        return calendar.date(from: components) ?? Date(timeIntervalSince1970: 0)
+    }
+
+    @Test func fullMetadataWithSeasonAndDuration() {
+        let output = Self.voiceOverMetadata(
+            pubDate: Self.date(2026, 5, 1),
+            seasonNumber: 2,
+            episodeNumber: 5,
+            duration: 65 * 60
+        )
+        #expect(output == "May 1, 2026, Season 2 Episode 5, 1 hour 5 minutes")
+    }
+
+    @Test func metadataWithEpisodeOnly() {
+        let output = Self.voiceOverMetadata(
+            pubDate: Self.date(2026, 5, 1),
+            seasonNumber: nil,
+            episodeNumber: 12,
+            duration: 32 * 60
+        )
+        #expect(output == "May 1, 2026, Episode 12, 32 minutes")
+    }
+
+    @Test func metadataWithoutDuration() {
+        let output = Self.voiceOverMetadata(
+            pubDate: Self.date(2026, 5, 1),
+            seasonNumber: nil,
+            episodeNumber: 12,
+            duration: nil
+        )
+        #expect(output == "May 1, 2026, Episode 12")
+    }
+
+    @Test func metadataOmitsZeroDuration() {
+        let output = Self.voiceOverMetadata(
+            pubDate: Self.date(2026, 5, 1),
+            seasonNumber: nil,
+            episodeNumber: 12,
+            duration: 0
+        )
+        #expect(output == "May 1, 2026, Episode 12")
+    }
+
+    @Test func metadataWithoutPubDate() {
+        let output = Self.voiceOverMetadata(
+            pubDate: nil,
+            seasonNumber: 2,
+            episodeNumber: 5,
+            duration: 65 * 60
+        )
+        #expect(output == "Season 2 Episode 5, 1 hour 5 minutes")
+    }
+
+    @Test func metadataAllMissing() {
+        let output = Self.voiceOverMetadata(
+            pubDate: nil,
+            seasonNumber: nil,
+            episodeNumber: nil,
+            duration: nil
+        )
+        #expect(output == "")
+    }
+
+    // MARK: Structural assertions — the bugs we're guarding against
+
+    @Test func metadataNeverContainsMiddleDotSeparator() {
+        let output = Self.voiceOverMetadata(
+            pubDate: Self.date(2026, 5, 1),
+            seasonNumber: 2,
+            episodeNumber: 5,
+            duration: 65 * 60
+        )
+        #expect(!output.contains("·"))
+    }
+
+    @Test func metadataNeverContainsUppercaseGlyphs() {
+        let output = Self.voiceOverMetadata(
+            pubDate: Self.date(2026, 5, 1),
+            seasonNumber: 2,
+            episodeNumber: 5,
+            duration: 65 * 60
+        )
+        #expect(!output.contains("MAY"))
+        #expect(!output.contains("1H"))
+    }
+}

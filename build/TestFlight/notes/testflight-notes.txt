@@ -1,0 +1,15 @@
+2.4.0 — VoiceOver pass + audit cycle
+
+— Hero card, Home rails, Library directory, Search, Queue, Player UP NEXT, EpisodeDetail action chips, and Settings now expose explicit, title-aware VoiceOver labels instead of mono visible text or icon names (~25 surfaces).
+— Spoken durations ("1 hour 5 minutes") replace the visible "1H 5M" glyphs for VoiceOver throughout.
+— New "More From Shows You Chose" Home lane separates your explicit like signal from passive completion affinity.
+— Search now supports pull-to-refresh; clear-recents requires confirmation.
+— Queue rows are tappable to open episode detail.
+— Performance: 258-show deterministic seed in UI tests pins the v2.3.11 LibraryView @Query optimization.
+— Audit-cycle fixes in this build: three decorative magnifying-glass icons no longer leak to VO; three artwork tiles now carry the hairline-stroke overlay per spec; two new UI tests (Queue empty state + row-tap) now use debugWipeLibrary for parallel-safe state.
+— Three polish items pulled forward: Library directory chips now read dimension-prefixed VO labels ("Scope: all shows", "Sort: A to Z", "Rows: artwork rows"); the × UNSUBSCRIBE confirm strip is now podcast-title aware; Home voiceOverMetadata now includes Season/Episode when the feed provides them, matching Library's conditional pattern.
+— Added 28 new unit tests pinning EpisodeDurationFormatter.spoken() contract and the voiceOverMetadata target shape.
+
+Known issues:
+— One pre-existing unit test (feedSyncFastBatchImportUsesCheapProfilesAndSkipsExternalChapters) still failing on main; unrelated to a11y or this release. Audited as a known issue.
+— Remaining deferred polish: ~41 mono-without-TunerLabel sites pending a `tunerFont(size:)` helper; comprehensive runtime VO focus-order walk; Instruments perf trace; airplane-mode retry-key walk. Recorded in docs/superpowers/audits/.

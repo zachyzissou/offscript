@@ -56,6 +56,18 @@ nonisolated enum LibraryDirectoryScope: String, CaseIterable, Identifiable, Send
         case .needsSync: "NEEDS SYNC"
         }
     }
+
+    /// Spelled-out form for VoiceOver. The visible `label` is uppercase
+    /// mono; this variant drops the all-caps emphasis (VO is loud) and
+    /// stays a fragment so callers can prefix it with a dimension label.
+    var voiceOverLabel: String {
+        switch self {
+        case .all: "all shows"
+        case .unplayed: "unplayed only"
+        case .inProgress: "in progress only"
+        case .needsSync: "needs sync only"
+        }
+    }
 }
 
 nonisolated enum LibraryDirectorySort: String, CaseIterable, Identifiable, Sendable {
@@ -72,6 +84,14 @@ nonisolated enum LibraryDirectorySort: String, CaseIterable, Identifiable, Senda
         case .attention: "ATTN"
         }
     }
+
+    var voiceOverLabel: String {
+        switch self {
+        case .title: "A to Z"
+        case .latest: "latest first"
+        case .attention: "needs attention first"
+        }
+    }
 }
 
 nonisolated enum LibraryDirectoryDensity: String, CaseIterable, Identifiable, Sendable {
@@ -84,6 +104,13 @@ nonisolated enum LibraryDirectoryDensity: String, CaseIterable, Identifiable, Se
         switch self {
         case .compact: "COMPACT"
         case .artwork: "ARTWORK"
+        }
+    }
+
+    var voiceOverLabel: String {
+        switch self {
+        case .compact: "compact rows"
+        case .artwork: "artwork rows"
         }
     }
 }
@@ -1809,9 +1836,8 @@ private struct LibraryTunerHeader: View {
     private func statReadout(label: String, value: Int) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(String(value))
-                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                .tunerFont(size: 18, weight: .bold, tracking: 0)
                 .foregroundStyle(Color.offscriptPaperWhite)
-                .monospacedDigit()
             TunerLabel(text: label, color: .offscriptSoftPaper, size: 8)
         }
         // Combine the value+label so VoiceOver reads "12 shows" once
@@ -1839,7 +1865,11 @@ private struct LibraryDirectoryControls: View {
             VStack(alignment: .leading, spacing: 8) {
                 controlRow(label: "SCOPE") {
                     ForEach(LibraryDirectoryScope.allCases) { item in
-                        modeButton(item.label, isSelected: scope == item) {
+                        modeButton(
+                            item.label,
+                            accessibilityLabel: "Scope: \(item.voiceOverLabel)",
+                            isSelected: scope == item
+                        ) {
                             scope = item
                         }
                     }
@@ -1847,7 +1877,11 @@ private struct LibraryDirectoryControls: View {
 
                 controlRow(label: "SORT") {
                     ForEach(LibraryDirectorySort.allCases) { item in
-                        modeButton(item.label, isSelected: sort == item) {
+                        modeButton(
+                            item.label,
+                            accessibilityLabel: "Sort: \(item.voiceOverLabel)",
+                            isSelected: sort == item
+                        ) {
                             sort = item
                         }
                     }
@@ -1855,7 +1889,12 @@ private struct LibraryDirectoryControls: View {
 
                 controlRow(label: "ROWS") {
                     ForEach(LibraryDirectoryDensity.allCases) { item in
-                        modeButton(item.label, isSelected: effectiveDensity == item, isDisabled: isForcedCompact && item == .artwork) {
+                        modeButton(
+                            item.label,
+                            accessibilityLabel: "Rows: \(item.voiceOverLabel)",
+                            isSelected: effectiveDensity == item,
+                            isDisabled: isForcedCompact && item == .artwork
+                        ) {
                             guard !(isForcedCompact && item == .artwork) else { return }
                             density = item
                         }
@@ -1877,6 +1916,7 @@ private struct LibraryDirectoryControls: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.offscriptSignalYellow)
+                .accessibilityHidden(true)
 
             TextField("Filter shows",
                       text: $query,
@@ -1926,6 +1966,7 @@ private struct LibraryDirectoryControls: View {
 
     private func modeButton(
         _ title: String,
+        accessibilityLabel: String,
         isSelected: Bool,
         isDisabled: Bool = false,
         action: @escaping () -> Void
@@ -1950,7 +1991,10 @@ private struct LibraryDirectoryControls: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
-        .accessibilityLabel(title)
+        // Dimension-prefixed spoken label disambiguates chips that share
+        // a value across rows (e.g. "ALL" could mean Scope or any future
+        // dimension). Visible mono `title` is unchanged.
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
@@ -2016,7 +2060,7 @@ private struct LibraryAlphabetRail: View {
         isReachable: Bool
     ) -> some View {
         Text(key)
-            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .tunerFont(size: 10, tracking: 0)
             .foregroundStyle(letterColor(isSelected: isSelected, isNearestJump: isNearestJump, isReachable: isReachable))
             .frame(width: 30, height: 30)
             .background(isSelected ? Color.offscriptSignalYellow.opacity(0.16) : Color.clear)
@@ -2242,8 +2286,7 @@ private struct PodcastShelfRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(String(format: "%02d", channelNumber))
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .tracking(1.0)
+                .tunerFont(size: 11, tracking: 1.0)
                 .foregroundStyle(Color.offscriptSignalYellow)
                 .frame(width: 28, alignment: .leading)
 
@@ -2278,9 +2321,8 @@ private struct PodcastShelfRow: View {
 
             if isCompact, unplayedCount > 0 {
                 Text("\(unplayedCount)")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .tunerFont(size: 12, weight: .bold, tracking: 0)
                     .foregroundStyle(Color.offscriptSignalYellow)
-                    .monospacedDigit()
                     .frame(minWidth: 24, alignment: .trailing)
             }
 
@@ -2593,6 +2635,7 @@ struct PodcastDetailView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.offscriptSignalYellow)
+                .accessibilityHidden(true)
 
             TextField("Search episodes",
                       text: $episodeSearchQuery,
@@ -2806,7 +2849,7 @@ private struct PodcastDetailTunerHeader: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Cancel unsubscribe")
+                .accessibilityLabel("Cancel unsubscribe from \(podcast.title)")
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.18)) {
@@ -2820,7 +2863,7 @@ private struct PodcastDetailTunerHeader: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Confirm unsubscribe")
+                .accessibilityLabel("Confirm unsubscribe from \(podcast.title)")
                 .accessibilityIdentifier("PodcastDetailConfirmUnsubscribeButton")
             }
         }
@@ -2875,8 +2918,7 @@ private struct PodcastEpisodeTunerRow: View {
             } label: {
                 HStack(alignment: .top, spacing: 12) {
                     Text(rankLabel)
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .tracking(1.0)
+                        .tunerFont(size: 11, tracking: 1.0)
                         .foregroundStyle(rank == nil ? Color.offscriptSoftPaper : Color.offscriptSignalYellow)
                         .frame(width: 32, alignment: .leading)
 

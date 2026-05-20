@@ -337,7 +337,7 @@ private struct TunerTabBar: View {
                     // otherwise see a flat "99" on the tab bar that
                     // disagrees with the QueueView's "150 STACKED".
                     Text(queueBadge > 99 ? "99+" : "\(queueBadge)")
-                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .tunerFont(size: 8, weight: .bold, tracking: 0)
                         .foregroundStyle(Color.offscriptStudioBlack)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 1)
