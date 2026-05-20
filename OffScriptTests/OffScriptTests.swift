@@ -1777,29 +1777,21 @@ struct OffScriptTests {
     func appSettingsRoundTripsPreferences() {
         let originalAutoPlay = AppSettings.autoPlayNext
         let originalPreferShort = AppSettings.preferShortEpisodes
-        let originalDownloadedOnly = AppSettings.libraryShowDownloadedOnly
-        let originalSortMode = AppSettings.librarySortMode
         let originalGenres = AppSettings.preferredGenres
         let originalRecommendationMode = AppSettings.recommendationMode
 
         AppSettings.autoPlayNext = false
         AppSettings.preferShortEpisodes = true
-        AppSettings.libraryShowDownloadedOnly = true
-        AppSettings.librarySortMode = .recentlyPlayed
         AppSettings.preferredGenres = [.technology, .newsAndPolitics]
         AppSettings.recommendationMode = .discovery
 
         #expect(AppSettings.autoPlayNext == false)
         #expect(AppSettings.preferShortEpisodes == true)
-        #expect(AppSettings.libraryShowDownloadedOnly == true)
-        #expect(AppSettings.librarySortMode == .recentlyPlayed)
         #expect(AppSettings.preferredGenres == [.technology, .newsAndPolitics])
         #expect(AppSettings.recommendationMode == .discovery)
 
         AppSettings.autoPlayNext = originalAutoPlay
         AppSettings.preferShortEpisodes = originalPreferShort
-        AppSettings.libraryShowDownloadedOnly = originalDownloadedOnly
-        AppSettings.librarySortMode = originalSortMode
         AppSettings.preferredGenres = originalGenres
         AppSettings.recommendationMode = originalRecommendationMode
     }

@@ -33,18 +33,10 @@ enum AppSettings {
         static let preferredGenres = "offscript.preferredGenres"
         static let recommendationMode = "offscript.recommendationMode"
         static let recentSearches = "offscript.recentSearches"
-        static let libraryShowDownloadedOnly = "offscript.libraryShowDownloadedOnly"
-        static let librarySortMode = "offscript.librarySortMode"
         static let cloudSyncEnabled = "offscript.cloudSyncEnabled"
         static let cloudSyncRuntimeState = "offscript.cloudSyncRuntimeState"
         static let lastCloudSyncDate = "offscript.lastCloudSyncDate"
         static let downloadsWiFiOnly = "offscript.downloadsWiFiOnly"
-    }
-
-    enum LibrarySortMode: String, CaseIterable {
-        case newest
-        case oldest
-        case recentlyPlayed
     }
 
     enum CloudSyncRuntimeState: String {
@@ -134,22 +126,6 @@ enum AppSettings {
     static var recentSearchesStorage: String {
         get { defaults.string(forKey: Key.recentSearches) ?? "" }
         set { defaults.set(newValue, forKey: Key.recentSearches) }
-    }
-
-    static var libraryShowDownloadedOnly: Bool {
-        get { defaults.bool(forKey: Key.libraryShowDownloadedOnly) }
-        set { defaults.set(newValue, forKey: Key.libraryShowDownloadedOnly) }
-    }
-
-    static var librarySortMode: LibrarySortMode {
-        get {
-            guard let raw = defaults.string(forKey: Key.librarySortMode),
-                  let mode = LibrarySortMode(rawValue: raw) else {
-                return .newest
-            }
-            return mode
-        }
-        set { defaults.set(newValue.rawValue, forKey: Key.librarySortMode) }
     }
 
     static var cloudSyncEnabled: Bool {
