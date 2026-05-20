@@ -452,14 +452,53 @@ final class TelemetryEvent {
 struct EpisodeChapter: Identifiable, Hashable, Codable, Sendable {
     let title: String
     let startTime: TimeInterval
+    let endTime: TimeInterval?
+    let imageURL: URL?
+    let linkURL: URL?
+    /// Whether this chapter should appear in a table-of-contents navigation list.
+    /// Per the podcast namespace spec (`toc` field), defaults to `true`. Chapters with
+    /// `toc == false` should still affect playback boundaries but can be filtered from UI lists.
+    let isInTableOfContents: Bool
 
     var id: String {
         "\(Int(startTime * 1000))-\(title)"
     }
 
-    init(title: String, startTime: TimeInterval) {
+    init(
+        title: String,
+        startTime: TimeInterval,
+        endTime: TimeInterval? = nil,
+        imageURL: URL? = nil,
+        linkURL: URL? = nil,
+        isInTableOfContents: Bool = true
+    ) {
         self.title = title
         self.startTime = startTime
+        self.endTime = endTime
+        self.imageURL = imageURL
+        self.linkURL = linkURL
+        self.isInTableOfContents = isInTableOfContents
+    }
+
+    // Custom decoder so older persisted chapters (title + startTime only) keep decoding
+    // without breaking on missing optional fields.
+    private enum CodingKeys: String, CodingKey {
+        case title
+        case startTime
+        case endTime
+        case imageURL
+        case linkURL
+        case isInTableOfContents
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.title = try container.decode(String.self, forKey: .title)
+        self.startTime = try container.decode(TimeInterval.self, forKey: .startTime)
+        self.endTime = try container.decodeIfPresent(TimeInterval.self, forKey: .endTime)
+        self.imageURL = try container.decodeIfPresent(URL.self, forKey: .imageURL)
+        self.linkURL = try container.decodeIfPresent(URL.self, forKey: .linkURL)
+        self.isInTableOfContents = try container.decodeIfPresent(Bool.self, forKey: .isInTableOfContents) ?? true
     }
 }
 
