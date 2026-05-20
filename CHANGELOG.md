@@ -4,6 +4,8 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.5.2] — 2026-05-20
+
 ### Fixed
 - Lock screen / Control Center now receive generated Tuner fallback artwork immediately when an episode has no feed artwork or while remote artwork is loading, so Now Playing metadata no longer publishes without cover art.
 - Search and onboarding subscription staging now detect existing RSS feeds by normalized URL, so `http`/`https`, `feed://`, case, and trailing-slash variants do not create duplicate library rows.

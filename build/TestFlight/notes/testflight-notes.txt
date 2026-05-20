@@ -1,14 +1,11 @@
-2.5.1 — CRITICAL FIX: SwiftData schema migration
+OffScript beta 2.5.2 (2026052005)
 
-If you installed 2.5.0 (build 2026052003) and your library appeared empty after upgrade, this fixes it going forward. Apologies for the data-loss scare — root-cause was a missed schema-version bump for the expanded published-transcript cache shipped in 2.5.0. SwiftData saw the schema fingerprint mismatch, failed the lightweight migration, and the app's three-tier recovery quarantined the old store rather than crash. Your data is NOT deleted — it's renamed to `OffScript-corrupted-<timestamp>/` inside the app's Application Support container. Restoring from a device backup will bring it back; opening the app on 2.5.1 will continue forward cleanly from whatever state you're at now.
+What changed:
+- Search and onboarding subscription staging now treat http/https/feed, case, and trailing-slash RSS variants as the same feed, so subscribing from Search should not create duplicate Library rows.
+- Lock screen / Control Center now receive Tuner fallback artwork immediately when an episode has no feed artwork or remote artwork is still loading.
+- Shared artwork fallback, empty states, and Tuner button press feedback are aligned across the main app surfaces.
 
-— Fix: frozen 2.4.x SchemaV2 transcript-cache shape + SchemaV3 + migrateV2toV3 lightweight migration stage.
-— Fix: Siri/Shortcuts App Intents now open the same V3 SwiftData store as the main app.
-— Users who skipped 2.5.0 and go straight from 2.4.x to 2.5.1 get the full V1→V2→V3 migration path with no data loss.
-
-Tuner UI polish in this build:
-— Shared artwork fallback now appears consistently across app surfaces when feed art is missing or still loading.
-— Shared empty states keep Library, Queue, Search, and related no-content screens aligned with the Tuner spec-sheet treatment.
-— App-wide Tuner buttons now have consistent press feedback while staying in the flat OLED / hairline control language.
-
-All other 2.5.0 features are unchanged — see the 2.5.0 release notes for the podcast-namespace chapters / published transcripts / CarPlay scaffolding / recommendation-credibility wiring.
+What to test:
+- Search for a show already in your Library using a different feed URL spelling, then subscribe. The existing show should flip to IN LIBRARY immediately and no duplicate Library row should appear.
+- Play an episode with missing feed artwork and check the Lock Screen / Control Center artwork.
+- Smoke Home, Library, Queue, Search, mini-player, and full Player for sharp Tuner styling, readable copy, and usable controls.
