@@ -53,8 +53,7 @@ struct EpisodeVerticalCard: View {
                 // system. Was signal-yellow — yellow is reserved for the
                 // primary accent / actionable state, not metadata labels.
                 Text(episode.podcast.title.uppercased())
-                    .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
-                    .tracking(1.4)
+                    .tunerFont(size: 8.5, tracking: 1.4)
                     .foregroundStyle(Color.offscriptFnInfo)
                     .lineLimit(1)
 
@@ -75,8 +74,7 @@ struct EpisodeVerticalCard: View {
                 .buttonStyle(.plain)
 
                 Text(metadata.uppercased())
-                    .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                    .tracking(1.4)
+                    .tunerFont(size: 8, tracking: 1.4)
                     .foregroundStyle(Color.offscriptSoftPaper)
                     .lineLimit(1)
 
@@ -187,10 +185,8 @@ struct EpisodeCompactCard: View {
             HStack(spacing: 12) {
                 if let rank {
                     Text(String(format: "%02d", rank))
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .tracking(0.6)
+                        .tunerFont(size: 11, tracking: 0.6)
                         .foregroundStyle(Color.offscriptSignalYellow)
-                        .monospacedDigit()
                         .frame(width: 28, alignment: .leading)
                 }
 
@@ -221,8 +217,7 @@ struct EpisodeCompactCard: View {
                     if showPodcastTitle {
                         // Info-cyan per the function-coded color system.
                         Text(episode.podcast.title.uppercased())
-                            .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
-                            .tracking(1.4)
+                            .tunerFont(size: 8.5, tracking: 1.4)
                             .foregroundStyle(Color.offscriptFnInfo)
                             .lineLimit(1)
                     }
@@ -235,8 +230,7 @@ struct EpisodeCompactCard: View {
                         .multilineTextAlignment(.leading)
 
                     Text(metadata.uppercased())
-                        .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                        .tracking(1.4)
+                        .tunerFont(size: 8, tracking: 1.4)
                         .foregroundStyle(Color.offscriptSoftPaper)
                         .lineLimit(1)
                 }
