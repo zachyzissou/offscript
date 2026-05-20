@@ -4,7 +4,58 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
-_See `docs/superpowers/audits/2026-05-19-voiceover-walk.md` and `docs/superpowers/audits/2026-05-19-design-token-audit.md` for remaining deferred audit-cycle items — primarily the `tunerFont(size:)` helper to migrate the ~41 `design: .monospaced` sites that currently bypass `TunerLabel`._
+_Most cycle deferrals were resolved in 2.5.0 (see audit doc cross-reference sweep, commit `f14da05`). Remaining items: instance-based context-injection refactor to permanently retire the singleton-pollution test flake class (multi-session); CarPlay Apple-developer-portal entitlement application; TelemetryEvent persistence migration if/when the schema warrants V3._
+
+## [2.5.0] — 2026-05-20
+
+Substantive feature batch, audit-cycle harvest. Builds on 2.4.0's VoiceOver pass with first-class podcast-namespace integrations, deeper Siri/Spotlight, recommendation-credibility upgrade, CarPlay scaffolding, and discovery refinement.
+
+### Added — podcast-native foundations
+- **`<podcast:chapters>` first-class** — JSON-chapter feed parsing with full payload (`endTime`, `imageURL`, `linkURL`, `toc`). Player UI surfaces it end-to-end: chapter artwork swaps with playhead, tappable `→ NOTES` Tuner key opens chapter links via `SFSafariViewController`, sponsor-break chapters (`toc: false`) hide from the chapter list but still register against playback timeline.
+- **`<podcast:transcript>` published-transcript loader** — VTT, JSON, SRT, and HTML decoders. Falls back to on-device `Speech` framework only when no published transcript exists. `SpeechTranscriptionPanel` now scrolls to follow the playhead, highlights the current line, supports tap-to-seek + search-within-transcript, and surfaces source provenance (`● PUBLISHED · <lang>` / `● ON-DEVICE`).
+- **`PlayEpisodeIntent(episode:)`** — parameterized Siri intent with `EpisodeEntity` query for "play <episode title> on OffScript". `OpenLibrary` / `OpenQueue` / `OpenSearch` / `OpenHome` intents route to tabs via the existing deep-link contract. All five new intents donate on `perform()` so iOS Suggestions/Smart Stack/Lock-Screen can predict next-action.
+- **CarPlay audio app scaffolding** — `CarPlaySceneDelegate` with 5-tab browse (Library / Queue / Recent / Recommendations / Search), `CPSearchTemplate` against subscribed shows + recent episodes (no iTunes round-trip), `CPNowPlayingTemplate` Up Next wired to QueueService → playerSuggestions fallback. Ships dormant until Apple grants `com.apple.developer.carplay-audio` (entitlement application required).
+
+### Added — recommendation credibility (full receiver→emitter wiring)
+- **Five `PlaybackEvent.Kind` emit sites** — `.started`, `.skippedQuickly`, `.abandoned`, `.advancedFromQueue`, `.resumed` now actually fire (audit found 4 of 5 had receivers but no emitters; `.started` was added as the unfinished-affinity denominator). The Phase 19 thresholds: `skippedQuickly < 30s OR < 5% played`, `abandoned ≥ 30s AND < 85% played`, `resumed > 60s played`. Auto-advance emits `.advancedFromQueue` for the new episode (positive queue-trust signal).
+- **Taste decay tightened to 14-day half-life** — `max(0.15, exp(-days/60))` floor replaced with `exp(-ln(2) × days / 14)` + 120-day hard cutoff. Per-show binge dampener (`1/sqrt(k)`) on passive completions; explicit + negative signals bypass the dampener.
+- **Evidence-laden explanation strings** — `RecommendationService` returns specific evidence ("You finished 3 episodes of Hardcore History", "Tagged 'history' — you finished episodes like this") instead of vague boilerplate. Counts only surface when ≥ 2 (single-evidence keeps qualitative phrasing). 80-char ceiling pinned with a service-layer clipper.
+- **Wired previously-dormant `EpisodeProfile` scoring** — `confidenceScore` (from `TopicExtractionService` heuristic-tag diversity), `freshnessBucket` (windowed `pubDate`). `RecommendationService:540` qualityScore tiebreaker now explicitly guards `> 0` so dormant fields don't silently no-op.
+
+### Added — curated discovery
+- **`SearchPreviewLoader`** — lazy/cached/cancellation-safe loader feeding Search rows with latest-episode preview metadata that `DiscoveryService` already computed (the pipeline existed; the surface didn't consume it).
+- **Editorial collections** — `CuratedPodcastCatalog` gains an `EditorialCollection.Filter` enum (duration / genres / keywords / combined). Six starter collections: `just-under-an-hour`, `long-form-interviews`, `news-on-the-go`, `for-new-listeners`, `storytelling`, `quick-hits`. `PodcastPickerView` renders them as a hairline shelf strip above the genre rails; tap opens a sheet detail listing every entry with two-way-bound selection.
+
+### Added — operational + privacy hardening
+- **Lock-screen scrubber wired** — `MPRemoteCommandCenter.changePlaybackPositionCommand` now seeks. (Was rendering but no-op on drag.)
+- **Live Activity end-on-episode-change** — `NowPlayingPublisher` observes episode-id transitions and ends any active Live Activity before the new one starts. Ghost activities frozen on the Dynamic Island after force-quit also sweep on cold launch via `endStaleActivities()`.
+- **Download pipeline reconciliation on launch** — `DownloadService.configure()` was dead code (caller `SyncCoordinator.shared.configure` never invoked anywhere — now deleted as dead code). Reconciliation wired via `ContentView.task` so stuck `.downloading` episodes recover, orphan files sweep, on-disk state heals to match the model. Wi-Fi-only download respect added.
+- **Library row download badges** — `● DOWNLOADING` / `● QUEUED` / `● ON DEVICE` / `● FAILED · RETRY` chips on every episode row, function-coded colors mirror `DownloadButton` so the two surfaces can't drift. `● FAILED · RETRY` is tappable to retry.
+- **Privacy posture** — Sentry `sendDefaultPii = false` set explicitly. Widget extension gains its own `PrivacyInfo.xcprivacy`. Duplicate Info.plist keys removed.
+- **Debug Inspector** — new diagnostic panel from Settings → Diagnostics. Surfaces dormant `TelemetryEvent` rows (consumer was missing; now there), per-podcast sync history, download state grouped by status (`.downloading` / `.queued` / `.failed` / `.downloaded`), runtime metadata + next-scheduled BGTaskScheduler request. `× CLEAR ALL` for telemetry, retry-from-row for failed downloads.
+
+### Added — codebase hygiene
+- **`tunerFont(size:weight:tracking:)` View modifier** — font-only counterpart to `TunerLabel` for use inside `HStack { Image + Text }` button labels or with non-default weight/tracking. Migrated 37 of 41 `design: .monospaced` sites. The 4 unmigrated are `TextField(prompt:)` formatters (fragile across iOS versions).
+- **`DebugTeardown.resetAllSingletons()` test infrastructure** — single-call tear-down hook for every `@MainActor` singleton holding `@Model` refs (`PlaybackController`, `NowPlayingPublisher`, `DownloadService`, `BatchImportService`, `DeepLinkRouter`). Eliminates one class of cross-test flake; the remaining class needs an architectural refactor (instance-based context injection) — flagged in `TEST_MATRIX.md`.
+
+### Changed — audit-cycle polish pulled forward
+- Library directory chips: outline-only (no solid fill on selected state) to match the Tuner action-key convention everywhere else.
+- Queue stack row: reorder chevrons promoted from soft-paper-gray (read as disabled) to signal-yellow with disabled-state dim.
+- Queue row title: 2-line wrap with `fixedSize(vertical: true)` so "Conan O'Brien Needs A Friend" stops clipping to "Conan O'Bri…".
+- Library SCOPE/SORT/ROWS chip a11y labels are now dimension-prefixed ("Scope: all shows", "Sort: A to Z").
+- `× UNSUBSCRIBE` confirm strip is now podcast-title aware.
+- Home `voiceOverMetadata` now includes Season/Episode when the feed provides them (matching Library's conditional pattern). Per-surface order preserved.
+
+### Fixed — production bugs
+- **`TopicExtractionService` silently producing zero tags** — `NLTagger`'s `.lexicalClass`/`.nameType` schemes aren't bundled with the iOS simulator and aren't available during real-device model-download warmup. Added `NLTokenizer` fallback gated on `NLTagger.availableTagSchemes`. Pre-existing test `feedSyncFastBatchImportUsesCheapProfilesAndSkipsExternalChapters` (which had been failing on main for an unknown duration) now passes.
+- **`offscript.lastEpisodeAudioURL` writer missing** — `ResumeListeningIntent`'s cold-launch fallback read the key but no writer existed. Persisted on every play.
+- **Three decorative `magnifyingglass` icons leaking to VoiceOver** — search-field leading icons in `SearchView`, `LibraryView`, `PodcastDetailView` are now `.accessibilityHidden(true)`.
+- **Three artwork tiles missing hairline overlay** — episode hero, channel chip, row chip in `CardComponents` / `EpisodeDetailView` now match the spec.
+
+### Audit infrastructure (this cycle)
+13 audit docs landed under `docs/superpowers/audits/` covering CarPlay, audio session, intents+Spotlight, background+LiveActivity, SwiftData+iCloud, privacy+production, transcript pipeline, offline pipeline, curated discovery, recommendation credibility, dead-code-wiring sweep + re-sweep, singleton teardown hardening, TODO/FIXME sweep, visual screenshot audit, push notifications, debug inspector, library row badges, UI test coverage (Phase 5 backlog), and the pre-2.5.0 simulator walk.
+
+The session surfaced **18 distinct "scaffolding not connected" patterns** across the codebase — receivers built, emitters never wired. Most resolved this cycle; the "is every receiver matched by an emitter?" sweep methodology has been canonized as a recurring audit pass.
 
 ## [2.4.0] — 2026-05-19
 
