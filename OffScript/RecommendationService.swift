@@ -157,33 +157,48 @@ final class RecommendationService {
     }
 
     private static func composedExplanation(primary: RecommendationEvidence, secondary: RecommendationEvidence?) -> String {
-        guard let secondary else { return primary.explanation }
+        guard let secondary else { return clippedExplanation(primary.explanation) }
 
         if primary.source == "explicit signal", secondary.source == "show intent" {
             let tags = primary.signals.first(where: { $0.label == "tags" })?.value ?? "your saved signal"
             let show = secondary.signals.first(where: { $0.label == "show" })?.value ?? "that show"
-            return "You asked for more from \(show), and this matches \(tags)"
+            return clippedExplanation("You asked for more from \(show), and this matches \(tags)")
         }
 
         if primary.source == "show intent", secondary.source == "explicit signal" {
             let show = primary.signals.first(where: { $0.label == "show" })?.value ?? "this show"
             let tags = secondary.signals.first(where: { $0.label == "tags" })?.value ?? "your saved signal"
-            return "You asked for more from \(show), and this matches \(tags)"
+            return clippedExplanation("You asked for more from \(show), and this matches \(tags)")
         }
 
         if primary.source == "completion", secondary.source == "tag match" {
             let show = primary.signals.first(where: { $0.label == "show" })?.value ?? "this show"
             let tags = secondary.signals.first(where: { $0.label == "tags" })?.value ?? "your saved signal"
-            return "You keep finishing \(show), and this carries \(tags)"
+            return clippedExplanation("You keep finishing \(show), and this carries \(tags)")
         }
 
         if primary.source == "tag match", secondary.source == "completion" {
             let tags = primary.signals.first(where: { $0.label == "tags" })?.value ?? "your saved signal"
             let show = secondary.signals.first(where: { $0.label == "show" })?.value ?? "a show you finish"
-            return "Matches \(tags) from a show you keep finishing: \(show)"
+            return clippedExplanation("Matches \(tags) from a show you keep finishing: \(show)")
         }
 
-        return primary.explanation
+        return clippedExplanation(primary.explanation)
+    }
+
+    /// Phase 20: explanation strings are surfaced on rail cards where
+    /// the layout truncates past ~80 characters. Composed evidence
+    /// (e.g. show + tags) can blow through that with a long tag list,
+    /// so we clip at a word boundary here at the service layer rather
+    /// than relying on every downstream view to do its own truncation.
+    private static func clippedExplanation(_ value: String, maxCharacters: Int = 80) -> String {
+        guard value.count > maxCharacters else { return value }
+        let boundary = value.index(value.startIndex, offsetBy: max(0, maxCharacters - 1))
+        let prefix = value[..<boundary]
+        if let lastSpace = prefix.lastIndex(where: { $0 == " " }), lastSpace > value.startIndex {
+            return String(prefix[..<lastSpace]) + "…"
+        }
+        return String(prefix) + "…"
     }
 
     static func effectivePreferredGenreTitles(for tasteProfile: UserTasteProfile?) -> [String] {
