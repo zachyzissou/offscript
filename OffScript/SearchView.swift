@@ -119,6 +119,7 @@ struct SearchView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.offscriptSignalYellow)
+                .accessibilityHidden(true)
 
             TextField("Search podcasts or hosts", text: $query, prompt: Text("SEARCH PODCASTS OR HOSTS")
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))

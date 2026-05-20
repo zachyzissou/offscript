@@ -1877,6 +1877,7 @@ private struct LibraryDirectoryControls: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.offscriptSignalYellow)
+                .accessibilityHidden(true)
 
             TextField("Filter shows",
                       text: $query,
@@ -2593,6 +2594,7 @@ struct PodcastDetailView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.offscriptSignalYellow)
+                .accessibilityHidden(true)
 
             TextField("Search episodes",
                       text: $episodeSearchQuery,
