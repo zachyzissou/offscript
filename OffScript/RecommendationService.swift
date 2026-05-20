@@ -552,7 +552,10 @@ final class RecommendationService {
             evidence.append(RecommendationEvidence(
                 source: "resume",
                 weight: 420 + durationTieBreak,
-                explanation: "\(EpisodeDurationFormatter.short(remaining)) left from your last session",
+                // `.spoken` instead of `.short` so the WHY copy reads as a
+                // sentence ("12 minutes left…") rather than a label
+                // ("12m left…"). The chip value stays mono `.short`.
+                explanation: "\(EpisodeDurationFormatter.spoken(remaining)) left from your last session",
                 signals: [
                     RecommendationSignal(label: "source", value: "resume"),
                     RecommendationSignal(label: "left", value: EpisodeDurationFormatter.short(remaining))
@@ -569,13 +572,21 @@ final class RecommendationService {
 
         if !matchingExplicitTags.isEmpty {
             let sample = matchingExplicitTags.sorted().prefix(2).joined(separator: ", ")
+            let matchCount = matchingExplicitTags.count
+            // Concrete count surfaces how many of the user's "more like
+            // this" tags this episode hits — Phase 20 sharpening replaces
+            // the prior vague "Matches what you asked for: …" boilerplate.
+            let explanation = matchCount > 1
+                ? "Hits \(matchCount) tags you asked for: \(sample)"
+                : "Tagged \"\(sample)\" — you asked for more of this"
             evidence.append(RecommendationEvidence(
                 source: "explicit signal",
                 weight: 400 + Double(min(matchingExplicitTags.count, 4)) * 24,
-                explanation: "Matches what you asked for: \(sample)",
+                explanation: explanation,
                 signals: [
                     RecommendationSignal(label: "source", value: "explicit signal"),
-                    RecommendationSignal(label: "tags", value: sample)
+                    RecommendationSignal(label: "tags", value: sample),
+                    RecommendationSignal(label: "matches", value: "\(matchCount)")
                 ],
                 strength: .chosen
             ))
@@ -583,14 +594,20 @@ final class RecommendationService {
 
         let explicitShowCount = context.explicitPositiveShowCounts[episode.podcast.title, default: 0]
         if explicitShowCount > 0 {
+            // Phase 20: cite the number of "more like this" pulls when
+            // > 1 so the user can verify the count against their own
+            // recent actions. Single-pull case keeps the prior copy.
+            let explanation = explicitShowCount > 1
+                ? "You asked for more from \(episode.podcast.title) \(explicitShowCount) times"
+                : "You asked for more from \(episode.podcast.title)"
             evidence.append(RecommendationEvidence(
                 source: "show intent",
                 weight: 380 + Double(min(explicitShowCount, 4)) * 20,
-                explanation: "You asked for more from \(episode.podcast.title)",
+                explanation: explanation,
                 signals: [
                     RecommendationSignal(label: "source", value: "show intent"),
                     RecommendationSignal(label: "show", value: episode.podcast.title),
-                    RecommendationSignal(label: "signals", value: "\(explicitShowCount)")
+                    RecommendationSignal(label: "asks", value: "\(explicitShowCount)")
                 ],
                 strength: .chosen
             ))
@@ -599,10 +616,17 @@ final class RecommendationService {
         let completedShowCount = context.completedShowCounts[episode.podcast.title, default: 0]
         if completedShowCount > 0 || context.showAffinity.contains(episode.podcast.title) {
             let showSignal = max(completedShowCount, 1)
+            // Phase 20: surface the concrete finish count when ≥ 2 so the
+            // user can verify the evidence ("yes, I really did finish 3
+            // of these"). Single-finish keeps the prior phrasing because
+            // "1 time" reads awkwardly.
+            let explanation = showSignal >= 2
+                ? "You finished \(showSignal) episodes of \(episode.podcast.title)"
+                : "You keep finishing \(episode.podcast.title)"
             evidence.append(RecommendationEvidence(
                 source: "completion",
                 weight: 320 + Double(min(showSignal, 5)) * 18,
-                explanation: "You keep finishing \(episode.podcast.title)",
+                explanation: explanation,
                 signals: [
                     RecommendationSignal(label: "source", value: "completion"),
                     RecommendationSignal(label: "show", value: episode.podcast.title),
@@ -614,10 +638,24 @@ final class RecommendationService {
 
         if !matchingTags.isEmpty {
             let sample = matchingTags.sorted().prefix(2).joined(separator: ", ")
+            // Phase 20: name WHERE the tag came from (a finish or a like)
+            // instead of the prior vague "Matches your saved signal: …".
+            // Completed-tags wins because finishing is the strongest
+            // passive signal we capture.
+            let explanation: String
+            if !matchingCompletedTags.isEmpty {
+                let finished = matchingCompletedTags.sorted().prefix(2).joined(separator: ", ")
+                explanation = "Tagged \"\(finished)\" — you finished episodes like this"
+            } else if !matchingLikedTags.isEmpty {
+                let liked = matchingLikedTags.sorted().prefix(2).joined(separator: ", ")
+                explanation = "Tagged \"\(liked)\" — you liked episodes like this"
+            } else {
+                explanation = "Tagged \"\(sample)\" — among your top topics"
+            }
             evidence.append(RecommendationEvidence(
                 source: "tag match",
                 weight: 260 + Double(min(matchingTags.count, 4)) * 16,
-                explanation: "Matches your saved signal: \(sample)",
+                explanation: explanation,
                 signals: [
                     RecommendationSignal(label: "source", value: "tag match"),
                     RecommendationSignal(label: "tags", value: sample)
@@ -629,10 +667,13 @@ final class RecommendationService {
         let genreMatches = Set(episode.podcast.categories.map { $0.lowercased() }).intersection(context.preferredGenres)
         if !genreMatches.isEmpty {
             let genre = genreMatches.sorted().first ?? "saved genre"
+            // Phase 20: "you saved" ties the lane back to the explicit
+            // genre picker tap. Was "Matches your selected … lane" —
+            // technically true but the user has to translate "selected".
             evidence.append(RecommendationEvidence(
                 source: "genre",
                 weight: 210 + durationTieBreak,
-                explanation: "Matches your selected \(genre) lane",
+                explanation: "In \(genre) — a genre you saved",
                 signals: [
                     RecommendationSignal(label: "source", value: "genre"),
                     RecommendationSignal(label: "lane", value: genre)
@@ -642,10 +683,15 @@ final class RecommendationService {
         }
 
         if AppSettings.preferShortEpisodes, minutes <= 35 {
+            // Phase 20: cite the actual episode duration so the user can
+            // verify against the timestamp on the card. Prior copy
+            // ("Fits your short-listen setting") referenced the setting
+            // but not the evidence.
+            let window = EpisodeDurationFormatter.spoken(episode.duration ?? 0)
             evidence.append(RecommendationEvidence(
                 source: "duration",
                 weight: 190 + durationTieBreak,
-                explanation: "Fits your short-listen setting",
+                explanation: "\(window) — under your short-listen cap",
                 signals: [
                     RecommendationSignal(label: "source", value: "duration"),
                     RecommendationSignal(label: "window", value: EpisodeDurationFormatter.short(episode.duration ?? 0))
@@ -732,7 +778,7 @@ final class RecommendationService {
         let signalTrace: [RecommendationSignal]
         if isUnfinished {
             let remaining = max(0, (episode.duration ?? 0) - episode.playedPosition)
-            explanation = "\(EpisodeDurationFormatter.short(remaining)) left — pick up where you stopped"
+            explanation = "\(EpisodeDurationFormatter.spoken(remaining)) left — pick up where you stopped"
             signalTrace = [
                 RecommendationSignal(label: "source", value: "resume"),
                 RecommendationSignal(label: "left", value: EpisodeDurationFormatter.short(remaining))
@@ -776,21 +822,21 @@ final class RecommendationService {
                 RecommendationSignal(label: "age", value: "\(Int(days))d")
             ]
         } else if minutes <= 20 {
-            explanation = "Quick \(EpisodeDurationFormatter.short(episode.duration ?? 0)) listen"
+            explanation = "Quick \(EpisodeDurationFormatter.spoken(episode.duration ?? 0)) listen"
             signalTrace = [
                 RecommendationSignal(label: "source", value: "duration"),
                 RecommendationSignal(label: "window", value: EpisodeDurationFormatter.short(episode.duration ?? 0))
             ]
-        } else if episode.podcast.isSubscribed {
-            explanation = "Subscribed channel: \(episode.podcast.title)"
+        } else {
+            // Phase 20: this path is reached when no concrete signal is
+            // present. `playerSuggestions` already filters to
+            // `isSubscribed == true`, so the prior "Available from …"
+            // branch was dead code. Honest fallback names the subscribed
+            // show — the only verifiable user action we have here is the
+            // subscribe tap itself.
+            explanation = "Newer episode from \(episode.podcast.title), a show you subscribed to"
             signalTrace = [
                 RecommendationSignal(label: "source", value: "subscription"),
-                RecommendationSignal(label: "show", value: episode.podcast.title)
-            ]
-        } else {
-            explanation = "Available from \(episode.podcast.title)"
-            signalTrace = [
-                RecommendationSignal(label: "source", value: "available"),
                 RecommendationSignal(label: "show", value: episode.podcast.title)
             ]
         }
