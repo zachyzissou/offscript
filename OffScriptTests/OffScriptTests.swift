@@ -3459,17 +3459,21 @@ struct VoiceOverMetadataTests {
 
     private static let locale = Locale(identifier: "en_US_POSIX")
 
-    /// Encodes the *target* voiceOverMetadata contract from the CHANGELOG's
-    /// "Unreleased" section — NOT a literal mirror of any single production
-    /// builder. Known divergences from production today (see the audit walk
-    /// in docs/superpowers/audits/2026-05-19-voiceover-walk.md):
-    ///   - Part order here is `[date, S/E, duration]`; LibraryView.swift:2996
-    ///     emits `[S/E, date, duration]`.
-    ///   - Duration is gated on `> 0` here; LibraryView only nil-checks,
-    ///     so a 0-duration episode would emit "0 minutes" in production.
-    ///   - Both HomeView builders (`HomeView.swift:1098`, `HomeView.swift:1330`)
-    ///     omit Season/Episode entirely.
-    /// Do NOT copy this helper into production — re-derive from the spec.
+    /// Encodes the spoken voiceOverMetadata contract. As of 2.4.0 this
+    /// matches both HomeView builders (`HomeView.swift:1098`, `:1330`)
+    /// exactly — they emit `[date, S/E, duration]` with the same
+    /// conditional S/E inclusion.
+    /// Known divergences still in production (see the audit walk in
+    /// docs/superpowers/audits/2026-05-19-voiceover-walk.md):
+    ///   - LibraryView.swift:2996 emits `[S/E, date, duration]` — it
+    ///     mirrors its own visible mono metadata (`[S/E, date, duration]`),
+    ///     which differs from Home's visible order (`[date, duration]`).
+    ///     Each surface's voiceOverMetadata mirrors its own visible order.
+    ///   - Duration is gated on `> 0` here; both Home and Library only
+    ///     nil-check, so a 0-duration episode would emit "0 minutes" in
+    ///     production.
+    /// Do NOT copy this helper into production — re-derive from each
+    /// surface's visible metadata order.
     private static func voiceOverMetadata(
         pubDate: Date?,
         seasonNumber: Int?,
