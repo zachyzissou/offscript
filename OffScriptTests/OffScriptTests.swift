@@ -3594,3 +3594,188 @@ struct VoiceOverMetadataTests {
         #expect(!output.contains("1H"))
     }
 }
+
+// MARK: - Podcast Namespace <podcast:chapters> Tests
+
+/// Tests for first-class podcast-namespace chapter parsing (Phase 12).
+///
+/// These cover the JSON payload defined in
+/// https://github.com/Podcastindex-org/podcast-namespace/blob/main/proposal-docs/chapters/chapters.md
+/// and exercise `ExternalChapterLoader.decode(data:duration:)` plus the
+/// roundtrip behavior of the extended `EpisodeChapter` schema.
+struct PodcastNamespaceChaptersTests {
+    private static func data(_ json: String) -> Data {
+        Data(json.utf8)
+    }
+
+    /// 1. Valid payload decodes N chapters with correct titles and startTimes,
+    ///    including float (non-integer) startTimes per the spec.
+    @Test func decodesValidEnvelopeWithFloatStartTimes() {
+        let payload = Self.data("""
+        {
+          "version": "1.2.0",
+          "chapters": [
+            { "startTime": 0, "title": "Intro" },
+            { "startTime": 65.5, "title": "First topic" },
+            { "startTime": 285, "title": "Second topic" }
+          ]
+        }
+        """)
+
+        let chapters = ExternalChapterLoader.decode(data: payload, duration: 3600)
+
+        #expect(chapters.count == 3)
+        #expect(chapters[0].title == "Intro")
+        #expect(chapters[0].startTime == 0)
+        #expect(chapters[1].title == "First topic")
+        #expect(chapters[1].startTime == 65.5)
+        #expect(chapters[2].startTime == 285)
+    }
+
+    /// 2. endTime, img, url, toc round-trip onto the model.
+    @Test func decodesOptionalFieldsOntoModel() {
+        let payload = Self.data("""
+        {
+          "chapters": [
+            {
+              "startTime": 100,
+              "endTime": 250,
+              "title": "Sponsor",
+              "img": "https://example.com/img.jpg",
+              "url": "https://example.com/link",
+              "toc": false
+            }
+          ]
+        }
+        """)
+
+        let chapters = ExternalChapterLoader.decode(data: payload, duration: 3600)
+
+        #expect(chapters.count == 1)
+        let chapter = chapters[0]
+        #expect(chapter.title == "Sponsor")
+        #expect(chapter.startTime == 100)
+        #expect(chapter.endTime == 250)
+        #expect(chapter.imageURL?.absoluteString == "https://example.com/img.jpg")
+        #expect(chapter.linkURL?.absoluteString == "https://example.com/link")
+        #expect(chapter.isInTableOfContents == false)
+    }
+
+    /// 3. Chapters with startTime past the episode duration are dropped
+    ///    (they're bogus — the spec doesn't allow them, but real-world
+    ///    feeds occasionally ship malformed entries).
+    @Test func filtersChaptersBeyondEpisodeDuration() {
+        let payload = Self.data("""
+        {
+          "chapters": [
+            { "startTime": 0, "title": "Intro" },
+            { "startTime": 60, "title": "Mid" },
+            { "startTime": 300, "title": "Past the end" }
+          ]
+        }
+        """)
+
+        let chapters = ExternalChapterLoader.decode(data: payload, duration: 120)
+
+        #expect(chapters.count == 2)
+        #expect(chapters.contains { $0.title == "Intro" })
+        #expect(chapters.contains { $0.title == "Mid" })
+        #expect(!chapters.contains { $0.title == "Past the end" })
+    }
+
+    /// 4. JSON round-trip: encode an [EpisodeChapter] (as the model does
+    ///    into chaptersStorage), decode it back, and assert equality. This
+    ///    proves the custom Codable conformance is symmetric — critical
+    ///    because the SwiftData persisted column is a JSON string.
+    @Test func chaptersJSONRoundTrip() throws {
+        let original: [EpisodeChapter] = [
+            EpisodeChapter(title: "Intro", startTime: 0),
+            EpisodeChapter(
+                title: "Sponsor",
+                startTime: 100,
+                endTime: 200,
+                imageURL: URL(string: "https://example.com/img.jpg"),
+                linkURL: URL(string: "https://example.com/link"),
+                isInTableOfContents: false
+            )
+        ]
+
+        let encoded = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode([EpisodeChapter].self, from: encoded)
+
+        #expect(decoded == original)
+    }
+
+    /// 5. Decoding back-compat: a payload missing all optional fields
+    ///    (i.e. old persisted chapters from before the schema extension)
+    ///    decodes cleanly with optional fields nil and isInTableOfContents
+    ///    defaulting to true.
+    @Test func decodesLegacyPayloadWithOnlyTitleAndStartTime() throws {
+        let legacyJSON = Self.data(#"""
+        [
+          { "title": "Intro", "startTime": 0 },
+          { "title": "Topic A", "startTime": 90 }
+        ]
+        """#)
+
+        let decoded = try JSONDecoder().decode([EpisodeChapter].self, from: legacyJSON)
+
+        #expect(decoded.count == 2)
+        #expect(decoded[0].title == "Intro")
+        #expect(decoded[0].startTime == 0)
+        #expect(decoded[0].endTime == nil)
+        #expect(decoded[0].imageURL == nil)
+        #expect(decoded[0].linkURL == nil)
+        #expect(decoded[0].isInTableOfContents == true)
+        #expect(decoded[1].title == "Topic A")
+        #expect(decoded[1].startTime == 90)
+    }
+
+    /// 6. toc=false chapters are still decoded — the spec says they
+    ///    still affect playback boundaries, and the UI is responsible
+    ///    for filtering them from any navigation list. The model layer
+    ///    must NOT discard them.
+    @Test func tocFalseChaptersStillDecoded() {
+        let payload = Self.data("""
+        {
+          "chapters": [
+            { "startTime": 0, "title": "Intro", "toc": true },
+            { "startTime": 60, "title": "Sponsor", "toc": false },
+            { "startTime": 120, "title": "Main", "toc": true }
+          ]
+        }
+        """)
+
+        let chapters = ExternalChapterLoader.decode(data: payload, duration: 3600)
+
+        #expect(chapters.count == 3)
+        let sponsor = chapters.first { $0.title == "Sponsor" }
+        #expect(sponsor != nil)
+        #expect(sponsor?.isInTableOfContents == false)
+        // All three should be present so playback boundaries remain correct.
+        #expect(chapters.map(\.title) == ["Intro", "Sponsor", "Main"])
+    }
+
+    // MARK: - Feed-parser element detection
+
+    /// Bonus assertion (not counted in the target six): the namespace-aware
+    /// detector accepts the prefixed form even when namespaceURI is nil,
+    /// which is the common XMLParser shape for our feed pipeline.
+    @Test func detectsPodcastChaptersByPrefixedQName() {
+        #expect(RSSFeedParser.isPodcastChaptersElement(
+            elementName: "podcast:chapters",
+            qName: "podcast:chapters",
+            namespaceURI: nil
+        ))
+        #expect(RSSFeedParser.isPodcastChaptersElement(
+            elementName: "chapters",
+            qName: nil,
+            namespaceURI: "https://podcastindex.org/namespace/1.0"
+        ))
+        #expect(!RSSFeedParser.isPodcastChaptersElement(
+            elementName: "chapters",
+            qName: nil,
+            namespaceURI: nil
+        ))
+    }
+}
