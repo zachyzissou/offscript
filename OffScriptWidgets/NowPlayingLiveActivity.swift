@@ -72,6 +72,7 @@ struct NowPlayingLiveActivity: Widget {
                     Image(systemName: context.state.isPlaying ? "waveform" : "play.fill")
                         .font(.title3)
                         .foregroundStyle(.orange)
+                        .accessibilityLabel(context.state.isPlaying ? "Playing" : "Paused")
                 }
                 DynamicIslandExpandedRegion(.center) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -90,12 +91,15 @@ struct NowPlayingLiveActivity: Widget {
             } compactLeading: {
                 Image(systemName: context.state.isPlaying ? "waveform" : "play.fill")
                     .foregroundStyle(.orange)
+                    .accessibilityLabel(context.state.isPlaying ? "Playing" : "Paused")
             } compactTrailing: {
                 Text(timeRemaining(state: context.state))
                     .font(.caption2.monospacedDigit())
+                    .accessibilityLabel("Time remaining \(timeRemaining(state: context.state))")
             } minimal: {
                 Image(systemName: context.state.isPlaying ? "waveform" : "play.fill")
                     .foregroundStyle(.orange)
+                    .accessibilityLabel(context.state.isPlaying ? "OffScript playing" : "OffScript paused")
             }
         }
     }
@@ -130,10 +134,12 @@ private struct LockScreenView: View {
                     Image(systemName: state.isPlaying ? "waveform" : "play.fill")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.orange)
+                        .accessibilityHidden(true) // status conveyed in combined label below
                     Text("OFFSCRIPT")
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .tracking(1.4)
                         .foregroundStyle(.secondary)
+                        .accessibilityHidden(true) // wordmark; surfaced via combined label
                     Spacer()
                 }
                 Text(state.episodeTitle)
@@ -144,8 +150,13 @@ private struct LockScreenView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 ProgressView(value: state.progress).tint(.orange)
+                    .accessibilityValue("\(Int(state.progress * 100)) percent")
             }
         }
         .padding(12)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "OffScript, \(state.isPlaying ? "playing" : "paused"). \(state.episodeTitle) from \(state.podcastTitle)."
+        )
     }
 }
