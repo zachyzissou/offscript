@@ -351,9 +351,10 @@ final class EpisodeProfile {
     //     fingerprinting across episodes of the same show — substantial
     //     implementation cost, no current consumer.
     //
-    // Dormant fields are retained (rather than deleted) to avoid a SwiftData
-    // V2 -> V3 schema migration. When a producer lands, flip the comment and
-    // wire it in the existing enrich() pipeline.
+    // Dormant fields are retained (rather than deleted) because dropping
+    // persisted columns should be a deliberate SchemaVN migration. When a
+    // producer lands, flip the comment and wire it in the existing enrich()
+    // pipeline.
     var qualityScore: Double = 0.0
     var confidenceScore: Double = 0.0
     var estimatedListeningContext: String?

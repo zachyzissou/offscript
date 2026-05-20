@@ -130,7 +130,8 @@ struct HomeView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         // No `.toolbar` ToolbarItem here. iOS 26's NavigationStack wraps any
-        // toolbar Button in a Liquid Glass capsule that ignores `.plain`
+        // toolbar Button in a Liquid Glass capsule that ignores custom
+        // Tuner button styling
         // styling and our color tokens — that's the gray-circle chrome we
         // saw in the screenshot. The settings affordance is rendered inline
         // in HomeTunerHeader instead, where we have full control.
@@ -338,7 +339,7 @@ private struct HomeTunerHeader: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .disabled(isRetuning)
                 .accessibilityLabel(isRetuning ? "Retuning recommendations" : "Retune recommendations")
 
@@ -354,7 +355,7 @@ private struct HomeTunerHeader: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Open settings")
             }
 
@@ -373,13 +374,12 @@ private struct HomeErrorRow: View {
     var onRetry: (() -> Void)? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TunerLabel(text: "● FEED UNAVAILABLE", color: .offscriptFnRecord)
-            Text(message)
-                .font(.system(size: 12.5))
-                .foregroundStyle(Color.offscriptPaperWhite)
-                .fixedSize(horizontal: false, vertical: true)
-
+        TunerEmptyState(
+            status: "● FEED UNAVAILABLE",
+            title: "Home feed paused",
+            message: message,
+            statusColor: .offscriptFnRecord
+        ) {
             // Retry key — recommendation pipeline is cheap to re-run and
             // the most common cause of `errorMessage` is a transient
             // SwiftData fetch hiccup or a momentary CDN glitch on the
@@ -394,18 +394,13 @@ private struct HomeErrorRow: View {
                         .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Retry loading recommendations")
                 .accessibilityIdentifier("HomeErrorRetry")
             }
         }
         .padding(.horizontal, OffScriptTheme.pagePadding)
-        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(
-            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
-            alignment: .top
-        )
     }
 }
 
@@ -550,7 +545,7 @@ private struct HomeStarterRail: View {
                     ))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .disabled(isAdded || isImporting)
                 .accessibilityLabel(
                     isAdded
@@ -647,7 +642,7 @@ private struct HomeEmptyState: View {
                 .padding(.vertical, 12)
                 .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .padding(.top, 4)
         }
         .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -860,7 +855,7 @@ private struct TunerDiscoveryRail: View {
                     .overlay(Rectangle().stroke(actionColor, lineWidth: 1))
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .disabled(isAdded || isImporting)
             .accessibilityLabel(
                 isAdded
@@ -959,7 +954,7 @@ private struct HeroTunerCard: View {
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
 
                 // Reason as a TunerTag with signal yellow accent
                 TunerTag(text: displayReason, color: .offscriptSignalYellow, dim: true, wraps: true)
@@ -1037,7 +1032,7 @@ private struct HeroTunerCard: View {
                             .frame(minWidth: 44, minHeight: 44)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("More actions for \(episode.title)")
                     .accessibilityHint(showsFeedbackActions ? "Double-tap to hide feedback actions." : "Double-tap to show feedback actions.")
                 }
@@ -1078,7 +1073,7 @@ private struct HeroTunerCard: View {
                 .padding(.vertical, 10)
                 .overlay(Rectangle().stroke(color.opacity(disabled ? 0.3 : 1.0), lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .disabled(disabled)
         .accessibilityLabel(accessibilityLabel)
     }
@@ -1156,7 +1151,7 @@ private struct HeroTunerCard: View {
                 .overlay(Rectangle().stroke(color.opacity(0.65), lineWidth: 1))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .accessibilityLabel(accessibilityLabel)
     }
 
@@ -1271,7 +1266,7 @@ private struct TunerRailCard: View {
                     TunerLabel(text: metadata, color: .offscriptSoftPaper, size: 8)
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             // Combine artwork + podcast eyebrow + title + reason +
             // metadata into one VoiceOver stop. Use the VO-friendly
             // metadata variant — the visible `metadata` is uppercased,
@@ -1297,7 +1292,7 @@ private struct TunerRailCard: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Play \(episode.title)")
 
                 Button {
@@ -1312,7 +1307,7 @@ private struct TunerRailCard: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .disabled(episode.isQueued)
                 .accessibilityLabel(episode.isQueued ? "\(episode.title) already queued" : "Add \(episode.title) to queue")
 

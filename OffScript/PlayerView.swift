@@ -43,7 +43,7 @@ struct PlayerView: View {
 
     var body: some View {
         // No NavigationStack here — iOS 26 wraps any toolbar item in a glass
-        // capsule chrome that ignores .buttonStyle(.plain) and our color
+        // capsule chrome that ignores custom button styling and our color
         // tokens. Same problem the tab bar + settings cog had. PlayerView is
         // a full-screen modal cover; we render our own dismiss key inline at
         // the top so we keep full control over its rendering.
@@ -95,7 +95,7 @@ struct PlayerView: View {
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .accessibilityLabel("Close player")
             Spacer()
         }
@@ -235,7 +235,7 @@ struct PlayerView: View {
                 .frame(width: 56, height: 56)
                 .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .accessibilityLabel(label)
     }
 
@@ -248,7 +248,7 @@ struct PlayerView: View {
                 .frame(width: 80, height: 56)
                 .background(Color.offscriptSignalYellow)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .accessibilityLabel(label)
     }
 
@@ -275,7 +275,7 @@ struct PlayerView: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Dismiss playback error")
                 .accessibilityIdentifier("PlayerErrorDismiss")
             }
@@ -294,7 +294,7 @@ struct PlayerView: View {
                     .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .accessibilityLabel("Retry playback of \(episode.title)")
             .accessibilityIdentifier("PlayerErrorRetry")
         }
@@ -394,7 +394,7 @@ struct PlayerView: View {
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .accessibilityLabel("Chapter \(idx + 1), \(chapter.title), at \(EpisodeDurationFormatter.spoken(chapter.startTime))")
             .accessibilityHint("Seeks to this chapter")
 
@@ -409,7 +409,7 @@ struct PlayerView: View {
                         .overlay(Rectangle().stroke(Color.offscriptFnInfo.opacity(0.7), lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Open chapter notes for \(chapter.title)")
                 .accessibilityHint("Opens the chapter's linked page in an in-app browser")
             }
@@ -520,7 +520,7 @@ struct PlayerView: View {
                             .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Play \(nextItem.episode.title) now")
                     .accessibilityIdentifier("PlayerUpNextPlay")
 
@@ -534,7 +534,7 @@ struct PlayerView: View {
                             .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Remove \(nextItem.episode.title) from up next")
                     .accessibilityIdentifier("PlayerUpNextDrop")
 
@@ -599,7 +599,7 @@ struct PlayerView: View {
                         tunerControlLabel(text: "SPEED  \(String(format: "%.2g", player.playbackRate))×",
                                           color: hasCustomRate(for: episode) ? .offscriptSignalYellow : .offscriptPaperWhite)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Playback speed")
                     .accessibilityHint("Pick a speed for this podcast")
 
@@ -616,7 +616,7 @@ struct PlayerView: View {
                             // label for opposite semantics was a real bug.
                             tunerControlLabel(text: "+ QUEUE", color: .offscriptPaperWhite)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.tunerPress)
                         .accessibilityLabel("Add \(episode.title) to end of queue")
                     }
 
@@ -642,7 +642,7 @@ struct PlayerView: View {
                             color: .offscriptSignalYellow
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel(episode.isPlayed
                         ? "Mark \(episode.title) as unplayed"
                         : "Mark \(episode.title) as played")
@@ -658,7 +658,7 @@ struct PlayerView: View {
                                             ? .offscriptSignalYellow
                                             : .offscriptPaperWhite)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Sleep timer")
                     .accessibilityHint((player.sleepTimerEndDate != nil || player.isEndOfEpisodeSleepArmed)
                         ? "Active. Pick a new duration or cancel."
@@ -716,7 +716,7 @@ struct PlayerView: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord.opacity(0.7), lineWidth: 1))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
             }
 
             ForEach([5, 15, 30, 45, 60], id: \.self) { minutes in
@@ -730,7 +730,7 @@ struct PlayerView: View {
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
             }
 
             // End-of-episode option — pauses when the current episode
@@ -747,7 +747,7 @@ struct PlayerView: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .overlay(Rectangle().stroke(Color.offscriptSignalYellow.opacity(0.7), lineWidth: 1))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .accessibilityLabel("Sleep at end of current episode")
             .accessibilityIdentifier("PlayerSleepEndOfEpisode")
         }
@@ -756,15 +756,11 @@ struct PlayerView: View {
     // MARK: empty
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            TunerLabel(text: "● NO SIGNAL", color: .offscriptSoftPaper)
-            Text("Nothing playing")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(Color.offscriptPaperWhite)
-            Text("Start an episode from Home, Library, or Queue to fill this panel.")
-                .font(.system(size: 13.5))
-                .foregroundStyle(Color.offscriptPaperWhite)
-        }
+        TunerEmptyState(
+            status: "● NO SIGNAL",
+            title: "Nothing playing",
+            message: "Start an episode from Home, Library, or Queue to fill this panel."
+        )
         .padding(OffScriptTheme.pagePadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.offscriptStudioBlack.ignoresSafeArea())
@@ -1070,7 +1066,7 @@ private struct PlayerSuggestionRow: View {
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .accessibilityLabel("Play \(scored.episode.title)")
 
             // Queue key — lets the user stack a What's Next suggestion
@@ -1091,7 +1087,7 @@ private struct PlayerSuggestionRow: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Add \(scored.episode.title) to queue")
                 .accessibilityIdentifier("PlayerWhatsNextQueue")
             }

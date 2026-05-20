@@ -1,3 +1,4 @@
+import Foundation
 import SwiftData
 
 // MARK: - Schema V1 (baseline)
@@ -25,7 +26,9 @@ enum SchemaV1: VersionedSchema {
 // MARK: - Schema V2
 // Adds EpisodeTranscriptCache (new table — additive, lightweight migration).
 // Existing V1 stores gain the new table automatically; no data transformation
-// is needed, so a .lightweight stage is sufficient.
+// is needed, so a .lightweight stage is sufficient. Keep the nested
+// EpisodeTranscriptCache model frozen to the 2.4.x store shape; later releases
+// add fields in SchemaV3.
 
 enum SchemaV2: VersionedSchema {
     static var versionIdentifier: Schema.Version = Schema.Version(2, 0, 0)
@@ -40,21 +43,42 @@ enum SchemaV2: VersionedSchema {
             EpisodeProfile.self,
             UserTasteProfile.self,
             TelemetryEvent.self,
-            EpisodeTranscriptCache.self,
+            SchemaV2.EpisodeTranscriptCache.self,
         ]
     }
 }
 
+extension SchemaV2 {
+    @Model
+    final class EpisodeTranscriptCache {
+        @Attribute(.unique) var episodeID: UUID = UUID()
+        var text: String = ""
+        var generatedAt: Date = Date()
+        var source: String = "speech"
+        var coverageSeconds: TimeInterval?
+
+        init(
+            episodeID: UUID,
+            text: String,
+            generatedAt: Date = .now,
+            source: String = "speech",
+            coverageSeconds: TimeInterval? = nil
+        ) {
+            self.episodeID = episodeID
+            self.text = text
+            self.generatedAt = generatedAt
+            self.source = source
+            self.coverageSeconds = coverageSeconds
+        }
+    }
+}
+
 // MARK: - Schema V3
-// 2.5.0 added two scoring fields to EpisodeProfile (`confidenceScore`,
-// `freshnessBucket`) — see Models.swift around line 358. Both have default
-// or nullable types so the migration is additive + lightweight. The
-// missing-V3 was the cause of the 2.5.0 ship bug where existing-user
-// libraries quarantined: SwiftData saw a fingerprint mismatch against
-// the V2-shaped on-disk store, failed migration, and the three-tier
-// recovery in OffScriptApp.swift fell through to the rename-and-fresh
-// quarantine path. 2.5.1 ships V3 + the migration stage so existing
-// libraries upgrade in place.
+// 2.5.0 expanded EpisodeTranscriptCache for published/timed transcripts
+// (`language`, JSON cue storage) and EpisodeChapter's Codable payload shape.
+// EpisodeChapter is persisted inside Episode.chaptersStorage as JSON, so the
+// store-level schema change here is the transcript-cache table. V3 freezes that
+// new shape and lets 2.4.x stores migrate in place instead of being quarantined.
 
 enum SchemaV3: VersionedSchema {
     static var versionIdentifier: Schema.Version = Schema.Version(3, 0, 0)
@@ -93,10 +117,9 @@ enum OffScriptMigrationPlan: SchemaMigrationPlan {
         toVersion: SchemaV2.self
     )
 
-    /// Lightweight migration: adds EpisodeProfile.confidenceScore (Double
-    /// with default 0.0) + EpisodeProfile.freshnessBucket (optional String).
-    /// Pure additive columns; SwiftData fills defaults / nulls for
-    /// existing rows automatically.
+    /// Lightweight migration: adds EpisodeTranscriptCache.language (optional)
+    /// + cue storage (String with empty default). Pure additive columns;
+    /// SwiftData fills defaults / nulls for existing rows automatically.
     static let migrateV2toV3 = MigrationStage.lightweight(
         fromVersion: SchemaV2.self,
         toVersion: SchemaV3.self

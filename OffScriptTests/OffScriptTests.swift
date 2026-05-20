@@ -1,9 +1,60 @@
 import AppIntents
 import AVFoundation
 import Foundation
+import MediaPlayer
 import SwiftData
 import Testing
 @testable import OffScript
+
+struct SchemaMigrationTests {
+    @Test
+    @MainActor
+    func v2TranscriptCacheStoreMigratesToV3() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OffScriptMigrationTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let storeURL = directory.appendingPathComponent("OffScript.store")
+        let episodeID = UUID()
+        let generatedAt = Date(timeIntervalSince1970: 1_779_305_200)
+
+        do {
+            let schema = Schema(versionedSchema: SchemaV2.self)
+            let config = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+            let container = try ModelContainer(for: schema, configurations: [config])
+            let context = ModelContext(container)
+            context.insert(SchemaV2.EpisodeTranscriptCache(
+                episodeID: episodeID,
+                text: "legacy speech transcript",
+                generatedAt: generatedAt,
+                source: "speech",
+                coverageSeconds: 42
+            ))
+            try context.save()
+        }
+
+        let schema = Schema(versionedSchema: SchemaV3.self)
+        let config = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+        let container = try ModelContainer(
+            for: schema,
+            migrationPlan: OffScriptMigrationPlan.self,
+            configurations: [config]
+        )
+        let context = ModelContext(container)
+        let caches = try context.fetch(FetchDescriptor<EpisodeTranscriptCache>())
+
+        #expect(caches.count == 1)
+        let cache = try #require(caches.first)
+        #expect(cache.episodeID == episodeID)
+        #expect(cache.text == "legacy speech transcript")
+        #expect(cache.generatedAt == generatedAt)
+        #expect(cache.source == "speech")
+        #expect(cache.coverageSeconds == 42)
+        #expect(cache.language == nil)
+        #expect(cache.cues.isEmpty)
+    }
+}
 
 struct OffScriptTests {
     @Test
@@ -4985,6 +5036,88 @@ struct CuratedDiscoveryTests {
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
         #expect(loader.state(for: Self.sampleResult, rank: 1) == .failed)
+    }
+}
+
+// MARK: - Now Playing artwork
+
+@Suite("NowPlayingArtwork")
+struct NowPlayingArtworkTests {
+    private func makeContainer() throws -> ModelContainer {
+        let schema = Schema([
+            Podcast.self,
+            Episode.self,
+            EpisodeProfile.self,
+            PlaybackEvent.self,
+            PreferenceSignal.self,
+            QueueItem.self,
+            UserTasteProfile.self,
+            TelemetryEvent.self
+        ])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        return try ModelContainer(for: schema, configurations: [configuration])
+    }
+
+    @MainActor
+    private func makeEpisode(title: String, in context: ModelContext) -> Episode {
+        let podcast = Podcast(title: "No Artwork Show", feedURL: URL(string: "https://example.com/no-art.xml")!)
+        let episode = Episode(
+            title: title,
+            pubDate: .now,
+            audioURL: URL(string: "https://example.com/no-art.mp3")!,
+            podcast: podcast
+        )
+        context.insert(podcast)
+        context.insert(episode)
+        return episode
+    }
+
+    @Test
+    @MainActor
+    func fallbackNowPlayingArtworkRendersRequestedSizes() throws {
+        let artwork = PlaybackController.makeNowPlayingFallbackArtwork(
+            episodeTitle: "Signal Overload in the Studio",
+            podcastTitle: "OffScript Lab",
+            size: CGSize(width: 512, height: 512)
+        )
+
+        let full = try #require(artwork.image(at: CGSize(width: 512, height: 512)))
+        let small = try #require(artwork.image(at: CGSize(width: 128, height: 128)))
+
+        #expect(full.size == CGSize(width: 512, height: 512))
+        #expect(small.size == CGSize(width: 128, height: 128))
+    }
+
+    @Test
+    @MainActor
+    func debugPrimePlaybackPublishesFallbackArtworkWhenFeedArtworkIsMissing() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let episode = makeEpisode(title: "No Artwork Episode", in: context)
+        episode.artworkURL = nil
+        episode.podcast.artworkURL = nil
+
+        DebugTeardown.resetAllSingletons()
+        defer {
+            DebugTeardown.resetAllSingletons()
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        }
+
+        let controller = PlaybackController.shared
+        controller.configure(context: context)
+        controller.debugPrimePlayback(
+            episode: episode,
+            duration: 1800,
+            currentTime: 120,
+            isPlaying: false,
+            presentPlayer: true
+        )
+
+        let info = try #require(MPNowPlayingInfoCenter.default().nowPlayingInfo)
+        let artwork = try #require(info[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork)
+        let rendered = try #require(artwork.image(at: CGSize(width: 256, height: 256)))
+
+        #expect(rendered.size == CGSize(width: 256, height: 256))
     }
 }
 

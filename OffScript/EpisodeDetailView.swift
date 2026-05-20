@@ -235,7 +235,7 @@ struct EpisodeDetailView: View {
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .disabled(isCurrentlyPlaying)
             .accessibilityLabel(
                 isCurrentlyPlaying
@@ -263,7 +263,7 @@ struct EpisodeDetailView: View {
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .disabled(episode.isQueued)
             .accessibilityLabel(episode.isQueued ? "\(episode.title) already queued" : "Add \(episode.title) to queue")
 
@@ -293,7 +293,7 @@ struct EpisodeDetailView: View {
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Queue \(episode.title) to play next")
                 .accessibilityIdentifier("EpisodeDetailQueueNext")
             }
@@ -349,7 +349,7 @@ struct EpisodeDetailView: View {
                             .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Retry download for \(episode.title)")
                 }
             }
@@ -457,7 +457,7 @@ struct EpisodeDetailView: View {
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .disabled(feedbackGiven != nil)
                 .accessibilityLabel(
                     feedbackGiven == .like
@@ -488,7 +488,7 @@ struct EpisodeDetailView: View {
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .disabled(feedbackGiven != nil)
                 .accessibilityLabel(
                     feedbackGiven == .lessLikeThis
@@ -536,7 +536,7 @@ struct EpisodeDetailView: View {
             .padding(10)
             .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Open \(episode.podcast.title) channel")
     }

@@ -41,7 +41,7 @@ struct EpisodeVerticalCard: View {
                 )
                 .frame(width: 200, height: 150)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
 
             // Tuner text + transport zone
             VStack(alignment: .leading, spacing: 8) {
@@ -71,7 +71,7 @@ struct EpisodeVerticalCard: View {
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
 
                 Text(metadata.uppercased())
                     .tunerFont(size: 8, tracking: 1.4)
@@ -106,7 +106,7 @@ struct EpisodeVerticalCard: View {
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel(isCurrentlyPlaying ? "Pause" : "Play \(episode.title)")
 
                     // Tuner queue key — hairline square
@@ -124,7 +124,7 @@ struct EpisodeVerticalCard: View {
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .disabled(episode.isQueued)
                     .accessibilityLabel(episode.isQueued ? "\(episode.title) already queued" : "Add \(episode.title) to queue")
 
@@ -204,7 +204,7 @@ struct EpisodeCompactCard: View {
                 .frame(width: 52, height: 52)
                 .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
 
             Button {
                 if let onTap {
@@ -236,7 +236,7 @@ struct EpisodeCompactCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
 
             // Tuner play key — sharp hairline rectangle, signal-yellow ring.
             // Was Circle (Tuner-vocab violation). 32pt visible / 44pt hit.
@@ -251,7 +251,7 @@ struct EpisodeCompactCard: View {
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .accessibilityLabel(isCurrentlyPlaying ? "Pause" : "Play \(episode.title)")
 
             Button {
@@ -267,7 +267,7 @@ struct EpisodeCompactCard: View {
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .accessibilityLabel("More actions for \(episode.title)")
             .accessibilityHint(showsActions ? "Double-tap to hide actions." : "Double-tap to show queue and played actions.")
 
@@ -283,7 +283,7 @@ struct EpisodeCompactCard: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Remove \(episode.title)")
             }
             }
@@ -368,7 +368,7 @@ struct EpisodeCompactCard: View {
                 .contentShape(Rectangle())
         }
         .disabled(disabled)
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
     }
 
     private func togglePlayedState() {

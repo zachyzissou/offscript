@@ -188,7 +188,7 @@ struct OnboardingFlowView: View {
                         .padding(.vertical, 16)
                         .background(Color.offscriptSignalYellow)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .staggeredEntrance(index: 9, delay: 0.10)
                 }
 

@@ -82,7 +82,7 @@ struct ImportProgressView: View {
                             .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                             .frame(minHeight: 44)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .disabled(isImporting)
 
                     if doneCount > 0 {
@@ -96,7 +96,7 @@ struct ImportProgressView: View {
                                 .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                                 .frame(minHeight: 44)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.tunerPress)
                     }
                 }
             }

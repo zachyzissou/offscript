@@ -81,19 +81,13 @@ struct QueueView: View {
 
     private var emptyState: some View {
         let hasSubscriptions = !subscribedPodcasts.isEmpty
-        return VStack(alignment: .leading, spacing: 12) {
-            TunerLabel(text: "● QUEUE EMPTY", color: .offscriptSoftPaper)
-            Text("Nothing queued yet")
-                .font(.system(size: 22, weight: .semibold))
-                .tracking(0)
-                .foregroundStyle(Color.offscriptPaperWhite)
-            Text(hasSubscriptions
-                 ? "This is your working set, not a backlog. Queue a few episodes from Library or Home that you actually plan to hear next."
-                 : "This is your working set, not a backlog. Find shows you trust first, then queue episodes you actually plan to hear next.")
-                .font(.system(size: 13.5))
-                .foregroundStyle(Color.offscriptPaperWhite)
-                .lineSpacing(2)
-
+        return TunerEmptyState(
+            status: "● QUEUE EMPTY",
+            title: "Nothing queued yet",
+            message: hasSubscriptions
+                ? "This is your working set, not a backlog. Queue a few episodes from Library or Home that you actually plan to hear next."
+                : "This is your working set, not a backlog. Find shows you trust first, then queue episodes you actually plan to hear next."
+        ) {
             // Context-aware escape hatch — a user with subscriptions
             // wants Library (find an episode to queue), not Search
             // (which they'd already used to get those subscriptions).
@@ -115,7 +109,7 @@ struct QueueView: View {
                     .padding(.vertical, 12)
                     .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Browse library to find episodes to queue")
                 .accessibilityIdentifier("QueueEmptyBrowseLibrary")
                 .padding(.top, 4)
@@ -131,7 +125,7 @@ struct QueueView: View {
                     .padding(.vertical, 12)
                     .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .padding(.top, 4)
             }
         }
@@ -154,7 +148,7 @@ struct QueueView: View {
                             .frame(minHeight: 44)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .disabled(isConfirmingClearAll)
                     .accessibilityLabel("Clear all \(orderedItems.count) queued episodes")
                     .accessibilityHint("Asks for confirmation before clearing the queue")
@@ -227,7 +221,7 @@ struct QueueView: View {
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Cancel clear all queued episodes")
                 .accessibilityIdentifier("QueueClearAllCancel")
 
@@ -246,7 +240,7 @@ struct QueueView: View {
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Confirm clear all \(orderedItems.count) queued episodes")
                 .accessibilityIdentifier("QueueClearAllConfirm")
             }
@@ -384,7 +378,7 @@ private struct QueueLeadStrip: View {
                     .overlay(Rectangle().stroke(isCurrentlyPlaying ? Color.offscriptFnMode : Color.offscriptSignalYellow, lineWidth: 1))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .disabled(isCurrentlyPlaying)
                 .accessibilityLabel(
                     isCurrentlyPlaying
@@ -412,7 +406,7 @@ private struct QueueLeadStrip: View {
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Remove \(item.episode.title) from queue")
 
                 Spacer()
@@ -494,7 +488,7 @@ private struct QueueItemRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .accessibilityLabel({
                 var parts: [String] = [
                     "Open \(item.episode.title) from \(item.episode.podcast.title)"
@@ -517,7 +511,7 @@ private struct QueueItemRow: View {
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .accessibilityLabel("Play \(item.episode.title)")
 
             // Enabled reorder chevrons render in signal-yellow so they
@@ -541,7 +535,7 @@ private struct QueueItemRow: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Remove \(item.episode.title) from queue")
             }
         }
@@ -566,6 +560,6 @@ private struct QueueItemRow: View {
                 .contentShape(Rectangle())
         }
         .disabled(disabled)
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
     }
 }

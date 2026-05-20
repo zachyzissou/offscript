@@ -230,7 +230,7 @@ struct SpeechTranscriptionPanel: View {
             .overlay(Rectangle().stroke(color.opacity(disabled ? 0.4 : 1.0), lineWidth: 1))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .disabled(disabled)
         .padding(.top, 4)
     }
@@ -335,7 +335,7 @@ struct SpeechTranscriptionPanel: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Clear search")
             }
 
@@ -362,7 +362,7 @@ struct SpeechTranscriptionPanel: View {
                     .padding(.vertical, 4)
                     .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .accessibilityLabel("Follow playhead. Currently off")
             .accessibilityHint("Re-engages auto-scroll to the current cue.")
         }
@@ -479,7 +479,7 @@ struct SpeechTranscriptionPanel: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel(idx: idx, cue: cue, isCurrent: isCurrent))
         .accessibilityHint("Double-tap to seek to this line.")

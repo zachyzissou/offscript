@@ -85,7 +85,7 @@ struct EpisodeTranslationView: View {
                     .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .padding(.top, 4)
             }
         }

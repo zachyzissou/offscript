@@ -801,6 +801,7 @@ struct LibraryView: View {
     @State private var selectedPodcastID: UUID?
     @State private var directoryPodcasts: [LibraryDirectoryPodcast] = []
     @State private var didLoadDirectoryPodcasts = false
+    @State private var directoryLoadError: String?
     @State private var cachedDirectorySnapshot = LibraryDirectorySnapshot.empty
     @State private var didBuildDirectorySnapshot = false
     @State private var isSyncingLibrary = false
@@ -1007,7 +1008,28 @@ struct LibraryView: View {
                         }
                     }
 
-                    if didLoadDirectoryPodcasts && directoryPodcasts.isEmpty {
+                    if let directoryLoadError {
+                        TunerEmptyState(
+                            status: "● DIRECTORY UNAVAILABLE",
+                            title: "Channel directory failed",
+                            message: directoryLoadError,
+                            statusColor: .offscriptFnRecord
+                        ) {
+                            Button {
+                                loadDirectoryPodcasts(force: true)
+                            } label: {
+                                TunerLabel(text: "↻ RETRY DIRECTORY", color: .offscriptSignalYellow, size: 10)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .frame(minHeight: 44)
+                                    .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.tunerPress)
+                            .accessibilityLabel("Retry loading channel directory")
+                            .accessibilityIdentifier("LibraryDirectoryRetry")
+                        }
+                    } else if didLoadDirectoryPodcasts && directoryPodcasts.isEmpty {
                         emptyState
                     } else {
                         if !inProgressEpisodes.isEmpty {
@@ -1118,17 +1140,12 @@ struct LibraryView: View {
     }
 
     private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            TunerLabel(text: "● NO CHANNELS TUNED", color: .offscriptFnInfo)
-            Text("Your library is empty")
-                .font(.system(size: 22, weight: .semibold))
-                .tracking(0)
-                .foregroundStyle(Color.offscriptPaperWhite)
-            Text("Use Search to bring in shows. OffScript keeps them fresh here once you subscribe.")
-                .font(.system(size: 13.5))
-                .foregroundStyle(Color.offscriptPaperWhite)
-                .lineSpacing(2)
-
+        TunerEmptyState(
+            status: "● NO CHANNELS TUNED",
+            title: "Your library is empty",
+            message: "Use Search to bring in shows. OffScript keeps them fresh here once you subscribe.",
+            statusColor: .offscriptFnInfo
+        ) {
             NavigationLink {
                 SearchView(hidesRootNavigationBar: false)
             } label: {
@@ -1140,7 +1157,7 @@ struct LibraryView: View {
                 .padding(.vertical, 12)
                 .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .padding(.top, 4)
         }
         .padding(.top, 16)
@@ -1218,7 +1235,7 @@ struct LibraryView: View {
                                 )
                                 .equatable()
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.tunerPress)
                             // Rich VoiceOver label folds the channel
                             // number, author, in-progress count,
                             // unplayed count, and sync-failure chip
@@ -1249,6 +1266,7 @@ struct LibraryView: View {
     private func loadDirectoryPodcasts(force: Bool = false) {
         guard force || !didLoadDirectoryPodcasts else { return }
         directoryPodcastLoadTask?.cancel()
+        directoryLoadError = nil
         let modelContainer = modelContext.container
         let interval = OffScriptPerformanceLog.begin(
             "library.directory.fetch",
@@ -1267,6 +1285,7 @@ struct LibraryView: View {
                 }
                 directoryPodcasts = podcasts
                 didLoadDirectoryPodcasts = true
+                directoryLoadError = nil
                 rebuildDirectorySnapshot()
                 OffScriptPerformanceLog.end(
                     interval,
@@ -1275,6 +1294,7 @@ struct LibraryView: View {
             } catch {
                 directoryPodcasts = []
                 didLoadDirectoryPodcasts = true
+                directoryLoadError = error.localizedDescription
                 cachedDirectorySnapshot = .empty
                 didBuildDirectorySnapshot = true
                 OffScriptPerformanceLog.end(
@@ -1745,7 +1765,7 @@ private struct LibraryTunerHeader: View {
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Import podcasts")
 
                 // Sync + Tune match the IMPORT key's icon+label hairline-
@@ -1779,7 +1799,7 @@ private struct LibraryTunerHeader: View {
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .disabled(isSyncing)
                 .accessibilityLabel(isSyncing ? "Syncing library" : "Sync library")
 
@@ -1804,7 +1824,7 @@ private struct LibraryTunerHeader: View {
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Open settings")
             }
 
@@ -1939,7 +1959,7 @@ private struct LibraryDirectoryControls: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Clear library filter")
             }
         }
@@ -1997,7 +2017,7 @@ private struct LibraryDirectoryControls: View {
             .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .disabled(isDisabled)
         // Dimension-prefixed spoken label disambiguates chips that share
         // a value across rows (e.g. "ALL" could mean Scope or any future
@@ -2033,7 +2053,7 @@ private struct LibraryAlphabetRail: View {
                                 )
                             }
                             .id(target.key)
-                            .buttonStyle(.plain)
+                            .buttonStyle(.tunerPress)
                             .accessibilityElement(children: .ignore)
                             .accessibilityLabel(target.isNearestJump ? "Jump near \(target.key)" : "Jump to \(target.key)")
                             .accessibilityIdentifier("LibraryJumpLetter\(target.key)")
@@ -2105,13 +2125,11 @@ private struct LibraryDirectoryEmptyState: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            TunerLabel(text: "○ NO DIRECTORY MATCH", color: .offscriptSoftPaper)
-            Text(message)
-                .font(.system(size: 13))
-                .foregroundStyle(Color.offscriptPaperWhite.opacity(0.72))
-                .fixedSize(horizontal: false, vertical: true)
-
+        TunerEmptyState(
+            status: "○ NO DIRECTORY MATCH",
+            title: "No directory match",
+            message: message
+        ) {
             // Recovery key — without this, a user who narrowed scope
             // to NEEDS SYNC and got 0 results had to scroll up and
             // manually flip back to ALL. One-tap reset matches the
@@ -2125,12 +2143,11 @@ private struct LibraryDirectoryEmptyState: View {
                         .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Clear directory filter and search")
                 .accessibilityIdentifier("LibraryDirectoryClearFilter")
             }
         }
-        .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -2200,7 +2217,7 @@ private struct TunerLibraryCard: View {
                     Spacer()
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             // Combine artwork + podcast eyebrow + title + reason into
             // one VoiceOver stop. Sibling Play / Queue keys keep their
             // own a11y elements. Mirrors PodcastEpisodeTunerRow (#265)
@@ -2220,7 +2237,7 @@ private struct TunerLibraryCard: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Play \(episode.title)")
 
                 Button {
@@ -2235,7 +2252,7 @@ private struct TunerLibraryCard: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .disabled(episode.isQueued)
                 .accessibilityLabel(episode.isQueued ? "\(episode.title) already queued" : "Add \(episode.title) to queue")
 
@@ -2426,9 +2443,12 @@ struct PodcastDetailView: View {
                 FilterRow(selection: $filter)
 
                 if let loadError {
-                    VStack(alignment: .leading, spacing: 8) {
-                        TunerLabel(text: "LOAD ERROR · \(loadError.uppercased())", color: .offscriptFnRecord)
-                            .fixedSize(horizontal: false, vertical: true)
+                    TunerEmptyState(
+                        status: "● LOAD ERROR",
+                        title: "Episodes unavailable",
+                        message: loadError,
+                        statusColor: .offscriptFnRecord
+                    ) {
                         Button {
                             loadEpisodes(resetLimit: true)
                         } label: {
@@ -2439,20 +2459,19 @@ struct PodcastDetailView: View {
                                 .frame(minHeight: 44)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.tunerPress)
                         .accessibilityLabel("Retry loading episodes")
                     }
                 }
 
                 if episodes.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        TunerLabel(text: "● NO EPISODES MATCH FILTER", color: .offscriptSoftPaper)
-                        Text(episodeSearchQuery.isEmpty
-                             ? "Change the filter or sync this feed again later."
-                             : "No episodes match \"\(episodeSearchQuery)\".")
-                            .font(.system(size: 13.5))
-                            .foregroundStyle(Color.offscriptPaperWhite)
-
+                    TunerEmptyState(
+                        status: "● NO EPISODES MATCH FILTER",
+                        title: "No episodes in range",
+                        message: episodeSearchQuery.isEmpty
+                            ? "Change the filter or sync this feed again later."
+                            : "No episodes match \"\(episodeSearchQuery)\"."
+                    ) {
                         // Inline recovery key — tapping the filter back to
                         // ALL or clearing the search query is otherwise a
                         // two-step manual undo (find the filter row, find
@@ -2470,12 +2489,11 @@ struct PodcastDetailView: View {
                                     .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                                     .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.tunerPress)
                             .accessibilityLabel("Clear episode filter and search")
                             .accessibilityIdentifier("PodcastDetailClearFilter")
                         }
                     }
-                    .padding(.vertical, 12)
                     .overlay(
                         Rectangle().fill(Color.offscriptHairline).frame(height: 1),
                         alignment: .top
@@ -2511,7 +2529,7 @@ struct PodcastDetailView: View {
                                 .frame(minHeight: 44)
                                 .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.tunerPress)
                             .accessibilityLabel("Load 100 more episodes")
                             .overlay(
                                 Rectangle().fill(Color.offscriptHairline).frame(height: 1),
@@ -2682,7 +2700,7 @@ struct PodcastDetailView: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Clear episode search")
             }
         }
@@ -2768,7 +2786,7 @@ private struct PodcastDetailTunerHeader: View {
                             .padding(.vertical, 9)
                             .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Unsubscribe from \(podcast.title)")
                     .accessibilityIdentifier("PodcastDetailUnsubscribeButton")
                 }
@@ -2787,7 +2805,7 @@ private struct PodcastDetailTunerHeader: View {
                             .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Open \(podcast.title) website")
                 }
 
@@ -2810,7 +2828,7 @@ private struct PodcastDetailTunerHeader: View {
                     .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .disabled(isRefreshing)
                 .accessibilityLabel("Refresh \(podcast.title) feed")
                 .accessibilityIdentifier("PodcastDetailRefreshFeed")
@@ -2872,7 +2890,7 @@ private struct PodcastDetailTunerHeader: View {
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Cancel unsubscribe from \(podcast.title)")
 
                 Button {
@@ -2886,7 +2904,7 @@ private struct PodcastDetailTunerHeader: View {
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Confirm unsubscribe from \(podcast.title)")
                 .accessibilityIdentifier("PodcastDetailConfirmUnsubscribeButton")
             }
@@ -2977,7 +2995,7 @@ private struct EpisodeDownloadStateChip: View {
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Retry download for \(episode.title)")
                 .accessibilityHint("Double-tap to retry the download.")
             } else {
@@ -3090,7 +3108,7 @@ private struct PodcastEpisodeTunerRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             // Combine the NavigationLink into a single VoiceOver stop
             // so each row reads as one navigation, not three. Sibling
             // Play / Queue / More keys stay their own a11y elements.
@@ -3129,7 +3147,7 @@ private struct PodcastEpisodeTunerRow: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Play \(episode.title)")
 
                 Button {
@@ -3144,7 +3162,7 @@ private struct PodcastEpisodeTunerRow: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .disabled(episode.isQueued)
                 .accessibilityLabel(episode.isQueued ? "\(episode.title) already queued" : "Add \(episode.title) to queue")
 
@@ -3223,7 +3241,7 @@ private struct FilterRow: View {
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Filter episodes by \(filter.title)")
                     .accessibilityAddTraits(selection == filter ? .isSelected : [])
                 }
@@ -3270,7 +3288,7 @@ private struct LibrarySyncResultStrip: View {
                     .frame(minHeight: 44)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.tunerPress)
             .accessibilityLabel("Dismiss sync result")
         }
         .padding(.vertical, 10)
@@ -3328,7 +3346,7 @@ private struct LibraryBatchImportStrip: View {
                                 .frame(minHeight: 44)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.tunerPress)
                         .accessibilityLabel("Cancel import")
                         .accessibilityIdentifier("LibraryBatchImportCancel")
                     }
@@ -3378,7 +3396,7 @@ private struct LibraryBatchImportStrip: View {
                                 .frame(minHeight: 44)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.tunerPress)
                         .accessibilityLabel("Retry \(failed) failed feed imports")
                         .accessibilityIdentifier("LibraryBatchImportRetryFailed")
                     }
@@ -3393,7 +3411,7 @@ private struct LibraryBatchImportStrip: View {
                             .frame(minHeight: 44)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Dismiss import status")
                 }
                 .padding(.vertical, 10)

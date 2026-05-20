@@ -92,7 +92,7 @@ struct DebugInspectorView: View {
                         .frame(minHeight: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Close debug inspector")
             }
             Text("Debug-only diagnostics. Surfaces dormant telemetry, per-podcast sync state, download queues, and runtime metadata.")
@@ -133,7 +133,7 @@ struct DebugInspectorView: View {
                             .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Clear all telemetry events")
                     .accessibilityHint("Asks for confirmation before deleting every recorded event.")
                 }
@@ -182,7 +182,7 @@ struct DebugInspectorView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Telemetry event \(event.name), \(timestampLabel(event.createdAt))")
         .accessibilityHint("Double-tap to inspect full payload.")
@@ -206,7 +206,7 @@ struct DebugInspectorView: View {
                         .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Cancel clear telemetry")
 
                 Button {
@@ -220,7 +220,7 @@ struct DebugInspectorView: View {
                         .overlay(Rectangle().stroke(Color.offscriptFnRecord, lineWidth: 1))
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityLabel("Confirm clear telemetry")
             }
         }
@@ -411,7 +411,7 @@ struct DebugInspectorView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(episode.title), download failed: \(message). Double-tap to retry.")
     }
@@ -660,7 +660,7 @@ private struct TelemetryDetailSheet: View {
                             .frame(minHeight: 44)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tunerPress)
                     .accessibilityLabel("Close telemetry event detail")
                 }
 

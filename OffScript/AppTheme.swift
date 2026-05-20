@@ -172,6 +172,14 @@ extension Color {
     static let offscriptSurfaceMedium = Color.white.opacity(0.12)
 }
 
+extension UIColor {
+    static let offscriptStudioBlack = UIColor(red: 0, green: 0, blue: 0, alpha: 1)
+    static let offscriptPaperWhite = UIColor(red: 0.953, green: 0.945, blue: 0.918, alpha: 1)
+    static let offscriptSignalYellow = UIColor(red: 0.910, green: 0.824, blue: 0.290, alpha: 1)
+    static let offscriptFnInfo = UIColor(red: 0.365, green: 0.769, blue: 0.910, alpha: 1)
+    static let offscriptHairline = UIColor(white: 1, alpha: 0.08)
+}
+
 extension Font {
     // Tuner typography — instrument-cluster grotesque + monospaced metadata.
     // Headlines: SF Pro Display at light weights with tight tracking (Space Grotesk feel).
@@ -201,23 +209,157 @@ struct OffScriptBackgroundView: View {
 }
 
 struct OffScriptArtworkPlaceholder: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var cornerRadius: CGFloat = 3
+    @State private var pulse = false
 
     var body: some View {
-        // Tuner: cassette-cartridge placeholder — flat black, hairline border,
-        // with a clipped corner notch and a small mono "NO SIGNAL" tag.
-        ZStack {
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(Color.offscriptStudioBlack)
-                .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(Color.offscriptHairline, lineWidth: 1)
-                )
+        GeometryReader { proxy in
+            let size = proxy.size
+            let minDimension = min(size.width, size.height)
+            let isCompact = minDimension < 72
+            let meterWidth = max(1, minDimension * (isCompact ? 0.018 : 0.012))
+            let meterHeights = isCompact
+                ? [0.16, 0.28, 0.40, 0.28, 0.16]
+                : [0.14, 0.26, 0.38, 0.52, 0.38, 0.26, 0.14]
+            let meterMaxHeight = minDimension * (isCompact ? 0.24 : 0.32)
 
-            Image(systemName: "waveform")
-                .font(.system(size: 18, weight: .light))
-                .foregroundStyle(Color.offscriptSoftPaper)
+            ZStack {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color.offscriptStudioBlack)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .stroke(Color.offscriptHairline, lineWidth: 1)
+                    )
+
+                if !isCompact {
+                    placeholderGrid
+                        .opacity(0.7)
+                }
+
+                VStack(spacing: isCompact ? 6 : 10) {
+                    if !isCompact {
+                        HStack(spacing: 8) {
+                            TunerLabel(text: "NO ART", color: .offscriptSoftPaper, size: 8)
+                            Spacer(minLength: 8)
+                            TunerLabel(text: "LOCAL SIGNAL", color: .offscriptFnInfo, size: 8)
+                        }
+                    }
+
+                    Spacer(minLength: 0)
+
+                    HStack(alignment: .center, spacing: max(2, minDimension * 0.018)) {
+                        ForEach(Array(meterHeights.enumerated()), id: \.offset) { index, ratio in
+                            Capsule(style: .continuous)
+                                .fill(index == meterHeights.count / 2 ? Color.offscriptSignalYellow : Color.offscriptSoftPaper)
+                                .frame(width: meterWidth, height: max(4, meterMaxHeight * ratio))
+                                .opacity(meterOpacity(for: index, count: meterHeights.count))
+                        }
+                    }
+                    .accessibilityHidden(true)
+
+                    Spacer(minLength: 0)
+
+                    if !isCompact {
+                        HStack(spacing: 8) {
+                            Rectangle()
+                                .fill(Color.offscriptSignalYellow)
+                                .frame(width: 28, height: 1)
+                            Rectangle()
+                                .fill(Color.offscriptHairline)
+                                .frame(height: 1)
+                            TunerLabel(text: "STANDBY", color: .offscriptSignalYellow, size: 8)
+                        }
+                    }
+                }
+                .padding(isCompact ? 0 : max(10, minDimension * 0.07))
+
+                if !isCompact {
+                    cornerTicks
+                }
+            }
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            }
+            .onChange(of: reduceMotion) { _, newValue in
+                pulse = false
+                guard !newValue else { return }
+                withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            }
         }
+    }
+
+    private var placeholderGrid: some View {
+        ZStack {
+            VStack(spacing: 0) {
+                ForEach(0..<4, id: \.self) { _ in
+                    Rectangle()
+                        .fill(Color.offscriptHairline)
+                        .frame(height: 1)
+                    Spacer(minLength: 0)
+                }
+                Rectangle()
+                    .fill(Color.offscriptHairline)
+                    .frame(height: 1)
+            }
+
+            HStack(spacing: 0) {
+                ForEach(0..<4, id: \.self) { _ in
+                    Rectangle()
+                        .fill(Color.offscriptHairline)
+                        .frame(width: 1)
+                    Spacer(minLength: 0)
+                }
+                Rectangle()
+                    .fill(Color.offscriptHairline)
+                    .frame(width: 1)
+            }
+        }
+    }
+
+    private var cornerTicks: some View {
+        VStack {
+            HStack {
+                cornerTick
+                Spacer()
+                cornerTick
+                    .rotationEffect(.degrees(90))
+            }
+            Spacer()
+            HStack {
+                cornerTick
+                    .rotationEffect(.degrees(270))
+                Spacer()
+                cornerTick
+                    .rotationEffect(.degrees(180))
+            }
+        }
+        .padding(10)
+    }
+
+    private var cornerTick: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle()
+                .fill(Color.offscriptSignalYellow)
+                .frame(width: 14, height: 1)
+            Rectangle()
+                .fill(Color.offscriptSignalYellow)
+                .frame(width: 1, height: 14)
+        }
+        .opacity(0.75)
+    }
+
+    private func meterOpacity(for index: Int, count: Int) -> Double {
+        guard !reduceMotion else { return 0.7 }
+        let center = count / 2
+        if index == center { return pulse ? 1.0 : 0.62 }
+        return pulse ? 0.56 : 0.34
     }
 }
 
@@ -546,6 +688,85 @@ struct RecommendationSignalTraceView: View {
     }
 }
 
+struct TunerPressButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(isEnabled && configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.72 : 1) : 0.45)
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.12),
+                value: configuration.isPressed
+            )
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.16),
+                value: isEnabled
+            )
+    }
+}
+
+extension ButtonStyle where Self == TunerPressButtonStyle {
+    static var tunerPress: TunerPressButtonStyle { TunerPressButtonStyle() }
+}
+
+struct TunerEmptyState<Action: View>: View {
+    let status: String
+    let title: String
+    let message: String
+    var statusColor: Color = .offscriptSoftPaper
+    @ViewBuilder var action: () -> Action
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Rectangle()
+                .fill(Color.offscriptHairline)
+                .frame(height: 1)
+
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                TunerLabel(text: status, color: statusColor)
+                Spacer(minLength: 10)
+                TunerLabel(text: "STANDBY", color: .offscriptFnInfo, size: 8)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.system(size: 22, weight: .semibold))
+                    .tracking(0)
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(message)
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Color.offscriptPaperWhite)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            action()
+                .padding(.top, 2)
+        }
+        .padding(.vertical, 14)
+    }
+}
+
+extension TunerEmptyState where Action == EmptyView {
+    init(
+        status: String,
+        title: String,
+        message: String,
+        statusColor: Color = .offscriptSoftPaper
+    ) {
+        self.status = status
+        self.title = title
+        self.message = message
+        self.statusColor = statusColor
+        self.action = { EmptyView() }
+    }
+}
+
 /// Inline navigation key for pushed Tuner detail screens. The visible control
 /// stays compact, but the outer frame preserves a 44pt hit target.
 struct TunerInlineBackButton: View {
@@ -568,7 +789,7 @@ struct TunerInlineBackButton: View {
             .frame(minWidth: 44, minHeight: 44, alignment: .center)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.tunerPress)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityIdentifier(accessibilityIdentifier)
     }
@@ -688,7 +909,7 @@ struct TunerRatePicker: View {
                     .overlay(Rectangle().stroke(isSelected ? Color.offscriptSignalYellow : Color.offscriptHairline, lineWidth: 1))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.tunerPress)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(accessibilityActionPrefix) \(String(format: "%.2g×", rate))")
                 .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
