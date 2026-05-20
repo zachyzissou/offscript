@@ -89,3 +89,34 @@ To exercise the current (passive) CarPlay surface without writing any new code:
 4. Observe: OffScript will **not** have a tile in the CarPlay app grid (no entitlement, no scene). However, tap the bottom-bar "Now Playing" indicator on the CarPlay home — the system Now Playing screen will show OffScript's episode title, podcast title, and artwork, and the play/pause/skip ±30/15 buttons will work.
 5. Confirm the scrubber gap: tap on the CarPlay scrubber timeline — nothing happens, because `changePlaybackPositionCommand` is unwired.
 6. To verify the entitlement / scene gap, run `plutil -p OffScript/Info.plist` (or open it in Xcode) and confirm there is no `UIApplicationSceneManifest` → `UISceneConfigurations` → `CPTemplateApplicationSceneSessionRoleApplication` entry. `cat OffScript/OffScript.entitlements` will confirm no CarPlay entitlement is present.
+
+## Phase 16 — scaffolding landed
+
+2026-05-20: Code-side CarPlay support is now built and ready. The blocker is Apple's entitlement-grant flow.
+
+### What landed
+- `com.apple.developer.carplay-audio` entitlement declaration in `OffScript/OffScript.entitlements` (Bool `true`).
+- `UIApplicationSceneManifest` → `CPTemplateApplicationSceneSessionRoleAudio` configuration in `OffScript/Info.plist` pointing at `$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate`.
+- `OffScript/CarPlaySceneDelegate.swift`: `CPTemplateApplicationSceneDelegate` skeleton + 4-tab `CPTabBarTemplate`:
+  - **Library** — subscribed podcasts → nested `CPListTemplate` of recent episodes.
+  - **Queue** — current queue in user-defined order.
+  - **Recent** — last 20 episodes by `Episode.lastPlayedAt`.
+  - **Recommendations** — top 10 scored episodes from `RecommendationService.homeSections` (`refreshTasteProfile: false` so scene-connect stays cheap).
+- Per-row artwork download with on-actor `NSCache` (128-entry cap), lazy `setImage(_:)` so list render doesn't block on JPEG fetches.
+- `CPNowPlayingTemplate.shared` configured with `isUpNextButtonEnabled = true` and an empty `CPNowPlayingTemplateObserver` conformance as a hook point.
+- `OffScriptApp.carPlayModelContainer` static accessor (set as a side effect of the lazy `sharedModelContainer` build) so the scene delegate — which doesn't have access to the SwiftUI `\.modelContext` environment — can fetch from SwiftData.
+
+### What's blocked on Apple
+- `com.apple.developer.carplay-audio` entitlement must be requested via Apple's developer portal (<https://developer.apple.com/contact/carplay/>).
+- Until the entitlement is granted, the entry won't be honored by code-signing for App Store / TestFlight, so OffScript won't appear in the CarPlay app grid — but the project still builds and ships normally.
+- Once granted, the next signed build will appear in CarPlay. **No code changes required after grant.**
+
+### Reuse notes (things existed; we used them)
+- `PlaybackController.shared.play(_:in:)` works as-is from CarPlay handlers — already main-actor isolated, already accepts an optional `ModelContext`, and already drives `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter`.
+- `RecommendationService.homeSections(context:mode:limit:refreshTasteProfile:)` is the public surface CarPlay uses; we pass `refreshTasteProfile: false` because the main app refreshes the profile on its own cadence and CarPlay scene-connect should be cheap.
+- `Episode.artworkURL ?? Episode.podcast.artworkURL` is the existing fallback chain used by `OffScriptArtworkView`; reused in `attachArtwork(to:url:)`. The CarPlay list-item image API needs a `UIImage`, so we cannot reuse the `CachedAsyncImage` SwiftUI view directly — the per-scene `NSCache<NSURL, UIImage>` is the lightest-weight bridge.
+
+### Deferred (intentional gaps to clean up post-grant)
+- No tests. CarPlay's `CPInterfaceController` / `CPListTemplate` types are awkward to mock and the integration value comes from running on a real head unit, not from unit coverage of section builders. Add an integration smoke test once we have access to a CarPlay simulator session that can be scripted.
+- No "Search" tab. CarPlay supports `CPSearchTemplate`; we punted because typing in-car is rare and the four-tab MVP matches the audit's recommended scope. Easy follow-up after entitlement grant.
+- No deep integration with the player suggestions surface (`RecommendationService.playerSuggestions`) for the Now Playing "Up Next" button. `isUpNextButtonEnabled = true` shows the button, but the tap is currently a no-op until a `nowPlayingButtonTapped` handler is wired. Follow-up when we have a CarPlay simulator session to actually exercise it.
