@@ -3779,3 +3779,154 @@ struct PodcastNamespaceChaptersTests {
         ))
     }
 }
+
+// MARK: - Transcript pipeline
+
+/// Covers the published-transcript path landed in Phase 14:
+///   - WebVTT and Podcasting 2.0 JSON decoding into [TranscriptCue]
+///   - selection rule when multiple <podcast:transcript> entries exist
+///     (format and language preferences)
+///   - roundtrip of cues through the SwiftData cache storage shape.
+///
+/// These tests are pure parsing/selection — no URLSession involved — so they
+/// run fast and offline like the rest of the suite.
+struct TranscriptPipelineTests {
+    @Test
+    func vttDecoderParsesTimingAndText() throws {
+        let vtt = """
+        WEBVTT
+
+        00:00:01.000 --> 00:00:04.500
+        Welcome to the show.
+
+        2
+        00:00:04.500 --> 00:00:08.000 align:start
+        Today we talk about transcripts.
+
+        NOTE this is just a comment, ignored
+
+        00:01:00.250 --> 00:01:02.750
+        Multi
+        line text body.
+        """
+
+        let cues = try #require(PublishedTranscriptLoader.decodeVTT(text: vtt))
+
+        #expect(cues.count == 3)
+        #expect(cues[0].startTime == 1.0)
+        #expect(cues[0].endTime == 4.5)
+        #expect(cues[0].text == "Welcome to the show.")
+
+        #expect(cues[1].startTime == 4.5)
+        #expect(cues[1].endTime == 8.0)
+        #expect(cues[1].text == "Today we talk about transcripts.")
+
+        #expect(cues[2].startTime == 60.25)
+        #expect(cues[2].endTime == 62.75)
+        #expect(cues[2].text == "Multi\nline text body.")
+    }
+
+    @Test
+    func jsonDecoderParsesPodcasting20Format() throws {
+        let json = """
+        {
+          "version": "1.0.0",
+          "segments": [
+            { "speaker": "Alice", "startTime": 0.0, "endTime": 3.2, "body": "Hello listener." },
+            { "speaker": "Bob",   "startTime": 3.2, "endTime": 6.0, "body": "Glad to be here." },
+            { "speaker": "",      "startTime": 6.0, "endTime": 9.5, "body": "  trimmed body  " }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let cues = try #require(PublishedTranscriptLoader.decodeJSON(data: json))
+
+        #expect(cues.count == 3)
+        #expect(cues[0].speaker == "Alice")
+        #expect(cues[0].startTime == 0.0)
+        #expect(cues[0].endTime == 3.2)
+        #expect(cues[0].text == "Hello listener.")
+
+        #expect(cues[1].speaker == "Bob")
+        // Empty speaker string should be normalized to nil so the UI doesn't
+        // render a "(blank): foo" line.
+        #expect(cues[2].speaker == nil)
+        #expect(cues[2].text == "trimmed body")
+    }
+
+    @Test
+    func loaderPicksJSONOverVTTOverSRTOverHTML() {
+        let url = URL(string: "https://example.com/t")!
+        let html = EpisodeTranscriptReference(url: url.appending(path: "h"), mimeType: "text/html", language: "en", rel: nil)
+        let srt = EpisodeTranscriptReference(url: url.appending(path: "s"), mimeType: "application/srt", language: "en", rel: nil)
+        let vtt = EpisodeTranscriptReference(url: url.appending(path: "v"), mimeType: "text/vtt", language: "en", rel: nil)
+        let json = EpisodeTranscriptReference(url: url.appending(path: "j"), mimeType: "application/json", language: "en", rel: nil)
+
+        let pick = PublishedTranscriptLoader.bestReference(
+            from: [html, srt, vtt, json],
+            preferredLanguage: "en"
+        )
+        #expect(pick?.url == json.url)
+
+        // Without JSON it should fall to VTT.
+        let pickNoJSON = PublishedTranscriptLoader.bestReference(
+            from: [html, srt, vtt],
+            preferredLanguage: "en"
+        )
+        #expect(pickNoJSON?.url == vtt.url)
+    }
+
+    @Test
+    func loaderPicksLanguageMatchWithinSameFormat() {
+        let url = URL(string: "https://example.com/t")!
+        let vttDE = EpisodeTranscriptReference(url: url.appending(path: "de"), mimeType: "text/vtt", language: "de", rel: nil)
+        let vttEN = EpisodeTranscriptReference(url: url.appending(path: "en"), mimeType: "text/vtt", language: "en-US", rel: nil)
+
+        let pickEN = PublishedTranscriptLoader.bestReference(
+            from: [vttDE, vttEN],
+            preferredLanguage: "en"
+        )
+        #expect(pickEN?.url == vttEN.url)
+
+        let pickDE = PublishedTranscriptLoader.bestReference(
+            from: [vttDE, vttEN],
+            preferredLanguage: "de"
+        )
+        #expect(pickDE?.url == vttDE.url)
+    }
+
+    @Test
+    func transcriptCueCacheRoundtripIsLossless() {
+        let original: [TranscriptCue] = [
+            TranscriptCue(startTime: 0, endTime: 1.5, speaker: "Alice", text: "Hello."),
+            TranscriptCue(startTime: 1.5, endTime: 3.25, speaker: nil, text: "World."),
+            TranscriptCue(startTime: 3.25, endTime: 6.0, speaker: "Bob", text: "Multi\nline.")
+        ]
+
+        let encoded = EpisodeTranscriptCache.encodeCues(original)
+        #expect(!encoded.isEmpty)
+
+        let decoded = EpisodeTranscriptCache.decodeCues(encoded)
+        #expect(decoded == original)
+
+        // Empty-cue roundtrip should yield an empty storage string, so we
+        // don't bloat the SwiftData row with `[]`.
+        #expect(EpisodeTranscriptCache.encodeCues([]).isEmpty)
+        #expect(EpisodeTranscriptCache.decodeCues("").isEmpty)
+    }
+
+    @Test
+    func parseDispatchSniffsByContentWhenMimeTypeMissing() throws {
+        let vttBytes = """
+        WEBVTT
+
+        00:00:00.000 --> 00:00:01.000
+        Hi.
+        """.data(using: .utf8)!
+
+        let cues = try #require(PublishedTranscriptLoader.parse(data: vttBytes, mimeType: nil))
+        #expect(cues.count == 1)
+        #expect(cues[0].text == "Hi.")
+    }
+}
+
