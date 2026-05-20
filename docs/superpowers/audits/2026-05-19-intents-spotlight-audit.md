@@ -119,7 +119,7 @@ The in-memory path through `PlaybackController.shared.currentEpisode`
 works, but on a cold-start where the controller hasn't been hydrated yet,
 the intent will always fall through to "Nothing to resume yet" even when
 the user has a perfectly valid last-played episode. Fixing this needs a
-write in `PlaybackController.play(_:in:)` — **deferred**.
+write in `PlaybackController.play(_:in:)` — ~~**deferred**~~ **RESOLVED commit `591bb8f` (`fix(intents): persist lastEpisodeAudioURL on play for Siri cold-launch resume`).**
 
 ## Classification
 
@@ -171,15 +171,15 @@ Both fixes build clean against the iOS Simulator destination.
 
 ## Deferred
 
-- **Donate calls.** Add `IntentDonationManager.shared.donate(intent:)` from
+- ~~**Donate calls.** Add `IntentDonationManager.shared.donate(intent:)` from
   `PlaybackController.play(_:in:)` (donate `PlayEpisodeIntent` with the
   episode entity), `PlaybackController.togglePlayPause()` (donate
   `PauseListeningIntent` / `ResumeListeningIntent`), and the unsubscribe
-  flow (de-donate). Requires touching `PlaybackController.swift`.
-- **`ResumeListeningIntent` cold-launch fix.** Persist
+  flow (de-donate). Requires touching `PlaybackController.swift`.~~ **LANDED Phase 11, commit `9d25794`. See Phase 11 section below for details. Unsubscribe-flow de-donation remains deferred.**
+- ~~**`ResumeListeningIntent` cold-launch fix.** Persist
   `offscript.lastEpisodeAudioURL` from `PlaybackController.play(_:in:)`
   so the existing fallback in `ResumeListeningIntent.perform()` actually
-  has data to read. Out of scope.
+  has data to read. Out of scope.~~ **LANDED commit `591bb8f`.**
 - **`PodcastEntity` + podcast Spotlight indexing.** Add a podcast `AppEntity`,
   index podcasts under a second domain (`com.offscript.podcasts`), and
   teach `ContentView.onContinueUserActivity` to inspect the

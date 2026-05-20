@@ -136,11 +136,13 @@ model persist → spec back-compat).
   looking at. The plumbing for this is now in place. **LANDED Phase 30, commit `d085c27`.**
 
 **Deferred items (Phase 15+ UI follow-up):**
-1. Render `transcriptText` as a list of `TranscriptCue` rows, highlight the
-   active row from `PlaybackController.shared.currentTime`. **PARTIAL — cue state wired in Phase 30 (`d085c27`).**
-2. Tap-a-line to seek the player.
-3. Search bar within the transcript.
-4. ~~Source pill (Published / On-device).~~ **LANDED Phase 30, commit `d085c27` (`feat(transcripts): wire cue/source state + provenance pill (Phase 30)`).**
+1. ~~Render `transcriptText` as a list of `TranscriptCue` rows, highlight the
+   active row from `PlaybackController.shared.currentTime`.~~ **LANDED Phase 30, commit `25e1020` (`feat(transcripts): synchronized cue list + tap-to-seek (Phase 30)`).** Cue state wired in `d085c27`; full synchronized UI landed in `25e1020`.
+2. ~~Tap-a-line to seek the player.~~ **LANDED Phase 30, commit `25e1020`.**
+3. ~~Search bar within the transcript.~~ **LANDED Phase 30, commit `7b63047` (`feat(transcripts): search-within-transcript on the cue panel`).**
+4. ~~Source pill (Published / On-device).~~ **LANDED Phase 30, commit `d085c27` (`feat(transcripts): wire cue/source state + provenance pill`).**
+
+**Bonus follow-on (Phase 30):** Follow-playhead toggle + manual-scroll disengage landed in commit `50e9141` — beyond the original deferred scope.
 
 ## Classification
 
@@ -159,7 +161,7 @@ model persist → spec back-compat).
 **DEFERRED (file ownership / scope):**
 - ~~Transcript cleanup on unsubscribe (one-line edit to
   `PodcastUnsubscribeService`, out of this audit's ownership).~~ **LANDED Phase 15 (`ca4009f`).**
-- UI surface: synchronized line highlight, in-transcript search, ~~source pill~~. **Source pill LANDED Phase 30 (`d085c27`); line highlight + search still deferred.**
+- ~~UI surface: synchronized line highlight, in-transcript search, source pill.~~ **ALL LANDED in Phase 30 — synchronized highlight + tap-to-seek (`25e1020`), search (`7b63047`), source pill (`d085c27`), bonus follow-playhead toggle (`50e9141`).**
 
 **STRATEGIC:** The transcript pipeline pre-audit was at roughly the same
 maturity stage as the chapter pipeline was pre-Phase-12: feed parser landed,

@@ -80,6 +80,9 @@ No other files touched.
 
 The Phase 20 subagent is editing `OffScriptTests/OffScriptTests.swift`
 concurrently, so this round defers all download-chip test coverage.
+Phase 20 has since committed (`9e653c7`), but the download-chip tests
+listed below are still **OPEN** — Phase 20's tests covered the
+RecommendationExplanation contract, not the download-chip contract.
 Tests to land once Phase 20 commits:
 
 1. `func libraryRowShowsDownloadingChipWhenStateIsDownloading()` — seed

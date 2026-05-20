@@ -38,9 +38,9 @@ data?** Pre-audit, the answer was "no" for a reason that's not in
   `isAllowedOnCurrentNetwork`. When the toggle is on and the device is
   cellular, episodes persist as `.queued` and the queue drains as soon
   as `NetworkMonitor.shared.connectionType` flips to `.wifi`.
-- **GAP (open, deferred):** no Settings UI surface yet to toggle
+- ~~**GAP (open, deferred):** no Settings UI surface yet to toggle
   `downloadsWiFiOnly`. The service-side enforcement landed so the
-  toggle ships behind a known-working wiring.
+  toggle ships behind a known-working wiring.~~ **LANDED Phase 27, commit `9fa6b49` (`feat(settings): add Wi-Fi-only download toggle + Debug Inspector entry`).**
 - **GAP (open):** queue position is implicit (sorted by
   `downloadRequestedAt`). A future pass could expose a re-orderable
   queue surface in Library.
@@ -209,11 +209,11 @@ Smaller surprises:
   this audit. `ContentView.swift` is the established home for service
   startup; this is the right shape but should be reviewed if
   `OffScriptApp.swift` ever takes over startup wiring.
-- **Settings UI for `downloadsWiFiOnly`** — the flag is enforced;
-  user-facing toggle pending.
-- **Ambient Library row state** — `DownloadButton` covers the explicit
+- ~~**Settings UI for `downloadsWiFiOnly`** — the flag is enforced;
+  user-facing toggle pending.~~ **LANDED Phase 27, commit `9fa6b49`.** Toggle in `SettingsView.playbackSection` with `@AppStorage("offscript.downloadsWiFiOnly")` binding.
+- ~~**Ambient Library row state** — `DownloadButton` covers the explicit
   control but rows don't carry an at-a-glance "this is downloaded /
-  failed / queued" badge.
+  failed / queued" badge.~~ **LANDED Phase 22, commit `37f092c` (`feat(library): surface ambient download-state chip on episode rows`).**
 - **Queue reorder UI** — queue order is currently
   `downloadRequestedAt` ascending; no drag-handle surface.
 - **Background URLSession resume-data preservation** — the existing

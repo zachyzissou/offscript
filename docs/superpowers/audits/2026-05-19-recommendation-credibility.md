@@ -78,8 +78,8 @@ keep recommending itself.
 
 ## Tests to add in follow-up
 
-(All deferred — `OffScriptTests/OffScriptTests.swift` is owned by the Phase 3
-subagent this round.)
+~~(All deferred — `OffScriptTests/OffScriptTests.swift` is owned by the Phase 3
+subagent this round.)~~ **ALL SEVEN LANDED commit `f0852bb` (`test(taste): cover Phase 18 decay + binge-dampener contracts`). Plus two extra decay-curve pins (28-day half-life shape check, 119-day "still positive, but tiny" cutoff sanity).**
 
 1. `func decayHalfLifeIs14Days()` — assert
    `TasteProfileService.recencyWeight(for: Date().addingTimeInterval(-14*86400))`
@@ -262,8 +262,8 @@ player.
 
 **Deferred:** `.seekedForward` / `.seekedBackward` (mostly diagnostic,
 no scoring code reads them yet — would be Phase-19.5 work to thread
-them through the `seek(by:)` path), and `.started` (low-value vs.
-`.completed`'s coverage, and would create a noisy stream).
+them through the `seek(by:)` path), and ~~`.started` (low-value vs.
+`.completed`'s coverage, and would create a noisy stream).~~ **`.started` LANDED Phase 23, commit `b2fb431` (`fix(wiring): land three small fixes from Phase 23 dead-code sweep`). The Phase 23 dead-code sweep found `TasteProfileService.unfinishedEpisodeAffinity` used `startedCount` as a denominator with `.started || .resumed`, but `.started` was never emitted, so the metric was actually `{abandons + skips} / {long-resumes}` rather than `{abandons + skips} / {plays}`.**
 
 ## Phase 20 — explanation strings resolution (2026-05-20)
 
@@ -341,3 +341,16 @@ templates, both of which now name the user-verifiable evidence
   per-tag-recency map through `ScoringContext`. Out of scope for
   Phase 20 — the show-affinity count is already the strongest
   user-verifiable signal we can cite without that plumbing.
+
+### Sub-task #3 follow-on resolutions (2026-05-20)
+
+The "Queue and playback behavior as ranking signal" sub-task from the
+Phase 4 audit was substantially closed out by Phase 19 commit `82d7f71`
+(`feat(playback): emit four missing PlaybackEvent.Kind variants`). The
+specific deferrals:
+
+- ~~Emit `.advancedFromQueue` when queue auto-plays the next item.~~ **LANDED Phase 19.**
+- ~~Emit `.skippedQuickly` on early-abandonment patterns.~~ **LANDED Phase 19.**
+- ~~Emit `.resumed` when resuming a partially-played episode.~~ **LANDED Phase 19.**
+
+`.abandoned` and `.started` also landed (Phase 19 + Phase 23 commit `b2fb431`).

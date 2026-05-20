@@ -141,12 +141,12 @@ Reviewed `OffScript/CrashReporter.swift:60-100`. Findings:
 | `attachScreenshot` | **`false`** — explicit. Good (episode titles / queue would be PII). |
 | `attachViewHierarchy` | **`false`** — explicit. Good. |
 | `beforeSend` | Drops everything below `.error`. Quota-friendly; also drops info/warning noise that could carry user titles. OK. |
-| `sendDefaultPii` | **Not explicitly set.** Sentry-cocoa default is `false`, but explicit `options.sendDefaultPii = false` would be more defensible if audited. **GAP — DEFERRED** (CrashReporter.swift is out of audit scope). |
+| `sendDefaultPii` | ~~**Not explicitly set.** Sentry-cocoa default is `false`, but explicit `options.sendDefaultPii = false` would be more defensible if audited. **GAP — DEFERRED** (CrashReporter.swift is out of audit scope).~~ **LANDED commit `6c94e44` (`fix(privacy): explicitly disable sendDefaultPii on Sentry`).** |
 | `tracesSampleRate` | `0.05` — 5% perf transactions. Could still carry URL paths. Acceptable. |
 | `enableSwizzling` | `true` — required for auto-instrumentation. Adds network request capture; URLs may end up in breadcrumbs. **Worth a follow-up** to verify breadcrumb scrubbing. **DEFERRED.** |
 
 Deferred follow-ups for the source-owner pass:
-1. Explicitly set `options.sendDefaultPii = false`.
+1. ~~Explicitly set `options.sendDefaultPii = false`.~~ **LANDED commit `6c94e44`.**
 2. Add a `beforeBreadcrumb` filter to scrub episode-detail URLs / podcast feed URLs from network breadcrumbs.
 3. Document the data flow in `docs/privacy/sentry.md` (or similar) so the App Store Privacy Nutrition Label can cite specifics.
 
@@ -218,7 +218,7 @@ Build verified green with `xcodebuild -project OffScript.xcodeproj -scheme OffSc
 
 ## Deferred
 
-- **Sentry `sendDefaultPii = false`** — explicit assertion in `CrashReporter.swift` (out of scope).
+- ~~**Sentry `sendDefaultPii = false`** — explicit assertion in `CrashReporter.swift` (out of scope).~~ **LANDED commit `6c94e44`.**
 - **Sentry `beforeBreadcrumb`** to scrub episode/feed URLs (out of scope).
 - **App Store metadata in git** — establish `fastlane/metadata/` or `app-store/` with release notes, keywords, privacy policy URL. Strategic, not blocking.
 - **Privacy Nutrition Label** — must be filled in App Store Connect; declare Sentry as Diagnostics → Crash Data → not linked to user → not used for tracking.
@@ -245,8 +245,8 @@ Build verified green with `xcodebuild -project OffScript.xcodeproj -scheme OffSc
   rejection.
 - **App Store metadata** (release notes, screenshots, keywords) lives
   only in App Store Connect today — process risk, not a blocker.
-- **Sentry `sendDefaultPii = false`** should be explicit before
-  submission so reviewers can confirm from source.
+- ~~**Sentry `sendDefaultPii = false`** should be explicit before
+  submission so reviewers can confirm from source.~~ **LANDED commit `6c94e44`.**
 - **CloudKit entitlement** will need to be added when the signed profile
   lands; the runtime guard prevents crashes, but the "iCloud Sync"
   feature is currently dead-coded in production builds.

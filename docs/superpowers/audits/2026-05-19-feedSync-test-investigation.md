@@ -98,7 +98,7 @@ Single commit, surgical — no refactor of the import pipeline.
 ## Notes for follow-up
 - Once we ship a real telemetry surface, log the
   `NLTagger.availableTagSchemes` shape on first launch so we can see how
-  often real devices hit the fallback path.
+  often real devices hit the fallback path. **A telemetry surface now exists (Phase 27 Debug Inspector, commit `dc56ed2`) — the call site to record `NLTagger.availableTagSchemes` on first launch could now plug into `TelemetryService.track(...)`.**
 - If the fallback tag quality becomes a problem in production, swap in a
   hand-rolled noun heuristic (e.g. capitalized words + words ending in
   -tion / -ment / -ity) — but the present fallback is good enough to

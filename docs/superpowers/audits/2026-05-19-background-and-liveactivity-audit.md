@@ -165,10 +165,10 @@ Build: `xcodebuild ... build` → `** BUILD SUCCEEDED **`.
 
 These need edits to read-only files in this audit's scope. Document for follow-up:
 
-- **`OffScriptApp.swift`** — wire `NowPlayingActivityCoordinator.endStaleActivities()` into a
+- ~~**`OffScriptApp.swift`** — wire `NowPlayingActivityCoordinator.endStaleActivities()` into a
   `.task` on the `WindowGroup` (or `OffScriptAppDelegate.application(_:didFinishLaunchingWithOptions:)`).
   Without this, the helper added here doesn't actually fire and ghost activities persist after
-  force-quit. **HIGH PRIORITY follow-up.**
+  force-quit. **HIGH PRIORITY follow-up.**~~ **LANDED commit `7c73621` (`fix(liveactivity): sweep stale Live Activities on cold launch`) — wires the helper into the ContentView `.task` on `WindowGroup`.**
 - **`PlaybackController.swift` / `NowPlayingPublisher.swift`** — call `endActivity()` on episode
   *change* (not just on `currentEpisode == nil`), so a new activity starts with fresh attributes
   when the artwork URL changes. Currently the activity persists across episode boundaries with
@@ -182,9 +182,9 @@ These need edits to read-only files in this audit's scope. Document for follow-u
 ## Classification
 
 ### MUST-FIX
-- **Ghost Live Activities on relaunch.** Helper landed; call site is deferred to App-owning agent.
+- ~~**Ghost Live Activities on relaunch.** Helper landed; call site is deferred to App-owning agent.
   Until that call site is wired, users who force-quit while listening see a frozen pinned activity
-  until they manually swipe it away. Real bug, visible to users.
+  until they manually swipe it away. Real bug, visible to users.~~ **RESOLVED commit `7c73621`. Wired into `OffScriptApp` body's `.task`.**
 
 ### GAP
 - VoiceOver experience on widget + Live Activity was a string of disjointed labels — fixed.
