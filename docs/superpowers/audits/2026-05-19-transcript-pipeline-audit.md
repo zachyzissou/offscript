@@ -250,3 +250,119 @@ that array, so without the plist change `scheduleNextRound()` will log
 "Failed to schedule" on every invocation. The current commit ships the
 service refactored; the wiring is a 2-line follow-up.
 
+## Phase 29 — SRT + HTML decoders (2026-05-20)
+
+Phase 14 (`PublishedTranscriptLoader.swift`) shipped tolerant VTT + JSON
+decoders and left SRT and HTML as TODO stubs. The loader's MIME-type
+dispatch fell through to `nil` for both, so any feed publishing a
+`text/html` or `application/srt` transcript reference was silently
+discarded even when no JSON/VTT alternative existed. This phase lands
+both decoders and wires them into the dispatch.
+
+### SRT (SubRip)
+
+The SubRip wire format is essentially "VTT with commas":
+
+```
+1
+00:00:00,000 --> 00:00:05,200
+<i>First</i> line of dialogue.
+
+2
+00:00:05,500 --> 00:00:10,000
+Second line, possibly
+spread across two rows.
+```
+
+The new `decodeSRT(data:)` / `decodeSRT(text:)` entry points tolerate
+the irregularities that show up in real feeds:
+
+- Comma OR period as the milliseconds separator (the spec mandates
+  comma; period is widely tolerated and several large publishers emit
+  it). `parseSRTTimestamp` normalises comma → period before parsing.
+- Windows line endings (`\r\n`) and lone `\r` — normalised up front.
+- Optional sequence number on line one — present in canonical SRT,
+  absent in some hand-edited exports. We tolerate either shape by
+  sniffing for an integer followed by a timing line.
+- HTML-style inline tags (`<i>`, `<b>`, `<font color="...">`) — these
+  are SRT extensions used by sub editors. Stripped via the same
+  regex-based tag remover the HTML path uses.
+- Multi-line cue text joined with a single space (cleaner for plain-
+  text export than preserving the line-wrapping shape).
+- Trailing blank blocks at end of file (common from "save without
+  trailing newline" exporters).
+
+### HTML
+
+HTML transcripts are a loose convention — the Podcasting 2.0 spec
+acknowledges they exist but doesn't prescribe a timing format. In
+practice two patterns show up:
+
+1. `<p data-start="N">…</p>` or `<span data-time="N">…</span>` — used
+   by Buzzsprout and a few self-hosted feeds. Carries paragraph-level
+   timing but no end markers.
+2. Plain prose with no timing at all — the majority of HTML transcripts.
+
+`decodeHTML(data:episodeDuration:)` handles both:
+
+- First it runs a regex over the document looking for the timed-paragraph
+  pattern. If any matches come back, it builds cues from them
+  (`startTime = data-start`, `endTime = startTime` since there's no end
+  marker — the player can synthesise an end by looking at the next
+  cue's start).
+- If nothing matches, it falls back to a single cue spanning
+  `[0, episode.duration]` with the stripped, whitespace-collapsed
+  prose. Not scrubbable, but the transcript is at least searchable
+  and addressable.
+
+The tag stripper decodes the five common entities (`&amp; &lt; &gt;
+&quot; &nbsp;`) plus the two common apostrophe variants (`&#39;
+&apos;`). We intentionally do NOT decode the full HTML entity table —
+transcripts are prose, anything more exotic is a publisher
+mis-encoding worth surfacing rather than silently papering over.
+
+### Dispatch wiring
+
+`parse(data:mimeType:)` gained an optional third argument
+`episodeDuration: TimeInterval? = nil` (defaults to nil to preserve the
+visible-for-tests entry point used by `decodeJSON` / `decodeVTT`
+callers). The dispatch now covers:
+
+| MIME contains | Decoder |
+| --- | --- |
+| `json` | `decodeJSON` |
+| `vtt` | `decodeVTT` |
+| `srt` or `subrip` | `decodeSRT` |
+| `html` or `xhtml` | `decodeHTML(_, episodeDuration:)` |
+
+The sniff fallback (used when `mimeType` is nil or unrecognised) also
+gained two new shapes:
+
+- Leading `<` → treat as HTML
+- First line is an integer AND second line contains `-->` → treat as
+  SRT
+
+These mirror the existing `WEBVTT` / `{` / `[` sniffs.
+
+### Tests (DEFERRED — Phase 31 owns `OffScriptTests.swift`)
+
+This phase ships the decoders but does not add tests — the test file is
+owned by another phase running in parallel. The cases to add when that
+phase lands:
+
+- `srtDecoderHandlesCommaAndPeriodMsSeparators()`
+- `srtDecoderStripsHTMLTagsInCueText()`
+- `srtDecoderHandlesMultilineCueText()`
+- `srtDecoderToleratesWindowsLineEndings()`
+- `srtDecoderToleratesTrailingBlankBlocks()`
+- `htmlDecoderExtractsTimedCuesFromDataStartAttributes()`
+- `htmlDecoderExtractsTimedCuesFromDataTimeSpans()`
+- `htmlDecoderFallsBackToSingleCueWhenNoTimingPresent()`
+- `htmlDecoderStripsCommonEntitiesInPlainText()`
+- `parseDispatchSniffsSRTByIntegerPlusTiming()`
+- `parseDispatchSniffsHTMLByLeadingAngleBracket()`
+
+All inputs are pure strings → `[TranscriptCue]`, so the test fixtures
+can live inline as Swift string literals rather than separate `.srt` /
+`.html` files in the test bundle.
+
