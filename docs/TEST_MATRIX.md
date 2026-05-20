@@ -189,3 +189,32 @@ When a new automated test or simulator/real-device flow is added:
    yet exist in code.
 3. If the flow is real-device-only, do not list a simulator command —
    leave the simulator column empty so the matrix stays honest.
+
+## Lurking Crash Class: SwiftData Refs Across Singleton Test Boundaries
+
+Surfaced during Phase 19 (PlaybackEvent emission tests, commit `9ecc9dd`).
+
+**Symptom:** A test that exercises `PlaybackController.shared` or any
+other `@MainActor` singleton publishing `@Model` references crashes on
+the *next* test in the run — not the test that wrote the bad state.
+Stack trace lands inside the singleton's own `body`/observer/Combine
+subscription, dereferencing a model object whose `ModelContainer` was
+torn down with the previous test's in-memory context.
+
+**Root cause:** `static let shared = X()` is process-scoped. SwiftData
+contexts are run-scoped. The singleton outlives the context, but its
+cached `currentEpisode` / `currentRecommendation` / etc. references
+point into the dead container.
+
+**The fix (when authoring a new test):**
+1. Add a `debugResetForTesting()` method on the singleton (already done
+   for `PlaybackController` and `NowPlayingPublisher`).
+2. Call it in the test's setup OR teardown.
+3. The reset method must (a) cancel any Combine subscription on the
+   model object, (b) `currentX = nil`, and (c) clear any background
+   `Task` holding model refs.
+
+If you're authoring a singleton that publishes `@Model`-typed values,
+ship a `debugResetForTesting()` alongside it. Future-you running tests
+six months from now will not enjoy debugging the inevitable flake
+without one.
