@@ -162,3 +162,298 @@ enum CuratedPodcastCatalog {
         )
     }
 }
+
+// MARK: - Editorial collections
+//
+// Curator-shaped groupings layered over the per-genre catalog. Unlike a
+// flat genre rail, an editorial collection is a *named viewpoint* — "Just
+// under an hour", "Storytelling that earns its length" — that lets a
+// listener pick a mood instead of a band.
+//
+// Membership is declared as a `Filter` predicate. The predicate is
+// declarative on purpose: it composes (intersection via `.combined`) and
+// it's testable in isolation. The candidate it operates on is a
+// `CuratedEntry` — a thin enrichment of `PodcastSearchResult` that carries
+// the editorial metadata the curator knows but the search-result struct
+// doesn't expose (typical episode duration, the entry's home genre, and a
+// small set of curator-attached keywords).
+//
+// Duration metadata here is the *curator's* call, not a measurement. The
+// `SearchPreviewLoader` shipped in Phase 17 surfaces real per-show
+// durations at runtime, and a future cycle can swap this estimate for the
+// measured value — the `Filter.duration` shape is already correct for
+// that.
+
+struct CuratedEntry: Hashable, Sendable {
+    let result: PodcastSearchResult
+    let genre: Genre
+    /// Curator's estimate of typical episode length. `nil` when the show
+    /// varies wildly (mini + full episodes) and a single bucket would
+    /// mislead.
+    let typicalDuration: ClosedRange<TimeInterval>?
+    /// Curator-attached keywords, lowercased. Used by `Filter.keywords` for
+    /// editorial collections that cut across genres (e.g. "interview",
+    /// "running", "introductory").
+    let keywords: Set<String>
+}
+
+struct EditorialCollection: Identifiable, Hashable, Sendable {
+    let id: String
+    let title: String
+    let subtitle: String?
+    let curatorNote: String?
+    let filter: Filter
+
+    enum Filter: Hashable, Sendable {
+        case duration(min: TimeInterval?, max: TimeInterval?)
+        case genres([Genre])
+        case keywords([String])
+        indirect case combined([Filter])
+
+        func matches(_ candidate: CuratedEntry) -> Bool {
+            switch self {
+            case let .duration(minDuration, maxDuration):
+                guard let range = candidate.typicalDuration else { return false }
+                if let minDuration, range.upperBound < minDuration { return false }
+                if let maxDuration, range.lowerBound > maxDuration { return false }
+                return true
+
+            case let .genres(allowed):
+                return allowed.contains(candidate.genre)
+
+            case let .keywords(needles):
+                let lowered = needles.map { $0.lowercased() }
+                return lowered.contains(where: candidate.keywords.contains)
+
+            case let .combined(filters):
+                return filters.allSatisfy { $0.matches(candidate) }
+            }
+        }
+    }
+}
+
+extension CuratedPodcastCatalog {
+    /// Every curated entry across all bands, in catalog order. Editorial
+    /// collections filter over this list — they never touch live search.
+    static var entries: [CuratedEntry] {
+        Genre.allCases.flatMap { curatedEntries(for: $0) }
+    }
+
+    /// All starter editorial collections, in surface order. Kept small (5-8)
+    /// on purpose: an editorial collection should be a real curator pick, not
+    /// a thin slice of the catalog. Add a collection only when it answers a
+    /// question a listener would actually ask out loud.
+    static var editorialCollections: [EditorialCollection] {
+        [
+            EditorialCollection(
+                id: "just-under-an-hour",
+                title: "Just under an hour",
+                subtitle: "Pick one for a commute",
+                curatorNote: "Sized to fit a drive home without spilling into the next day.",
+                filter: .duration(min: 45 * 60, max: 65 * 60)
+            ),
+            EditorialCollection(
+                id: "long-form-interviews",
+                title: "Long-form interviews",
+                subtitle: "Settle in",
+                curatorNote: "When the conversation is the point, not the length.",
+                filter: .combined([
+                    .duration(min: 90 * 60, max: nil),
+                    .keywords(["interview"])
+                ])
+            ),
+            EditorialCollection(
+                id: "news-on-the-go",
+                title: "News on the go",
+                subtitle: "Under 25 minutes",
+                curatorNote: "Get the day down without losing the morning.",
+                filter: .combined([
+                    .duration(min: nil, max: 25 * 60),
+                    .genres([.newsAndPolitics])
+                ])
+            ),
+            EditorialCollection(
+                id: "for-new-listeners",
+                title: "For new listeners",
+                subtitle: "Names you'll recognize",
+                curatorNote: "Easy doors in. Each one has a back catalog worth the time.",
+                filter: .keywords(["introductory"])
+            ),
+            EditorialCollection(
+                id: "storytelling",
+                title: "Storytelling",
+                subtitle: "Reporting that reads like fiction",
+                curatorNote: "Tape-rich, scripted, edited to hold attention.",
+                filter: .keywords(["storytelling"])
+            ),
+            EditorialCollection(
+                id: "hands-free-workouts",
+                title: "Hands-free workouts",
+                subtitle: "Pace yourself",
+                curatorNote: "Long enough for a run, short enough not to drag.",
+                filter: .combined([
+                    .duration(min: 30 * 60, max: 50 * 60),
+                    .keywords(["fitness", "running", "training"])
+                ])
+            ),
+        ]
+    }
+
+    /// Returns the resolved curated entries that pass the collection's
+    /// filter, in catalog order.
+    static func resolve(_ collection: EditorialCollection) -> [CuratedEntry] {
+        entries.filter { collection.filter.matches($0) }
+    }
+
+    static func curatedEntries(for genre: Genre) -> [CuratedEntry] {
+        switch genre {
+        case .technology:
+            return [
+                .init(result: podcasts(for: .technology)[0], genre: .technology,
+                      typicalDuration: 120 * 60 ... 240 * 60,
+                      keywords: ["interview", "introductory"]),
+                .init(result: podcasts(for: .technology)[1], genre: .technology,
+                      typicalDuration: 180 * 60 ... 300 * 60,
+                      keywords: ["interview", "storytelling"]),
+                .init(result: podcasts(for: .technology)[2], genre: .technology,
+                      typicalDuration: 60 * 60 ... 90 * 60,
+                      keywords: ["introductory"]),
+                .init(result: podcasts(for: .technology)[3], genre: .technology,
+                      typicalDuration: 90 * 60 ... 150 * 60,
+                      keywords: []),
+            ]
+        case .cultureAndSociety:
+            return [
+                .init(result: podcasts(for: .cultureAndSociety)[0], genre: .cultureAndSociety,
+                      typicalDuration: 45 * 60 ... 70 * 60,
+                      keywords: ["storytelling", "introductory"]),
+                .init(result: podcasts(for: .cultureAndSociety)[1], genre: .cultureAndSociety,
+                      typicalDuration: 30 * 60 ... 50 * 60,
+                      keywords: ["storytelling", "introductory"]),
+                .init(result: podcasts(for: .cultureAndSociety)[2], genre: .cultureAndSociety,
+                      typicalDuration: 40 * 60 ... 65 * 60,
+                      keywords: ["introductory"]),
+                .init(result: podcasts(for: .cultureAndSociety)[3], genre: .cultureAndSociety,
+                      typicalDuration: 50 * 60 ... 65 * 60,
+                      keywords: ["storytelling", "introductory"]),
+            ]
+        case .comedy:
+            return [
+                .init(result: podcasts(for: .comedy)[0], genre: .comedy,
+                      typicalDuration: 70 * 60 ... 110 * 60,
+                      keywords: ["interview", "introductory"]),
+                .init(result: podcasts(for: .comedy)[1], genre: .comedy,
+                      typicalDuration: 60 * 60 ... 80 * 60,
+                      keywords: ["interview"]),
+                .init(result: podcasts(for: .comedy)[2], genre: .comedy,
+                      typicalDuration: 50 * 60 ... 80 * 60,
+                      keywords: ["interview"]),
+            ]
+        case .trueCrime:
+            return [
+                .init(result: podcasts(for: .trueCrime)[0], genre: .trueCrime,
+                      typicalDuration: 40 * 60 ... 60 * 60,
+                      keywords: ["storytelling", "introductory"]),
+                .init(result: podcasts(for: .trueCrime)[1], genre: .trueCrime,
+                      typicalDuration: 35 * 60 ... 55 * 60,
+                      keywords: ["storytelling"]),
+                .init(result: podcasts(for: .trueCrime)[2], genre: .trueCrime,
+                      typicalDuration: 60 * 60 ... 90 * 60,
+                      keywords: ["storytelling"]),
+            ]
+        case .newsAndPolitics:
+            return [
+                .init(result: podcasts(for: .newsAndPolitics)[0], genre: .newsAndPolitics,
+                      typicalDuration: 20 * 60 ... 35 * 60,
+                      keywords: ["introductory"]),
+                .init(result: podcasts(for: .newsAndPolitics)[1], genre: .newsAndPolitics,
+                      typicalDuration: 60 * 60 ... 90 * 60,
+                      keywords: []),
+                .init(result: podcasts(for: .newsAndPolitics)[2], genre: .newsAndPolitics,
+                      typicalDuration: 10 * 60 ... 18 * 60,
+                      keywords: ["introductory"]),
+            ]
+        case .science:
+            return [
+                .init(result: podcasts(for: .science)[0], genre: .science,
+                      typicalDuration: 120 * 60 ... 180 * 60,
+                      keywords: ["interview", "introductory"]),
+                .init(result: podcasts(for: .science)[1], genre: .science,
+                      typicalDuration: 45 * 60 ... 60 * 60,
+                      keywords: ["interview", "introductory"]),
+                .init(result: podcasts(for: .science)[2], genre: .science,
+                      typicalDuration: 25 * 60 ... 40 * 60,
+                      keywords: ["introductory"]),
+            ]
+        case .business:
+            return [
+                .init(result: podcasts(for: .business)[0], genre: .business,
+                      typicalDuration: 60 * 60 ... 80 * 60,
+                      keywords: ["interview", "storytelling", "introductory"]),
+                .init(result: podcasts(for: .business)[1], genre: .business,
+                      typicalDuration: 45 * 60 ... 70 * 60,
+                      keywords: ["interview"]),
+                .init(result: podcasts(for: .business)[2], genre: .business,
+                      typicalDuration: 30 * 60 ... 50 * 60,
+                      keywords: ["interview"]),
+            ]
+        case .healthAndWellness:
+            return [
+                .init(result: podcasts(for: .healthAndWellness)[0], genre: .healthAndWellness,
+                      typicalDuration: 90 * 60 ... 180 * 60,
+                      keywords: ["interview", "fitness", "training"]),
+                .init(result: podcasts(for: .healthAndWellness)[1], genre: .healthAndWellness,
+                      typicalDuration: 30 * 60 ... 50 * 60,
+                      keywords: ["introductory"]),
+                .init(result: podcasts(for: .healthAndWellness)[2], genre: .healthAndWellness,
+                      typicalDuration: 40 * 60 ... 70 * 60,
+                      keywords: ["interview", "introductory"]),
+            ]
+        case .sports:
+            return [
+                .init(result: podcasts(for: .sports)[0], genre: .sports,
+                      typicalDuration: 90 * 60 ... 150 * 60,
+                      keywords: ["interview"]),
+                .init(result: podcasts(for: .sports)[1], genre: .sports,
+                      typicalDuration: 70 * 60 ... 110 * 60,
+                      keywords: ["interview"]),
+            ]
+        case .music:
+            return [
+                .init(result: podcasts(for: .music)[0], genre: .music,
+                      typicalDuration: 35 * 60 ... 50 * 60,
+                      keywords: ["storytelling"]),
+                .init(result: podcasts(for: .music)[1], genre: .music,
+                      typicalDuration: 20 * 60 ... 30 * 60,
+                      keywords: ["storytelling", "introductory"]),
+                .init(result: podcasts(for: .music)[2], genre: .music,
+                      typicalDuration: 60 * 60 ... 90 * 60,
+                      keywords: ["interview"]),
+            ]
+        case .history:
+            return [
+                .init(result: podcasts(for: .history)[0], genre: .history,
+                      typicalDuration: 240 * 60 ... 360 * 60,
+                      keywords: ["storytelling"]),
+                .init(result: podcasts(for: .history)[1], genre: .history,
+                      typicalDuration: 35 * 60 ... 55 * 60,
+                      keywords: ["storytelling", "introductory"]),
+                .init(result: podcasts(for: .history)[2], genre: .history,
+                      typicalDuration: 50 * 60 ... 70 * 60,
+                      keywords: ["storytelling", "introductory"]),
+            ]
+        case .education:
+            return [
+                .init(result: podcasts(for: .education)[0], genre: .education,
+                      typicalDuration: 45 * 60 ... 60 * 60,
+                      keywords: ["interview", "introductory"]),
+                .init(result: podcasts(for: .education)[1], genre: .education,
+                      typicalDuration: 40 * 60 ... 55 * 60,
+                      keywords: ["storytelling", "introductory"]),
+                .init(result: podcasts(for: .education)[2], genre: .education,
+                      typicalDuration: 40 * 60 ... 60 * 60,
+                      keywords: ["introductory"]),
+            ]
+        }
+    }
+}
