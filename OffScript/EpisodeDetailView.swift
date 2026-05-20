@@ -227,8 +227,7 @@ struct EpisodeDetailView: View {
                     Text(isCurrentlyPlaying ? "NOW PLAYING"
                          : episode.playedPosition > 0 ? "RESUME" : "PLAY")
                 }
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .tracking(1.6)
+                .tunerFont(size: 10, weight: .bold)
                 .foregroundStyle(Color.offscriptStudioBlack)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
@@ -256,8 +255,7 @@ struct EpisodeDetailView: View {
                         .accessibilityHidden(true)
                     Text(episode.isQueued ? "QUEUED" : "QUEUE")
                 }
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                .tracking(1.6)
+                .tunerFont(size: 9)
                 .foregroundStyle(episode.isQueued ? Color.offscriptSoftPaper : Color.offscriptPaperWhite)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
@@ -287,8 +285,7 @@ struct EpisodeDetailView: View {
                             .accessibilityHidden(true)
                         Text("QUEUE NEXT")
                     }
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .tracking(1.6)
+                    .tunerFont(size: 9)
                     .foregroundStyle(Color.offscriptSignalYellow)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
@@ -451,8 +448,7 @@ struct EpisodeDetailView: View {
                             .accessibilityHidden(true)
                         Text("LIKE")
                     }
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .tracking(1.6)
+                    .tunerFont(size: 10, weight: .bold)
                     .foregroundStyle(feedbackGiven == .like ? Color.offscriptStudioBlack : Color.offscriptSignalYellow)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -484,8 +480,7 @@ struct EpisodeDetailView: View {
                             .accessibilityHidden(true)
                         Text("NOT FOR ME")
                     }
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .tracking(1.6)
+                    .tunerFont(size: 10)
                     .foregroundStyle(Color.offscriptSoftPaper)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
@@ -508,8 +503,7 @@ struct EpisodeDetailView: View {
 
             if let feedback = feedbackGiven {
                 Text(feedback == .like ? "GOT IT — MORE LIKE THIS COMING" : "NOTED — WE'LL ADJUST YOUR FEED")
-                    .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
-                    .tracking(1.4)
+                    .tunerFont(size: 8.5, tracking: 1.4)
                     .foregroundStyle(Color.offscriptSoftPaper)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
