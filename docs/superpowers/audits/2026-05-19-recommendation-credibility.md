@@ -264,3 +264,80 @@ player.
 no scoring code reads them yet — would be Phase-19.5 work to thread
 them through the `seek(by:)` path), and `.started` (low-value vs.
 `.completed`'s coverage, and would create a noisy stream).
+
+## Phase 20 — explanation strings resolution (2026-05-20)
+
+Sharpened 7 vague explanation strings and 4 RecommendationSignal
+templates so each surfaces specific evidence the user can verify
+against their own recent actions. Also clipped composed explanations
+at the 80-character boundary at the service layer so long tag lists
+don't truncate mid-punchline on rail cards.
+
+### Before / after samples
+
+| # | Before | After |
+|---|--------|-------|
+| 1 | `"Matches what you asked for: ai tooling"` | `"Tagged \"ai tooling\" — you asked for more of this"` (single) / `"Hits 2 tags you asked for: ai tooling, dev workflows"` (multiple) |
+| 2 | `"Matches your saved signal: history"` | `"Tagged \"history\" — you finished episodes like this"` (completion-source) / `"Tagged \"history\" — you liked episodes like this"` (like-source) |
+| 3 | `"Matches your selected technology lane"` | `"In technology — a genre you saved"` |
+| 4 | `"Fits your short-listen setting"` | `"22 minutes — under your short-listen cap"` |
+| 5 | `"You keep finishing Hardcore History"` (any count) | `"You finished 3 episodes of Hardcore History"` (when count ≥ 2; single-finish keeps prior copy because "1 time" reads awkwardly) |
+| 6 | `"Available from Foo"` — dead-code fallback in `playerSuggestions` | Folded into honest subscription branch: `"Newer episode from Foo, a show you subscribed to"` |
+| 7 | `"12m left from your last session"` (mono in WHY copy) | `"12 minutes left from your last session"` (`.spoken` formatter so VoiceOver reads naturally; chip value keeps `.short`) |
+
+### Signal-chip enrichments
+
+- `explicit signal` now adds `matches: <count>` so the user can verify
+  how many of their "more like this" tags the episode actually hits.
+- `show intent` renamed `signals` → `asks` and the explanation now
+  cites the concrete pull count when ≥ 2 ("asked for more from
+  Decoder 3 times").
+- The legacy `Available from …` source-bucket case in the
+  RecommendationExplainer is now structurally dead (the only producer
+  was the dead-code arm in `scoreWithExplanation`); left in place
+  defensively but flagged for a future cleanup.
+- Resume explanation strings now use `EpisodeDurationFormatter.spoken`;
+  chip `value` keeps the mono `.short` form for the tight signal-trace
+  layout.
+
+### Tests landed
+
+`RecommendationExplanationTests` — 11 Swift Testing cases covering:
+show-affinity counting, genre citation, show vs. tag preference,
+honest no-evidence fallback, "·" hazard sweep, 3-chip visual budget,
+`.spoken`/`.short` split, 80-char ceiling, silent demotion of
+skipped shows, no-orphan-label chip invariant, and concrete
+match-count surfacing on explicit signals.
+
+Total project tests: 183 → 194 passing.
+
+### Surprising finding
+
+The `"Available from \(show)"` else-branch in `scoreWithExplanation`
+(`RecommendationService.swift:790`) was structurally unreachable
+because `playerSuggestions` already filters its fetch to
+`podcast.isSubscribed == true`. So the only "we have nothing to say"
+boilerplate in the service was already dead code — it was never
+firing in production. The path that DID fire was the `homeSignal`
+catch-all where `evidence.isEmpty` returns `nil`, which is the right
+behavior (the catch-all subscription rail renders separately with
+an honest "From your subscribed show …" string). The brand-promise
+violation flagged in the Phase 4 backlog turned out to be
+hypothetical for the legacy player path; the actual sharpening
+opportunity was in `homeSignal`'s vague tag-match and explicit-signal
+templates, both of which now name the user-verifiable evidence
+(finish-count, like-count, source tag).
+
+### Deferred
+
+- The `"available"` source-bucket case in
+  `RecommendationExplainer.renderCopy` is now dead and could be
+  removed; left in place because the explainer file is read-only for
+  this phase and the cleanup is a one-line removal best done in a
+  follow-up that also drops the `"available"` entry from the
+  explainer's `priority` table.
+- Per-card per-tag history surfacing (e.g. "you finished 3 episodes
+  tagged ai in the last 14 days") would require threading a
+  per-tag-recency map through `ScoringContext`. Out of scope for
+  Phase 20 — the show-affinity count is already the strongest
+  user-verifiable signal we can cite without that plumbing.
