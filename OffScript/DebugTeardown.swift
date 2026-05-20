@@ -49,6 +49,12 @@ enum DebugTeardown {
         NowPlayingPublisher.shared.debugStopForTesting()
         DownloadService.shared.debugResetForTesting()
         BatchImportService.shared.debugResetForTesting()
+        // DeepLinkRouter is a static-only enum, not a `.shared` singleton,
+        // but its static `pendingPodcastDeepLink` exhibits the exact same
+        // cross-test pollution shape — leaving a UUID set means the next
+        // test sees a stale value. Phase 33's cross-reference sweep
+        // surfaced the resulting flaky test; this is the wiring fix.
+        DeepLinkRouter.debugResetForTesting()
         // Add other singletons here as they grow @Model refs.
     }
 }

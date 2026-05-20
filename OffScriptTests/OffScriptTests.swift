@@ -3203,6 +3203,8 @@ struct OffScriptTests {
         // .offscriptSwitchTab to library, (3) posts .offscriptOpenPodcast with
         // the podcastID userInfo, and (4) stashes the pending UUID for
         // cold-launch consumption via LibraryView.onAppear.
+        DebugTeardown.resetAllSingletons()  // clears any pendingPodcastDeepLink
+                                            // left by a prior test in the suite.
         let container = try makeContainer()
         let context = container.mainContext
         let podcast = Podcast(
