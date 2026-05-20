@@ -17,8 +17,6 @@
 			</array>
 		</dict>
 	</array>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>OffScript can generate transcripts on-device for episodes that don't ship one. Audio never leaves your phone.</string>
 	<key>NSSupportsLiveActivities</key>
@@ -37,11 +35,5 @@
 		<key>UIColorName</key>
 		<string>LaunchBackground</string>
 	</dict>
-	<key>UIBackgroundModes</key>
-		<array>
-			<string>audio</string>
-			<string>fetch</string>
-			<string>processing</string>
-		</array>
-	</dict>
+</dict>
 </plist>
