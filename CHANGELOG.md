@@ -4,6 +4,10 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+_See `docs/superpowers/audits/2026-05-19-voiceover-walk.md` and `docs/superpowers/audits/2026-05-19-design-token-audit.md` for deferred audit-cycle items — Library SCOPE/SORT/ROWS chip a11y, voiceOverMetadata Home vs Library asymmetry, tunerFont helper for mono-without-TunerLabel call sites, etc._
+
+## [2.4.0] — 2026-05-19
+
 ### Added — UI QA swarm coverage
 - **New `-offscript.debugWipeLibrary YES` launch arg wipes the SwiftData store before seeding** so UI tests that need a guaranteed-empty Library or Queue can launch deterministically regardless of prior simulator state. Documented in `docs/TEST_MATRIX.md`. Closes #177.
 - **Library empty state now has UI smoke coverage** that asserts `● NO CHANNELS TUNED` and "Your library is empty" render on a freshly-wiped store, pinning the day-one Library experience against future header refactors (#115).
