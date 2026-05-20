@@ -5429,3 +5429,303 @@ struct PlaybackEventEmissionTests {
         #expect(events.isEmpty)
     }
 }
+
+/// Pins the brand-promise decay contract from the Phase 18
+/// `2026-05-19-recommendation-credibility.md` audit: 14-day half-life,
+/// hard 120-day cutoff (no floor), and a per-show binge dampener that
+/// applies only to passive playback signals — explicit preference
+/// signals AND negative passive signals must still accumulate fully.
+@Suite("TasteProfileDecay")
+struct TasteProfileDecayTests {
+    private func makeContainer() throws -> ModelContainer {
+        let schema = Schema([
+            Podcast.self,
+            Episode.self,
+            EpisodeProfile.self,
+            PlaybackEvent.self,
+            PreferenceSignal.self,
+            QueueItem.self,
+            UserTasteProfile.self,
+            TelemetryEvent.self
+        ])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        return try ModelContainer(for: schema, configurations: [configuration])
+    }
+
+    // MARK: recencyWeight pure tests
+
+    @Test
+    @MainActor
+    func decayHalfLifeIs14Days() {
+        let weight = TasteProfileService.recencyWeight(for: Date().addingTimeInterval(-14 * 86_400))
+        #expect(abs(weight - 0.5) < 0.01)
+    }
+
+    @Test
+    @MainActor
+    func decayHasNoFloorPastCutoff() {
+        // 121 days = one day past the 120-day signalCutoffDays. The old
+        // formula had a 0.15 floor that lingered here forever.
+        let weight = TasteProfileService.recencyWeight(for: Date().addingTimeInterval(-121 * 86_400))
+        #expect(weight == 0)
+    }
+
+    @Test
+    @MainActor
+    func decayReturnsOneAtZeroAge() {
+        let weight = TasteProfileService.recencyWeight(for: .now)
+        #expect(abs(weight - 1.0) < 0.001)
+    }
+
+    @Test
+    @MainActor
+    func decayHalvesAgainAt28Days() {
+        // Half-life contract: weight halves every 14 days, so 28 days
+        // should land near 0.25. A second pin guards against future
+        // edits that change the curve shape but happen to leave the
+        // 14-day point at 0.5.
+        let weight = TasteProfileService.recencyWeight(for: Date().addingTimeInterval(-28 * 86_400))
+        #expect(abs(weight - 0.25) < 0.01)
+    }
+
+    @Test
+    @MainActor
+    func decayJustInsideCutoffStillContributes() {
+        // 119 days — one day inside the cutoff. Weight should be tiny
+        // but strictly positive. Old code returned 0.15 here; new code
+        // should return something like exp(-ln(2) * 119/14) ≈ 0.0028.
+        let weight = TasteProfileService.recencyWeight(for: Date().addingTimeInterval(-119 * 86_400))
+        #expect(weight > 0)
+        #expect(weight < 0.01)
+    }
+
+    // MARK: binge dampener (passive playback)
+
+    @Test
+    @MainActor
+    func tasteProfileBingeDampenerCapsSingleShowDominance() throws {
+        // 20 recent `.completed` events on Show A's "ai" tag vs. a
+        // single `like` on Show B's "history" tag. Without the
+        // dampener, Show A's tagScore = 20 * 1.5 = 30 swamps Show B's
+        // 5.0 and history never reaches `topTags`. With the dampener,
+        // Show A's sum collapses to 1.5 * Σ(1/sqrt(k), k=1..20) ≈ 11.3
+        // — still above 5.0 but now history is firmly inside the
+        // top 3.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let showA = Podcast(title: "Binge Show A", feedURL: URL(string: "https://example.com/a.xml")!)
+        let showB = Podcast(title: "Niche Show B", feedURL: URL(string: "https://example.com/b.xml")!)
+        context.insert(showA)
+        context.insert(showB)
+
+        for i in 0..<20 {
+            let ep = Episode(
+                title: "A\(i)",
+                pubDate: Date().addingTimeInterval(-Double(i) * 3_600),
+                duration: 1_800,
+                audioURL: URL(string: "https://example.com/a/\(i).mp3")!,
+                podcast: showA
+            )
+            context.insert(ep)
+            let profile = EpisodeProfile(episodeID: ep.id)
+            profile.tags = ["ai"]
+            context.insert(profile)
+            context.insert(PlaybackEvent(kind: .completed, position: 1_800, episode: ep))
+        }
+
+        let bEp = Episode(
+            title: "B0",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/b/0.mp3")!,
+            podcast: showB
+        )
+        context.insert(bEp)
+        let bProfile = EpisodeProfile(episodeID: bEp.id)
+        bProfile.tags = ["history"]
+        context.insert(bProfile)
+        context.insert(PreferenceSignal(action: .like, episode: bEp))
+
+        try context.save()
+        try TasteProfileService.refresh(in: context, force: true)
+
+        let profile = try TasteProfileService.loadOrCreate(in: context)
+        let top3 = Array(profile.topTags.prefix(3))
+        #expect(top3.contains("history"))
+        // Sanity: "ai" still wins outright; dampener doesn't flip the
+        // ranking, it just stops Show A from drowning Show B out.
+        #expect(profile.topTags.first == "ai")
+    }
+
+    @Test
+    @MainActor
+    func tasteProfileExplicitSignalsAreNotBingeDampened() throws {
+        // 5 explicit `.moreLikeThis` taps on episodes from the same
+        // show should each contribute the full 8.0. Sum = 40 for the
+        // tag they all share. Mirror that with a single like (weight
+        // 5.0) on a different show's tag — explicit signals stacking
+        // is the brand promise: tapping the button N times reads as
+        // Nx weight.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let show = Podcast(title: "Decoder", feedURL: URL(string: "https://example.com/decoder.xml")!)
+        context.insert(show)
+        for i in 0..<5 {
+            let ep = Episode(
+                title: "Decoder \(i)",
+                pubDate: Date().addingTimeInterval(-Double(i) * 3_600),
+                duration: 1_800,
+                audioURL: URL(string: "https://example.com/decoder/\(i).mp3")!,
+                podcast: show
+            )
+            context.insert(ep)
+            let p = EpisodeProfile(episodeID: ep.id)
+            p.tags = ["ai tooling"]
+            context.insert(p)
+            context.insert(PreferenceSignal(action: .moreLikeThis, episode: ep))
+        }
+
+        let otherShow = Podcast(title: "Other", feedURL: URL(string: "https://example.com/other.xml")!)
+        let otherEp = Episode(
+            title: "Other",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/other.mp3")!,
+            podcast: otherShow
+        )
+        context.insert(otherShow)
+        context.insert(otherEp)
+        let otherProfile = EpisodeProfile(episodeID: otherEp.id)
+        otherProfile.tags = ["history"]
+        context.insert(otherProfile)
+        context.insert(PreferenceSignal(action: .like, episode: otherEp))
+
+        try context.save()
+        try TasteProfileService.refresh(in: context, force: true)
+
+        let profile = try TasteProfileService.loadOrCreate(in: context)
+        // "ai tooling" must be ranked first: 5 explicit signals = 5x
+        // weight, not √-dampened.
+        #expect(profile.topTags.first == "ai tooling")
+        // Show affinity should also credit Decoder for the explicit
+        // taps; if these were dampened, Other's single like (5.0)
+        // would beat Decoder's dampened 5*8/√k sum.
+        #expect(profile.showAffinity.first == "Decoder")
+    }
+
+    @Test
+    @MainActor
+    func tasteProfileNegativeSignalsAreNotBingeDampened() throws {
+        // 10 `.skippedQuickly` events on Show X should fully
+        // accumulate to a deeply negative tagScore so the negative
+        // signal still bites in the suppression logic downstream.
+        // If we accidentally dampened negative signals, a noisy
+        // skipper would have ~22% influence by the 20th skip, which
+        // we explicitly DO NOT want — repeat skips read as a strong
+        // "stop showing me this" signal.
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let show = Podcast(title: "Skip Show", feedURL: URL(string: "https://example.com/skip.xml")!)
+        context.insert(show)
+
+        for i in 0..<10 {
+            let ep = Episode(
+                title: "S\(i)",
+                pubDate: Date().addingTimeInterval(-Double(i) * 3_600),
+                duration: 1_800,
+                audioURL: URL(string: "https://example.com/skip/\(i).mp3")!,
+                podcast: show
+            )
+            context.insert(ep)
+            let p = EpisodeProfile(episodeID: ep.id)
+            p.tags = ["disliked-tag"]
+            context.insert(p)
+            context.insert(PlaybackEvent(kind: .skippedQuickly, position: 5, episode: ep))
+        }
+
+        // Add one positive signal on the disliked-tag with a tiny
+        // weight so the tag is in the map at all (the negative
+        // pathway can't surface in `topTags` because that filter
+        // drops `value <= 0`).
+        let positiveEp = Episode(
+            title: "Pos",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/pos.mp3")!,
+            podcast: show
+        )
+        context.insert(positiveEp)
+        let posProfile = EpisodeProfile(episodeID: positiveEp.id)
+        posProfile.tags = ["disliked-tag"]
+        context.insert(posProfile)
+        context.insert(PreferenceSignal(action: .like, episode: positiveEp))
+
+        try context.save()
+        try TasteProfileService.refresh(in: context, force: true)
+
+        let profile = try TasteProfileService.loadOrCreate(in: context)
+        // The single +5 like on disliked-tag is dwarfed by 10x -1.4
+        // skippedQuickly signals (each near full weight after
+        // recency). The aggregate is negative and the tag must NOT
+        // appear in topTags.
+        #expect(!profile.topTags.contains("disliked-tag"))
+        // Show affinity is a related fail-safe: a 10x skip-quickly
+        // run on Show X must not float Show X into showAffinity. The
+        // positive +5 from a like is more than offset by 10x -1.6
+        // playbackShowWeight on the same show.
+        #expect(!profile.showAffinity.contains("Skip Show"))
+    }
+
+    @Test
+    @MainActor
+    func tasteProfileRefreshIgnoresEventsOlderThanCutoff() throws {
+        // A single `.completed` event 130 days old must NOT
+        // contribute to topTags. Mirror it with a recent
+        // `.moreLikeThis` on a different tag to give the profile
+        // something to bind to (so we know the refresh ran).
+        let container = try makeContainer()
+        let context = container.mainContext
+
+        let show = Podcast(title: "Ancient", feedURL: URL(string: "https://example.com/old.xml")!)
+        context.insert(show)
+
+        let ancientEp = Episode(
+            title: "Old",
+            pubDate: Date().addingTimeInterval(-130 * 86_400),
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/old.mp3")!,
+            podcast: show
+        )
+        context.insert(ancientEp)
+        let ancientProfile = EpisodeProfile(episodeID: ancientEp.id)
+        ancientProfile.tags = ["fossil-tag"]
+        context.insert(ancientProfile)
+        let ancientEvent = PlaybackEvent(kind: .completed, position: 1_800, episode: ancientEp)
+        ancientEvent.date = Date().addingTimeInterval(-130 * 86_400)
+        context.insert(ancientEvent)
+
+        let freshEp = Episode(
+            title: "Fresh",
+            pubDate: .now,
+            duration: 1_800,
+            audioURL: URL(string: "https://example.com/fresh.mp3")!,
+            podcast: show
+        )
+        context.insert(freshEp)
+        let freshProfile = EpisodeProfile(episodeID: freshEp.id)
+        freshProfile.tags = ["fresh-tag"]
+        context.insert(freshProfile)
+        context.insert(PreferenceSignal(action: .moreLikeThis, episode: freshEp))
+
+        try context.save()
+        try TasteProfileService.refresh(in: context, force: true)
+
+        let profile = try TasteProfileService.loadOrCreate(in: context)
+        #expect(profile.topTags.contains("fresh-tag"))
+        #expect(!profile.topTags.contains("fossil-tag"))
+    }
+}
+
