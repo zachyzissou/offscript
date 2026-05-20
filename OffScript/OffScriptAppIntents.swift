@@ -1,6 +1,7 @@
 import AppIntents
 import Foundation
 import SwiftData
+import UIKit
 
 /// App Intents — Siri / Shortcuts / Spotlight integration.
 ///
@@ -224,6 +225,94 @@ struct PlayEpisodeIntent: AppIntent {
     }
 }
 
+// MARK: - Open Tab Intents
+
+/// Shared URL builder for the four open-tab intents. Each intent defers to
+/// `DeepLinkRouter` via the universal `offscript://tab/<name>` scheme rather
+/// than mutating a `ModelContext` or posting tab-switch notifications
+/// directly — this keeps the intents free of SwiftData plumbing and lets
+/// `ContentView.onOpenURL` remain the single arbiter of tab routing.
+///
+/// Exposed as a static helper so unit tests can assert the URL contract
+/// without having to invoke `perform()` (which would require a host app
+/// process and a live `UIApplication`).
+enum OpenTabIntentURL {
+    static let home = URL(string: "offscript://tab/home")!
+    static let library = URL(string: "offscript://tab/library")!
+    static let queue = URL(string: "offscript://tab/queue")!
+    static let search = URL(string: "offscript://tab/search")!
+}
+
+/// Fire-and-forget donation for an open-tab intent. Mirrors the playback
+/// donation pattern in `PlaybackController` so successful tab opens teach
+/// Siri / Shortcuts the user's habits without blocking the intent return.
+@MainActor
+private func donateOpenTabIntent<Intent: AppIntent>(_ intent: Intent) {
+    Task {
+        do {
+            try await intent.donate()
+        } catch {
+            // Donations are best-effort; failures here don't change app
+            // behavior. Logged to console rather than OSLog to match the
+            // out-of-process intent runtime where category loggers are
+            // less useful for live debugging.
+            print("Open-tab intent donation failed: \(error.localizedDescription)")
+        }
+    }
+}
+
+struct OpenHomeIntent: AppIntent {
+    static let title: LocalizedStringResource = "Open Home"
+    static let description = IntentDescription("Open the Home tab in OffScript.")
+    static let openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        await UIApplication.shared.open(OpenTabIntentURL.home)
+        donateOpenTabIntent(Self())
+        return .result()
+    }
+}
+
+struct OpenLibraryIntent: AppIntent {
+    static let title: LocalizedStringResource = "Open Library"
+    static let description = IntentDescription("Open your Library in OffScript.")
+    static let openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        await UIApplication.shared.open(OpenTabIntentURL.library)
+        donateOpenTabIntent(Self())
+        return .result()
+    }
+}
+
+struct OpenQueueIntent: AppIntent {
+    static let title: LocalizedStringResource = "Open Queue"
+    static let description = IntentDescription("Open your playback Queue in OffScript.")
+    static let openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        await UIApplication.shared.open(OpenTabIntentURL.queue)
+        donateOpenTabIntent(Self())
+        return .result()
+    }
+}
+
+struct OpenSearchIntent: AppIntent {
+    static let title: LocalizedStringResource = "Open Search"
+    static let description = IntentDescription("Open Search in OffScript.")
+    static let openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        await UIApplication.shared.open(OpenTabIntentURL.search)
+        donateOpenTabIntent(Self())
+        return .result()
+    }
+}
+
 // MARK: - App Shortcuts
 
 /// Registers Siri phrases. iOS will pick these up automatically and surface
@@ -280,6 +369,50 @@ struct OffScriptShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Play Episode",
             systemImageName: "play.circle.fill"
+        )
+
+        AppShortcut(
+            intent: OpenHomeIntent(),
+            phrases: [
+                "Open home in \(.applicationName)",
+                "Show home in \(.applicationName)",
+                "Home in \(.applicationName)"
+            ],
+            shortTitle: "Open Home",
+            systemImageName: "waveform.path.ecg"
+        )
+
+        AppShortcut(
+            intent: OpenLibraryIntent(),
+            phrases: [
+                "Open my library in \(.applicationName)",
+                "Show my library in \(.applicationName)",
+                "Library in \(.applicationName)"
+            ],
+            shortTitle: "Open Library",
+            systemImageName: "books.vertical"
+        )
+
+        AppShortcut(
+            intent: OpenQueueIntent(),
+            phrases: [
+                "Open my queue in \(.applicationName)",
+                "Show my queue in \(.applicationName)",
+                "Queue in \(.applicationName)"
+            ],
+            shortTitle: "Open Queue",
+            systemImageName: "text.badge.plus"
+        )
+
+        AppShortcut(
+            intent: OpenSearchIntent(),
+            phrases: [
+                "Open search in \(.applicationName)",
+                "Search in \(.applicationName)",
+                "Find a podcast in \(.applicationName)"
+            ],
+            shortTitle: "Open Search",
+            systemImageName: "magnifyingglass"
         )
     }
 }
