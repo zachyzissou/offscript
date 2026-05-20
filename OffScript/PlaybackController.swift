@@ -625,6 +625,19 @@ final class PlaybackController: ObservableObject {
             self?.skipToNextInQueue()
             return .success
         }
+
+        // Lock-screen / Control Center scrubber drag. Without this target
+        // the scrubber renders (because we publish duration + elapsed) but
+        // dragging the playhead does nothing — looked broken next to Apple
+        // Podcasts. The system passes the requested position as a
+        // MPChangePlaybackPositionCommandEvent.
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangePlaybackPositionCommandEvent else {
+                return .commandFailed
+            }
+            self?.seek(to: event.positionTime)
+            return .success
+        }
     }
 
     private func updateNowPlaying(episode: Episode) {
