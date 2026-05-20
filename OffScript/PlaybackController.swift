@@ -255,6 +255,12 @@ final class PlaybackController: ObservableObject {
         player.rate = playbackRate
         isPlaying = true
         donatePlayEpisodeIntent(for: episode)
+        // Persist the audio URL so ResumeListeningIntent's cold-launch fallback
+        // (OffScriptAppIntents.swift:49) can locate the last-played episode
+        // after the app is force-quit. Persist only on actual play (not the
+        // load() path) so a Spotlight-tap-without-play doesn't pollute Siri's
+        // "resume" target. Flagged dead-code by the 2026-05-19 intents audit.
+        UserDefaults.standard.set(episode.audioURL.absoluteString, forKey: "offscript.lastEpisodeAudioURL")
     }
 
     /// Load an episode into the player WITHOUT starting playback. Used by
