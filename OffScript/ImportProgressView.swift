@@ -34,7 +34,7 @@ struct ImportProgressView: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    TunerLabel(text: "03 · TUNING", color: .offscriptSignalYellow)
+                    TunerLabel(text: "03 · STAGING", color: .offscriptSignalYellow)
                     Spacer()
                     TunerLabel(
                         text: statusReadout,
@@ -71,34 +71,8 @@ struct ImportProgressView: View {
                 }
             }
 
-            if hasFailures {
-                HStack(spacing: 10) {
-                    Button {
-                        Task { await runImports(onlyFailed: true) }
-                    } label: {
-                        TunerLabel(text: "↻ RETRY FAILED", color: .offscriptSignalYellow, size: 10)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
-                            .frame(minHeight: 44)
-                    }
-                    .buttonStyle(.tunerPress)
-                    .disabled(isImporting)
-
-                    if doneCount > 0 {
-                        Button {
-                            isComplete = true
-                            onComplete()
-                        } label: {
-                            TunerLabel(text: "→ CONTINUE", color: .offscriptFnInfo, size: 10)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 10)
-                                .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
-                                .frame(minHeight: 44)
-                        }
-                        .buttonStyle(.tunerPress)
-                    }
-                }
+            if shouldShowCompletionActions {
+                completionActions
             }
 
             Spacer()
@@ -125,10 +99,14 @@ struct ImportProgressView: View {
         hasFinishedAttempt && failedCount > 0 && !isComplete
     }
 
+    private var shouldShowCompletionActions: Bool {
+        hasFinishedAttempt && !isImporting
+    }
+
     private var statusReadout: String {
-        if isComplete { return "● COMPLETE" }
+        if isComplete { return "● READY" }
         if hasFailures { return "● \(failedCount) FAILED" }
-        return "● TUNING \(doneCount)/\(podcasts.count)"
+        return "● STAGING \(doneCount)/\(podcasts.count)"
     }
 
     private var statusReadoutColor: Color {
@@ -138,24 +116,58 @@ struct ImportProgressView: View {
     }
 
     private var headerTitle: String {
-        if isComplete { return "Channels tuned." }
+        if isComplete { return "Channels staged." }
         if hasFailures { return "Some channels missed." }
-        return "Tuning channels..."
+        return "Staging channels..."
     }
 
     private var headerCopy: String {
         if isComplete {
-            return "Your feed is ready. Recommendations build as you listen."
+            return "Subscriptions are saved. Episode hydration continues in the background after you enter the app."
         }
         if hasFailures {
-            return "Retry failed channels or continue with the feeds that tuned successfully."
+            return "Retry failed channels or enter the app now. Any staged feeds will hydrate in the background."
         }
-        return "Subscribing now. Starter episodes tune in behind the scenes so you can get into the app without waiting on feed hydration."
+        return "Saving subscriptions now. Starter episodes hydrate behind the scenes so setup is not gated by feed parsing."
+    }
+
+    private var completionActions: some View {
+        HStack(spacing: 10) {
+            if hasFailures {
+                Button {
+                    Task { await runImports(onlyFailed: true) }
+                } label: {
+                    TunerLabel(text: "↻ RETRY FAILED", color: .offscriptSignalYellow, size: 10)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .overlay(Rectangle().stroke(Color.offscriptSignalYellow, lineWidth: 1))
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.tunerPress)
+                .disabled(isImporting)
+            }
+
+            Button {
+                isComplete = true
+                onComplete()
+            } label: {
+                TunerLabel(text: "→ ENTER APP", color: .offscriptFnInfo, size: 10)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .overlay(Rectangle().stroke(Color.offscriptHairline, lineWidth: 1))
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.tunerPress)
+            .accessibilityLabel("Enter OffScript")
+        }
     }
 
     // Onboarding should commit selected subscriptions immediately. Starter
-    // feed hydration runs after the app opens so first launch is not gated by
-    // XML parsing, enrichment, external chapter fetches, or slow feed hosts.
+    // feed hydration stays decoupled from the explicit "enter app" route so
+    // setup is not gated by XML parsing, enrichment, chapter fetches, or slow
+    // feed hosts.
     @MainActor
     private func runImports(onlyFailed: Bool = false) async {
         guard !isImporting else { return }
@@ -192,7 +204,6 @@ struct ImportProgressView: View {
         if failedCount == 0 {
             isComplete = true
             isImporting = false
-            onComplete()
         } else {
             isImporting = false
         }
@@ -245,7 +256,11 @@ enum OnboardingHydrationScheduler {
     static func waitForPostOnboardingPaintGap(delayNanoseconds: UInt64 = defaultDelayNanoseconds) async {
         await Task.yield()
         guard delayNanoseconds > 0 else { return }
-        try? await Task.sleep(nanoseconds: delayNanoseconds)
+        do {
+            try await Task.sleep(nanoseconds: delayNanoseconds)
+        } catch {
+            return
+        }
     }
 }
 
@@ -258,7 +273,12 @@ enum OnboardingPreferenceSignalService {
             sortBy: [SortDescriptor(\Episode.pubDate, order: .reverse)]
         )
         descriptor.fetchLimit = 1
-        return try? context.fetch(descriptor).first
+        do {
+            return try context.fetch(descriptor).first
+        } catch {
+            importLogger.error("Newest onboarding episode fetch failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
     }
 }
 
@@ -300,9 +320,9 @@ private struct ImportRow: View {
         case .pending:
             TunerLabel(text: "○ STANDBY", color: .offscriptSoftPaper, size: 9)
         case .importing:
-            TunerLabel(text: "● TUNING", color: .offscriptSignalYellow, size: 9)
+            TunerLabel(text: "● STAGING", color: .offscriptSignalYellow, size: 9)
         case .done:
-            TunerLabel(text: "✓ TUNED", color: .offscriptFnMode, size: 9)
+            TunerLabel(text: "✓ STAGED", color: .offscriptFnMode, size: 9)
         case .failed:
             TunerLabel(text: "✕ FAILED", color: .offscriptFnRecord, size: 9)
         }

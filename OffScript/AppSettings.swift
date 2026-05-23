@@ -30,6 +30,7 @@ enum AppSettings {
         static let preferShortEpisodes = "offscript.preferShortEpisodes"
         static let preferredGenres = "offscript.preferredGenres"
         static let recommendationMode = "offscript.recommendationMode"
+        static let remoteDiscoveryUsesTasteSignals = "offscript.remoteDiscoveryUsesTasteSignals"
         static let recentSearches = "offscript.recentSearches"
         static let cloudSyncEnabled = "offscript.cloudSyncEnabled"
         static let cloudSyncRuntimeState = "offscript.cloudSyncRuntimeState"
@@ -60,9 +61,9 @@ enum AppSettings {
             case .signalLocked:
                 "Only episodes with explicit local evidence. No new-show discovery."
             case .balanced:
-                "Prioritize queue, resume, completion, and topic signal with a small discovery lane."
+                "Prioritize local signal with a small coarse-catalog discovery lane."
             case .discovery:
-                "Keep local signal first, then surface more new-show candidates from your taste profile."
+                "Keep local signal first, then surface more new-show candidates from genre catalog search."
             }
         }
 
@@ -118,6 +119,15 @@ enum AppSettings {
             return mode
         }
         set { defaults.set(newValue.rawValue, forKey: Key.recommendationMode) }
+    }
+
+    /// Default false: silent Apple Podcasts discovery uses coarse catalog
+    /// inputs, then ranks locally with the user's private taste profile.
+    /// Explicit user search remains unrestricted; this flag is only for
+    /// automatic discovery queries derived from listening history.
+    static var remoteDiscoveryUsesTasteSignals: Bool {
+        get { defaults.bool(forKey: Key.remoteDiscoveryUsesTasteSignals) }
+        set { defaults.set(newValue, forKey: Key.remoteDiscoveryUsesTasteSignals) }
     }
 
     static var recentSearchesStorage: String {

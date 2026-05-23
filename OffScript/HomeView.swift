@@ -1071,7 +1071,9 @@ private struct HeroTunerCard: View {
             TunerLabel(text: title, color: color.opacity(disabled ? 0.5 : 1.0), size: 10)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
+                .frame(minHeight: 44)
                 .overlay(Rectangle().stroke(color.opacity(disabled ? 0.3 : 1.0), lineWidth: 1))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.tunerPress)
         .disabled(disabled)

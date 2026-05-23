@@ -105,7 +105,7 @@ final class Episode {
     @Relationship(deleteRule: .nullify, inverse: \PlaybackEvent.episode)
     var playbackEvents: [PlaybackEvent] = []
 
-    @Relationship(deleteRule: .nullify, inverse: \PreferenceSignal.episode)
+    @Relationship(deleteRule: .cascade, inverse: \PreferenceSignal.episode)
     var preferenceSignals: [PreferenceSignal] = []
 
     @Relationship(deleteRule: .cascade, inverse: \EpisodeProfile.episode)
@@ -246,8 +246,9 @@ final class PreferenceSignal {
     var date: Date = Date()
     private var actionRawValue: String = Action.like.rawValue
     // Non-optional Episode so RecommendationService keypaths (\.episode.id)
-    // resolve cleanly. SwiftData cascades the relationship — deleting an
-    // Episode also clears its preferences.
+    // resolve cleanly. Episode.preferenceSignals owns the cascade delete;
+    // this side is explicit so SwiftData never tries to null a required row.
+    @Relationship(deleteRule: .noAction)
     var episode: Episode
 
     init(action: Action, episode: Episode) {

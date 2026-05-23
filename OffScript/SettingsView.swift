@@ -17,6 +17,7 @@ struct SettingsView: View {
     // pattern as `autoPlayNext` above. Once the user touches the toggle,
     // the explicit value wins.
     @AppStorage("offscript.downloadsWiFiOnly") private var downloadsWiFiOnly = true
+    @AppStorage("offscript.remoteDiscoveryUsesTasteSignals") private var remoteDiscoveryUsesTasteSignals = false
     @AppStorage("offscript.cloudSyncEnabled") private var cloudSyncEnabled = false
     @State private var recommendationMode = AppSettings.recommendationMode
     @State private var signedInUserID: String?
@@ -648,6 +649,15 @@ struct SettingsView: View {
                 .foregroundStyle(Color.offscriptPaperWhite.opacity(0.75))
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1)
+                .padding(.top, 2)
+
+            tunerToggle(
+                title: "Use taste profile for catalog search",
+                detail: "When off, Apple Podcasts Search receives only coarse genre queries; your tags and show affinity still rank results on-device.",
+                isOn: $remoteDiscoveryUsesTasteSignals
+            )
         }
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)

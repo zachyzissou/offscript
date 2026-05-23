@@ -1,6 +1,105 @@
 import SwiftUI
 import WidgetKit
 
+enum OffScriptWidgetTunerStyle {
+    static let background = Color(red: 0, green: 0, blue: 0)
+    static let panel = Color(red: 0.039, green: 0.039, blue: 0.039)
+    static let paperWhite = Color(red: 0.953, green: 0.945, blue: 0.918)
+    static let softPaper = Color(red: 0.478, green: 0.471, blue: 0.447)
+    static let signalYellow = Color(red: 0.910, green: 0.824, blue: 0.290)
+    static let fnRecord = Color(red: 0.910, green: 0.353, blue: 0.235)
+    static let fnMode = Color(red: 0.373, green: 0.812, blue: 0.494)
+    static let fnInfo = Color(red: 0.365, green: 0.769, blue: 0.910)
+    static let fnMute = Color(red: 0.478, green: 0.471, blue: 0.447)
+    static let hairline = Color(red: 1, green: 1, blue: 1).opacity(0.08)
+
+    static func transportColor(isPlaying: Bool) -> Color {
+        isPlaying ? fnMode : signalYellow
+    }
+
+    static func metadataFont(size: CGFloat = 9, weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight, design: .monospaced)
+    }
+}
+
+struct TunerWidgetMetadata: View {
+    let text: String
+    var color: Color = OffScriptWidgetTunerStyle.signalYellow
+    var size: CGFloat = 9
+
+    var body: some View {
+        Text(text)
+            .font(OffScriptWidgetTunerStyle.metadataFont(size: size))
+            .tracking(1.2)
+            .textCase(.uppercase)
+            .foregroundStyle(color)
+            .lineLimit(1)
+    }
+}
+
+struct TunerWidgetProgressRail: View {
+    let progress: Double
+
+    private var clampedProgress: Double {
+        min(max(progress, 0), 1)
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let fillWidth = proxy.size.width * clampedProgress
+
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(OffScriptWidgetTunerStyle.hairline)
+                Rectangle()
+                    .fill(OffScriptWidgetTunerStyle.signalYellow)
+                    .frame(width: max(fillWidth, clampedProgress > 0 ? 2 : 0))
+            }
+        }
+        .frame(height: 3)
+        .accessibilityValue("\(Int(clampedProgress * 100)) percent")
+    }
+}
+
+struct TunerWidgetArtwork: View {
+    let url: URL?
+    let size: CGFloat
+
+    var body: some View {
+        ZStack {
+            if let url {
+                AsyncImage(url: url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    placeholder
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: size, height: size)
+        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .stroke(OffScriptWidgetTunerStyle.hairline, lineWidth: 1)
+        )
+    }
+
+    private var placeholder: some View {
+        ZStack {
+            OffScriptWidgetTunerStyle.panel
+            VStack(spacing: 3) {
+                ForEach(0..<5, id: \.self) { index in
+                    Rectangle()
+                        .fill(index == 2 ? OffScriptWidgetTunerStyle.signalYellow : OffScriptWidgetTunerStyle.hairline)
+                        .frame(width: size * (0.28 + CGFloat(index) * 0.08), height: 1)
+                }
+            }
+        }
+    }
+}
+
 /// Lock Screen + Home Screen widget showing the currently-playing episode.
 ///
 /// Tapping the widget deep-links into the OffScript player via the
@@ -11,7 +110,7 @@ struct NowPlayingWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: NowPlayingProvider()) { entry in
             NowPlayingWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .containerBackground(OffScriptWidgetTunerStyle.background, for: .widget)
                 // Tap → deep-link into the player. Handled by
                 // DeepLinkRouter.handle in the main app's onOpenURL.
                 .widgetURL(URL(string: "offscript://player"))
@@ -83,14 +182,18 @@ struct NowPlayingWidgetView: View {
                 Text("OffScript — nothing playing")
             }
         }
+        .font(OffScriptWidgetTunerStyle.metadataFont(size: 11))
+        .foregroundStyle(OffScriptWidgetTunerStyle.paperWhite)
     }
 
     private var circularView: some View {
         ZStack {
             ProgressView(value: entry.snapshot.progress)
                 .progressViewStyle(.circular)
+                .tint(OffScriptWidgetTunerStyle.signalYellow)
             Image(systemName: entry.snapshot.isPlaying ? "waveform" : "play.fill")
                 .font(.headline)
+                .foregroundStyle(OffScriptWidgetTunerStyle.transportColor(isPlaying: entry.snapshot.isPlaying))
                 .accessibilityHidden(true)
         }
         .accessibilityElement(children: .combine)
@@ -102,19 +205,28 @@ struct NowPlayingWidgetView: View {
     }
 
     private var rectangularView: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
+            TunerWidgetMetadata(
+                text: entry.snapshot.isPlaying ? "NOW PLAYING" : "STANDBY",
+                color: entry.snapshot.isActive
+                    ? OffScriptWidgetTunerStyle.transportColor(isPlaying: entry.snapshot.isPlaying)
+                    : OffScriptWidgetTunerStyle.fnMute,
+                size: 8
+            )
             Text(entry.snapshot.isActive ? entry.snapshot.episodeTitle : "OffScript")
-                .font(.headline)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(OffScriptWidgetTunerStyle.paperWhite)
                 .lineLimit(2)
             if entry.snapshot.isActive {
                 Text(entry.snapshot.podcastTitle)
-                    .font(.caption)
+                    .font(OffScriptWidgetTunerStyle.metadataFont(size: 10, weight: .medium))
+                    .foregroundStyle(OffScriptWidgetTunerStyle.fnInfo)
                     .lineLimit(1)
-                ProgressView(value: entry.snapshot.progress)
-                    .tint(.orange)
+                TunerWidgetProgressRail(progress: entry.snapshot.progress)
             } else {
                 Text("Nothing playing")
-                    .font(.caption)
+                    .font(OffScriptWidgetTunerStyle.metadataFont(size: 10, weight: .medium))
+                    .foregroundStyle(OffScriptWidgetTunerStyle.softPaper)
             }
         }
     }
@@ -122,17 +234,14 @@ struct NowPlayingWidgetView: View {
     // MARK: - Home Screen widgets
 
     private var smallView: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 9) {
             HStack {
                 Image(systemName: entry.snapshot.isPlaying ? "waveform" : "play.fill")
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(OffScriptWidgetTunerStyle.transportColor(isPlaying: entry.snapshot.isPlaying))
                     .accessibilityHidden(true)
                 Spacer()
-                Text("OFFSCRIPT")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .tracking(1.4)
-                    .foregroundStyle(.secondary)
+                TunerWidgetMetadata(text: "OFFSCRIPT", color: OffScriptWidgetTunerStyle.softPaper)
                     .accessibilityHidden(true)
             }
 
@@ -141,24 +250,24 @@ struct NowPlayingWidgetView: View {
             if entry.snapshot.isActive {
                 Text(entry.snapshot.episodeTitle)
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(OffScriptWidgetTunerStyle.paperWhite)
                     .lineLimit(3)
                 Text(entry.snapshot.podcastTitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(OffScriptWidgetTunerStyle.metadataFont(size: 10, weight: .medium))
+                    .foregroundStyle(OffScriptWidgetTunerStyle.fnInfo)
                     .lineLimit(1)
             } else {
                 Text("Nothing playing")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(OffScriptWidgetTunerStyle.metadataFont(size: 11, weight: .medium))
+                    .foregroundStyle(OffScriptWidgetTunerStyle.softPaper)
             }
 
             if entry.snapshot.isActive {
-                ProgressView(value: entry.snapshot.progress)
-                    .tint(.orange)
-                    .accessibilityValue("\(Int(entry.snapshot.progress * 100)) percent")
+                TunerWidgetProgressRail(progress: entry.snapshot.progress)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .overlay(Rectangle().stroke(OffScriptWidgetTunerStyle.hairline, lineWidth: 1))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             entry.snapshot.isActive
@@ -169,27 +278,18 @@ struct NowPlayingWidgetView: View {
 
     private var mediumView: some View {
         HStack(alignment: .top, spacing: 12) {
-            // Artwork (loaded async; will be empty placeholder on first paint)
-            if let url = entry.snapshot.artworkURL {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    Color.secondary.opacity(0.2)
-                }
-                .frame(width: 64, height: 64)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
+            TunerWidgetArtwork(url: entry.snapshot.artworkURL, size: 64)
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Image(systemName: entry.snapshot.isPlaying ? "waveform" : "play.fill")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(OffScriptWidgetTunerStyle.transportColor(isPlaying: entry.snapshot.isPlaying))
                         .accessibilityHidden(true)
-                    Text("NOW PLAYING")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .tracking(1.4)
-                        .foregroundStyle(.secondary)
+                    TunerWidgetMetadata(
+                        text: entry.snapshot.isActive ? "NOW PLAYING" : "STANDBY",
+                        color: entry.snapshot.isActive ? OffScriptWidgetTunerStyle.signalYellow : OffScriptWidgetTunerStyle.fnMute
+                    )
                         .accessibilityHidden(true)
                     Spacer()
                 }
@@ -197,24 +297,24 @@ struct NowPlayingWidgetView: View {
                 if entry.snapshot.isActive {
                     Text(entry.snapshot.episodeTitle)
                         .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(OffScriptWidgetTunerStyle.paperWhite)
                         .lineLimit(2)
                     Text(entry.snapshot.podcastTitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(OffScriptWidgetTunerStyle.metadataFont(size: 10, weight: .medium))
+                        .foregroundStyle(OffScriptWidgetTunerStyle.fnInfo)
                         .lineLimit(1)
-                    ProgressView(value: entry.snapshot.progress)
-                        .tint(.orange)
-                        .accessibilityValue("\(Int(entry.snapshot.progress * 100)) percent")
+                    TunerWidgetProgressRail(progress: entry.snapshot.progress)
                 } else {
                     Text("Tap to open OffScript")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(OffScriptWidgetTunerStyle.metadataFont(size: 10, weight: .medium))
+                        .foregroundStyle(OffScriptWidgetTunerStyle.softPaper)
                 }
             }
 
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .overlay(Rectangle().stroke(OffScriptWidgetTunerStyle.hairline, lineWidth: 1))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             entry.snapshot.isActive

@@ -26,6 +26,14 @@ enum OffScriptAudioSessionConfiguration {
 }
 #endif
 
+private final class PlaybackCompletionNotificationItem: @unchecked Sendable {
+    let item: AVPlayerItem?
+
+    init(_ item: AVPlayerItem?) {
+        self.item = item
+    }
+}
+
 @MainActor
 final class PlaybackController: ObservableObject {
     static let shared = PlaybackController()
@@ -85,6 +93,18 @@ final class PlaybackController: ObservableObject {
     /// "End of Episode" doesn't see a stale wall-clock countdown when
     /// the episode is 38 minutes long.
     @Published private(set) var isEndOfEpisodeSleepArmed: Bool = false
+
+    #if DEBUG
+    private var suppressExternalSideEffectsForTesting = false
+    #endif
+
+    private var externalSideEffectsEnabled: Bool {
+        #if DEBUG
+        return !suppressExternalSideEffectsForTesting
+        #else
+        return true
+        #endif
+    }
 
     private init() {
         configureAudioSession()
@@ -285,7 +305,14 @@ final class PlaybackController: ObservableObject {
                     self.updateNowPlayingPlaybackRate()
                     return
                 }
-                try? await Task.sleep(for: .seconds(1))
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch is CancellationError {
+                    return
+                } catch {
+                    self.logger.error("Sleep timer tick failed: \(error.localizedDescription, privacy: .public)")
+                    return
+                }
             }
         }
     }
@@ -333,17 +360,21 @@ final class PlaybackController: ObservableObject {
     func play(_ episode: Episode, in context: ModelContext? = nil) {
         prepareItem(for: episode, in: context)
 
-        // Re-activate the audio session immediately before starting playback.
-        // The init-time activation can fail silently (no audio queued yet, or
-        // another app holds focus); without re-activating here, the session
-        // never enters .playback, and iOS silences us on background. Calling
-        // setActive(true) right before player.play() is the supported pattern
-        // for AVPlayer-backed apps.
-        activateAudioSession()
-        player.play()
-        player.rate = playbackRate
+        if externalSideEffectsEnabled {
+            // Re-activate the audio session immediately before starting playback.
+            // The init-time activation can fail silently (no audio queued yet, or
+            // another app holds focus); without re-activating here, the session
+            // never enters .playback, and iOS silences us on background. Calling
+            // setActive(true) right before player.play() is the supported pattern
+            // for AVPlayer-backed apps.
+            activateAudioSession()
+            player.play()
+            player.rate = playbackRate
+        }
         isPlaying = true
-        donatePlayEpisodeIntent(for: episode)
+        if externalSideEffectsEnabled {
+            donatePlayEpisodeIntent(for: episode)
+        }
         // Emit .started so TasteProfileService.unfinishedEpisodeAffinity has
         // a meaningful denominator. The reader at TasteProfileService.swift:152
         // counts `.started || .resumed` as the "began listening" denominator;
@@ -356,7 +387,9 @@ final class PlaybackController: ObservableObject {
         // after the app is force-quit. Persist only on actual play (not the
         // load() path) so a Spotlight-tap-without-play doesn't pollute Siri's
         // "resume" target. Flagged dead-code by the 2026-05-19 intents audit.
-        UserDefaults.standard.set(episode.audioURL.absoluteString, forKey: "offscript.lastEpisodeAudioURL")
+        if externalSideEffectsEnabled {
+            UserDefaults.standard.set(episode.audioURL.absoluteString, forKey: "offscript.lastEpisodeAudioURL")
+        }
     }
 
     /// Load an episode into the player WITHOUT starting playback. Used by
@@ -406,22 +439,28 @@ final class PlaybackController: ObservableObject {
         // remembers its own pace.
         playbackRate = PodcastPlaybackPreferences.preferredRate(for: episode.podcast)
             ?? PodcastPlaybackPreferences.globalDefault
-        let url = episode.localFileURL ?? episode.audioURL
-        let item = AVPlayerItem(url: url)
-        observeItem(item)
         playbackError = nil
-        player.replaceCurrentItem(with: item)
 
         let savedPosition = episode.playedPosition
         if savedPosition > 0 {
-            player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
             currentTime = savedPosition
         } else {
             currentTime = 0
         }
+        if externalSideEffectsEnabled {
+            let url = episode.localFileURL ?? episode.audioURL
+            let item = AVPlayerItem(url: url)
+            observeItem(item)
+            player.replaceCurrentItem(with: item)
+            if savedPosition > 0 {
+                player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
+            }
+        }
 
         isPlayerPresented = true
-        updateNowPlaying(episode: episode)
+        if externalSideEffectsEnabled {
+            updateNowPlaying(episode: episode)
+        }
     }
 
     /// Hard pause — stops playback regardless of current state. Used by
@@ -440,26 +479,34 @@ final class PlaybackController: ObservableObject {
         // Capture the pre-toggle state so we know which donation maps to the
         // user's actual action — `isPlaying.toggle()` below flips it.
         let wasPlaying = isPlaying
-        if isPlaying {
-            player.pause()
-        } else {
-            // Same reason as play() — the session can be inactive when we
-            // resume from pause (especially after a long background pause
-            // or after another app interrupted us).
-            activateAudioSession()
-            player.play()
-            player.rate = playbackRate
+        if externalSideEffectsEnabled {
+            if isPlaying {
+                player.pause()
+            } else {
+                // Same reason as play() — the session can be inactive when we
+                // resume from pause (especially after a long background pause
+                // or after another app interrupted us).
+                activateAudioSession()
+                player.play()
+                player.rate = playbackRate
+            }
         }
         isPlaying.toggle()
-        updateNowPlayingPlaybackRate()
+        if externalSideEffectsEnabled {
+            updateNowPlayingPlaybackRate()
+        }
         // Donate after the state change so we only signal user intent that
         // actually took effect. Interruption / route-change handlers go
         // through `player.pause()` directly, not this entry point, so they
         // correctly bypass donation.
         if wasPlaying {
-            donatePauseListeningIntent()
+            if externalSideEffectsEnabled {
+                donatePauseListeningIntent()
+            }
         } else {
-            donateResumeListeningIntent()
+            if externalSideEffectsEnabled {
+                donateResumeListeningIntent()
+            }
             // Emit `.resumed` only when un-pausing meaningful progress.
             // Below `resumedMinimumProgressSeconds` the user is still in
             // the initial-play phase (loaded, tapped pause, tapped play
@@ -531,14 +578,18 @@ final class PlaybackController: ObservableObject {
         duration: TimeInterval,
         currentTime: TimeInterval,
         isPlaying: Bool,
-        presentPlayer: Bool
+        presentPlayer: Bool,
+        suppressExternalSideEffects: Bool = false
     ) {
+        suppressExternalSideEffectsForTesting = suppressExternalSideEffects
         currentEpisode = episode
         self.duration = max(duration, 1)
         self.currentTime = min(max(currentTime, 0), self.duration)
         self.isPlaying = isPlaying
         isPlayerPresented = presentPlayer
-        updateNowPlaying(episode: episode)
+        if !suppressExternalSideEffectsForTesting {
+            updateNowPlaying(episode: episode)
+        }
     }
 
     /// Reset the singleton's per-episode state for test isolation. The
@@ -570,6 +621,11 @@ final class PlaybackController: ObservableObject {
         sleepTimerTask = nil
         sleepTimerEndDate = nil
         isEndOfEpisodeSleepArmed = false
+        suppressExternalSideEffectsForTesting = false
+    }
+
+    func debugCompleteCurrentEpisodeForTesting() {
+        completeCurrentEpisode()
     }
     #endif
 
@@ -622,42 +678,55 @@ final class PlaybackController: ObservableObject {
             forName: .AVPlayerItemDidPlayToEndTime,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self, let episode = self.currentEpisode else { return }
-                episode.isPlayed = true
-                episode.playedPosition = self.duration
-                if let context = self.modelContext {
-                    let event = PlaybackEvent(kind: .completed, position: self.duration, episode: episode)
-                    context.insert(event)
-                    do { try context.save() } catch { self.logger.error("Failed to save playback completion event: \(error.localizedDescription, privacy: .public)") }
+        ) { [weak self] notification in
+            let completedItem = PlaybackCompletionNotificationItem(notification.object as? AVPlayerItem)
+            Task { @MainActor [weak self, completedItem] in
+                guard let self,
+                      let item = completedItem.item,
+                      item === self.player.currentItem else { return }
+                self.completeCurrentEpisode()
+            }
+        }
+    }
+
+    private func completeCurrentEpisode() {
+        guard let episode = currentEpisode else { return }
+        episode.isPlayed = true
+        episode.playedPosition = duration
+        if let context = modelContext {
+            let event = PlaybackEvent(kind: .completed, position: duration, episode: episode)
+            context.insert(event)
+            do {
+                try context.save()
+            } catch {
+                logger.error("Failed to save playback completion event: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        // End-of-episode sleep wins over auto-advance — clear the flag and
+        // stop. Without this guard, an armed end-of-episode sleep would still
+        // auto-jump into the next queued episode and defeat the purpose.
+        if isEndOfEpisodeSleepArmed {
+            isEndOfEpisodeSleepArmed = false
+            if externalSideEffectsEnabled {
+                player.pause()
+                updateNowPlayingPlaybackRate()
+            }
+            isPlaying = false
+        } else if UserDefaults.standard.object(forKey: "offscript.autoPlayNext") as? Bool ?? true {
+            skipToNextInQueue()
+            // Auto-advance matches the `PlayNextInQueueIntent` semantic
+            // ("play the next thing in the queue"), so donate it here — but
+            // only when an episode actually queued up (skipToNextInQueue is a
+            // no-op on an empty queue).
+            if let newEpisode = currentEpisode, newEpisode.id != episode.id {
+                if externalSideEffectsEnabled {
+                    donatePlayNextInQueueIntent()
                 }
-                // End-of-episode sleep wins over auto-advance — clear
-                // the flag and stop. Without this guard, an armed
-                // end-of-episode sleep would still auto-jump into the
-                // next queued episode and defeat the purpose.
-                if self.isEndOfEpisodeSleepArmed {
-                    self.isEndOfEpisodeSleepArmed = false
-                    self.player.pause()
-                    self.isPlaying = false
-                    self.updateNowPlayingPlaybackRate()
-                } else if UserDefaults.standard.object(forKey: "offscript.autoPlayNext") as? Bool ?? true {
-                    self.skipToNextInQueue()
-                    // Auto-advance matches the `PlayNextInQueueIntent`
-                    // semantic ("play the next thing in the queue"), so
-                    // donate it here — but only when an episode actually
-                    // queued up (skipToNextInQueue is a no-op on an
-                    // empty queue).
-                    if let newEpisode = self.currentEpisode, newEpisode.id != episode.id {
-                        self.donatePlayNextInQueueIntent()
-                        // `.advancedFromQueue` is a positive signal about
-                        // the NEW episode — the user trusted the queue's
-                        // pick, so credit that pick. We deliberately don't
-                        // fire it on the finished one (which already got
-                        // `.completed`).
-                        self.recordPlaybackEvent(.advancedFromQueue, position: 0, for: newEpisode)
-                    }
-                }
+                // `.advancedFromQueue` is a positive signal about the NEW
+                // episode — the user trusted the queue's pick, so credit that
+                // pick. We deliberately don't fire it on the finished one
+                // (which already got `.completed`).
+                recordPlaybackEvent(.advancedFromQueue, position: 0, for: newEpisode)
             }
         }
     }

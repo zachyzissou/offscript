@@ -77,12 +77,10 @@ enum CrashReporter {
 
             // Drop anything below .error so handled / info noise never bills.
             options.beforeSend = { event in
-                switch event.level {
-                case .fatal, .error:
-                    return event
-                default:
-                    return nil
-                }
+                Self.filterAndScrub(event: event)
+            }
+            options.beforeBreadcrumb = { breadcrumb in
+                Self.scrub(breadcrumb: breadcrumb)
             }
 
             // Privacy: never auto-capture screen content. Episode titles
@@ -149,5 +147,231 @@ enum CrashReporter {
             }
         }
         #endif
+    }
+
+    nonisolated static func filterAndScrub(event: Event) -> Event? {
+        switch event.level {
+        case .fatal, .error:
+            return scrub(event: event)
+        default:
+            return nil
+        }
+    }
+
+    nonisolated static func scrub(event: Event) -> Event {
+        event.transaction = event.transaction.map { SentryPrivacyScrubber.scrubRoute($0) }
+        event.tags = event.tags.map { SentryPrivacyScrubber.scrubStringDictionary($0) }
+        event.extra = event.extra.map { SentryPrivacyScrubber.scrubDictionary($0) }
+        event.context = event.context.map { context in
+            context.mapValues { SentryPrivacyScrubber.scrubDictionary($0) }
+        }
+        event.breadcrumbs = event.breadcrumbs?.compactMap { scrub(breadcrumb: $0) }
+
+        if let request = event.request {
+            request.url = request.url.map { SentryPrivacyScrubber.scrubURLOrString($0, key: "url") }
+            request.queryString = nil
+            request.fragment = nil
+            request.cookies = nil
+            request.headers = nil
+        }
+
+        if let message = event.message {
+            let scrubbedFormatted = SentryPrivacyScrubber.scrubURLOrString(message.formatted, key: "message")
+            let scrubbedMessage = SentryMessage(formatted: scrubbedFormatted)
+            scrubbedMessage.message = message.message.map { SentryPrivacyScrubber.scrubURLOrString($0, key: "message") }
+            scrubbedMessage.params = message.params?.map { SentryPrivacyScrubber.scrubURLOrString($0, key: "message") }
+            event.message = scrubbedMessage
+        }
+
+        event.exceptions = event.exceptions?.map { exception in
+            exception.value = SentryPrivacyScrubber.scrubURLOrString(exception.value, key: "exception")
+            return exception
+        }
+
+        return event
+    }
+
+    nonisolated static func scrub(breadcrumb: Breadcrumb) -> Breadcrumb? {
+        breadcrumb.message = breadcrumb.message.map { SentryPrivacyScrubber.scrubURLOrString($0, key: "message") }
+        breadcrumb.data = breadcrumb.data.map { SentryPrivacyScrubber.scrubDictionary($0) }
+        return breadcrumb
+    }
+}
+
+private enum SentryPrivacyScrubber {
+    private static let redacted = "[redacted]"
+
+    private static let urlRegex: NSRegularExpression = {
+        do {
+            return try NSRegularExpression(pattern: #"(?:https?|feed|offscript)://[^\s<>"'`]+(?<![.,;:!?)\]\}])"#)
+        } catch {
+            fatalError("Invalid Sentry URL scrub regex: \(error)")
+        }
+    }()
+
+    private static let uuidRegex: NSRegularExpression = {
+        do {
+            return try NSRegularExpression(
+                pattern: #"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"#
+            )
+        } catch {
+            fatalError("Invalid Sentry UUID scrub regex: \(error)")
+        }
+    }()
+
+    static func scrubStringDictionary(_ dictionary: [String: String]) -> [String: String] {
+        Dictionary(uniqueKeysWithValues: dictionary.map { key, value in
+            (key, scrubURLOrString(value, key: key))
+        })
+    }
+
+    static func scrubDictionary(_ dictionary: [String: Any]) -> [String: Any] {
+        Dictionary(uniqueKeysWithValues: dictionary.map { key, value in
+            (key, scrubValue(value, key: key))
+        })
+    }
+
+    static func scrubRoute(_ value: String) -> String {
+        scrubURLOrString(value, key: "route")
+    }
+
+    static func scrubURLOrString(_ value: String, key: String) -> String {
+        var scrubbed = replaceURLs(in: value)
+        scrubbed = replaceMatches(in: scrubbed, regex: uuidRegex, with: redacted)
+
+        if isSensitiveKey(key), scrubbed == value {
+            if isRouteKey(key) {
+                return redactRouteSegments(scrubbed)
+            }
+            return value.isEmpty ? value : redacted
+        }
+
+        if isRouteKey(key) {
+            return redactRouteSegments(scrubbed)
+        }
+
+        return scrubbed
+    }
+
+    private static func scrubValue(_ value: Any, key: String) -> Any {
+        switch value {
+        case let string as String:
+            return scrubURLOrString(string, key: key)
+        case let url as URL:
+            return scrubURL(url.absoluteString)
+        case let dictionary as [String: Any]:
+            return scrubDictionary(dictionary)
+        case let dictionary as NSDictionary:
+            var scrubbed: [String: Any] = [:]
+            for (nestedKey, nestedValue) in dictionary {
+                guard let nestedKey = nestedKey as? String else { continue }
+                scrubbed[nestedKey] = scrubValue(nestedValue, key: nestedKey)
+            }
+            return scrubbed
+        case let array as [Any]:
+            return array.map { scrubValue($0, key: key) }
+        default:
+            if isSensitiveKey(key) {
+                return redacted
+            }
+            return value
+        }
+    }
+
+    private static func replaceURLs(in value: String) -> String {
+        replaceMatches(in: value, regex: urlRegex) { match in
+            scrubURL(match)
+        }
+    }
+
+    private static func scrubURL(_ value: String) -> String {
+        guard var components = URLComponents(string: value), let scheme = components.scheme else {
+            return redacted
+        }
+
+        components.user = nil
+        components.password = nil
+        components.query = nil
+        components.fragment = nil
+
+        let hasSensitivePath = !components.path.isEmpty && components.path != "/"
+        if hasSensitivePath {
+            components.path = "/\(redacted)"
+        }
+
+        if components.host == nil {
+            return "\(scheme):\(redacted)"
+        }
+
+        return (components.string ?? redacted)
+            .replacingOccurrences(of: "%5Bredacted%5D", with: redacted)
+    }
+
+    private static func redactRouteSegments(_ value: String) -> String {
+        let separators = CharacterSet(charactersIn: "/?#&")
+        return value
+            .components(separatedBy: separators)
+            .map { segment in
+                shouldRedactRouteSegment(segment) ? redacted : segment
+            }
+            .joined(separator: "/")
+    }
+
+    private static func shouldRedactRouteSegment(_ segment: String) -> Bool {
+        guard !segment.isEmpty else { return false }
+        if segment == redacted { return false }
+        if segment.range(of: uuidRegex.pattern, options: .regularExpression) != nil { return true }
+        return segment.count >= 16 && segment.rangeOfCharacter(from: CharacterSet.alphanumerics.inverted) == nil
+    }
+
+    private static func isSensitiveKey(_ key: String) -> Bool {
+        let lowercased = key.lowercased()
+        return [
+            "url",
+            "uri",
+            "query",
+            "search",
+            "transcript",
+            "feed",
+            "podcast",
+            "episode",
+            "audio",
+            "artwork",
+            "route",
+            "context",
+            "identifier",
+            "title"
+        ].contains { lowercased.contains($0) }
+    }
+
+    private static func isRouteKey(_ key: String) -> Bool {
+        let lowercased = key.lowercased()
+        return lowercased.contains("route") || lowercased.contains("context") || lowercased.contains("transaction")
+    }
+
+    private static func replaceMatches(
+        in value: String,
+        regex: NSRegularExpression,
+        with replacement: String
+    ) -> String {
+        replaceMatches(in: value, regex: regex) { _ in replacement }
+    }
+
+    private static func replaceMatches(
+        in value: String,
+        regex: NSRegularExpression,
+        transform: (String) -> String
+    ) -> String {
+        let nsValue = value as NSString
+        let matches = regex.matches(in: value, range: NSRange(location: 0, length: nsValue.length))
+        guard !matches.isEmpty else { return value }
+
+        var scrubbed = value
+        for match in matches.reversed() {
+            let original = nsValue.substring(with: match.range)
+            guard let range = Range(match.range, in: scrubbed) else { continue }
+            scrubbed.replaceSubrange(range, with: transform(original))
+        }
+        return scrubbed
     }
 }

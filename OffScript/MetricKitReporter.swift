@@ -9,10 +9,10 @@ import Sentry
 /// 1. **OSLog**: human-readable summaries land in Console.app and Xcode's
 ///    debug console. Free, no quota, useful during development.
 /// 2. **Sentry forwarding (errors only)**: crash diagnostics get promoted
-///    to a Sentry event with `level: .fatal` and the MetricKit payload
-///    attached as context — so the same crash is visible in App Store
-///    Connect (Apple's pipeline), Sentry (our pipeline), AND grouped by
-///    Sentry's stack-signature dedupe.
+///    to a Sentry event with `level: .fatal` and a trimmed MetricKit
+///    summary — so the same crash is visible in App Store Connect
+///    (Apple's pipeline), Sentry (our pipeline), AND grouped by
+///    Sentry's stack-signature dedupe without shipping opaque diagnostics.
 ///
 /// MetricKit only delivers payloads to App Store / TestFlight builds where
 /// the user has opted in to "Share with App Developers." Coverage is
@@ -94,14 +94,37 @@ final class MetricKitReporter: NSObject, MXMetricManagerSubscriber {
         // dedupes on stack signature, so already-reported crashes coalesce.
         let event = Event(level: .fatal)
         event.message = SentryMessage(formatted: "MetricKit crash diagnostic")
-        event.extra = [
-            "metrickit_payload": crash.dictionaryRepresentation(),
-            "termination_reason": crash.terminationReason ?? "unknown",
-            "exception_type": crash.exceptionType?.stringValue ?? "unknown",
-            "exception_code": crash.exceptionCode?.stringValue ?? "unknown",
-            "signal": crash.signal?.stringValue ?? "unknown"
-        ]
+        event.extra = Self.trimmedCrashExtras(
+            terminationReason: crash.terminationReason,
+            exceptionType: crash.exceptionType?.stringValue,
+            exceptionCode: crash.exceptionCode?.stringValue,
+            signal: crash.signal?.stringValue
+        )
         SentrySDK.capture(event: event)
         logger.error("Forwarded MetricKit crash diagnostic to Sentry")
+    }
+
+    nonisolated static func trimmedCrashExtras(
+        terminationReason: String?,
+        exceptionType: String?,
+        exceptionCode: String?,
+        signal: String?
+    ) -> [String: Any] {
+        [
+            "metrickit_source": "MXCrashDiagnostic",
+            "termination_reason": sanitizedDiagnosticValue(terminationReason),
+            "exception_type": sanitizedDiagnosticValue(exceptionType),
+            "exception_code": sanitizedDiagnosticValue(exceptionCode),
+            "signal": sanitizedDiagnosticValue(signal)
+        ]
+    }
+
+    private nonisolated static func sanitizedDiagnosticValue(_ value: String?) -> String {
+        guard let value, !value.isEmpty else { return "unknown" }
+        let firstLine = value.components(separatedBy: .newlines).first ?? value
+        if firstLine.contains("://") || firstLine.contains("/") {
+            return "[redacted]"
+        }
+        return String(firstLine.prefix(160))
     }
 }
