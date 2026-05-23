@@ -52,53 +52,55 @@ struct NowPlayingLiveActivity: Widget {
             Link(destination: Self.openPlayerURL) {
                 LockScreenView(attributes: context.attributes, state: context.state)
             }
-            .activityBackgroundTint(Color.black.opacity(0.92))
-            .activitySystemActionForegroundColor(Color.orange)
+            .activityBackgroundTint(OffScriptWidgetTunerStyle.background)
+            .activitySystemActionForegroundColor(OffScriptWidgetTunerStyle.signalYellow)
         } dynamicIsland: { context in
             DynamicIsland {
                 // Expanded
                 DynamicIslandExpandedRegion(.leading) {
-                    if let url = context.attributes.artworkURL {
-                        AsyncImage(url: url) { image in
-                            image.resizable().scaledToFill()
-                        } placeholder: {
-                            Color.secondary.opacity(0.2)
-                        }
-                        .frame(width: 44, height: 44)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    }
+                    TunerWidgetArtwork(url: context.attributes.artworkURL, size: 44)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     Image(systemName: context.state.isPlaying ? "waveform" : "play.fill")
                         .font(.title3)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(OffScriptWidgetTunerStyle.transportColor(isPlaying: context.state.isPlaying))
                         .accessibilityLabel(context.state.isPlaying ? "Playing" : "Paused")
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        TunerWidgetMetadata(
+                            text: context.state.isPlaying ? "LIVE SIGNAL" : "PAUSED",
+                            color: context.state.isPlaying
+                                ? OffScriptWidgetTunerStyle.fnMode
+                                : OffScriptWidgetTunerStyle.fnMute,
+                            size: 8
+                        )
+                        .accessibilityHidden(true)
                         Text(context.state.episodeTitle)
                             .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(OffScriptWidgetTunerStyle.paperWhite)
                             .lineLimit(1)
                         Text(context.state.podcastTitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(OffScriptWidgetTunerStyle.metadataFont(size: 10, weight: .medium))
+                            .foregroundStyle(OffScriptWidgetTunerStyle.fnInfo)
                             .lineLimit(1)
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    ProgressView(value: context.state.progress).tint(.orange)
+                    TunerWidgetProgressRail(progress: context.state.progress)
                 }
             } compactLeading: {
                 Image(systemName: context.state.isPlaying ? "waveform" : "play.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(OffScriptWidgetTunerStyle.transportColor(isPlaying: context.state.isPlaying))
                     .accessibilityLabel(context.state.isPlaying ? "Playing" : "Paused")
             } compactTrailing: {
                 Text(timeRemaining(state: context.state))
-                    .font(.caption2.monospacedDigit())
+                    .font(OffScriptWidgetTunerStyle.metadataFont(size: 11))
+                    .foregroundStyle(OffScriptWidgetTunerStyle.paperWhite)
                     .accessibilityLabel("Time remaining \(timeRemaining(state: context.state))")
             } minimal: {
                 Image(systemName: context.state.isPlaying ? "waveform" : "play.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(OffScriptWidgetTunerStyle.transportColor(isPlaying: context.state.isPlaying))
                     .accessibilityLabel(context.state.isPlaying ? "OffScript playing" : "OffScript paused")
             }
         }
@@ -119,41 +121,37 @@ private struct LockScreenView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if let url = attributes.artworkURL {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    Color.secondary.opacity(0.2)
-                }
-                .frame(width: 56, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
+            TunerWidgetArtwork(url: attributes.artworkURL, size: 56)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Image(systemName: state.isPlaying ? "waveform" : "play.fill")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(OffScriptWidgetTunerStyle.transportColor(isPlaying: state.isPlaying))
                         .accessibilityHidden(true) // status conveyed in combined label below
-                    Text("OFFSCRIPT")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .tracking(1.4)
-                        .foregroundStyle(.secondary)
+                    TunerWidgetMetadata(
+                        text: state.isPlaying ? "OFFSCRIPT · LIVE" : "OFFSCRIPT · HOLD",
+                        color: state.isPlaying
+                            ? OffScriptWidgetTunerStyle.signalYellow
+                            : OffScriptWidgetTunerStyle.fnMute
+                    )
                         .accessibilityHidden(true) // wordmark; surfaced via combined label
                     Spacer()
                 }
                 Text(state.episodeTitle)
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(OffScriptWidgetTunerStyle.paperWhite)
                     .lineLimit(2)
                 Text(state.podcastTitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(OffScriptWidgetTunerStyle.metadataFont(size: 10, weight: .medium))
+                    .foregroundStyle(OffScriptWidgetTunerStyle.fnInfo)
                     .lineLimit(1)
-                ProgressView(value: state.progress).tint(.orange)
-                    .accessibilityValue("\(Int(state.progress * 100)) percent")
+                TunerWidgetProgressRail(progress: state.progress)
             }
         }
         .padding(12)
+        .background(OffScriptWidgetTunerStyle.background)
+        .overlay(Rectangle().stroke(OffScriptWidgetTunerStyle.hairline, lineWidth: 1))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "OffScript, \(state.isPlaying ? "playing" : "paused"). \(state.episodeTitle) from \(state.podcastTitle)."

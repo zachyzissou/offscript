@@ -147,7 +147,8 @@ enum BackgroundTranscriptionService {
 
             for episode in candidates {
                 let elapsed = Date().timeIntervalSince(start)
-                if elapsed > maxRunDurationSeconds {
+                let remainingBudget = maxRunDurationSeconds - elapsed
+                if remainingBudget <= 1 {
                     bgTranscribeLogger.info(
                         "Hit time budget (\(elapsed, privacy: .public)s) after \(attempted, privacy: .public) episode(s) — exiting"
                     )
@@ -167,11 +168,19 @@ enum BackgroundTranscriptionService {
                     "Transcribing in background: \(episode.title, privacy: .public)"
                 )
                 do {
-                    _ = try await SpeechTranscriptionService.shared.transcribe(
-                        episode: episode,
-                        localAudioURL: localURL,
-                        persistTo: context
-                    )
+                    let transcriptionTask = Task { @MainActor in
+                        try await SpeechTranscriptionService.shared.transcribe(
+                            episode: episode,
+                            localAudioURL: localURL,
+                            persistTo: context
+                        )
+                    }
+                    let timeoutTask = Task {
+                        try await Task.sleep(for: .seconds(remainingBudget))
+                        transcriptionTask.cancel()
+                    }
+                    defer { timeoutTask.cancel() }
+                    _ = try await transcriptionTask.value
                 } catch is CancellationError {
                     // Re-throw so the outer catch handles cancellation
                     // uniformly (don't classify as a per-episode failure).

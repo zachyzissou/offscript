@@ -6,6 +6,25 @@ import SwiftData
 
 private let speechLogger = Logger(subsystem: "com.offscript", category: "SpeechTranscription")
 
+private final class SpeechRecognitionCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    nonisolated(unsafe) private var task: SFSpeechRecognitionTask?
+
+    nonisolated func set(_ task: SFSpeechRecognitionTask) {
+        lock.lock()
+        self.task = task
+        lock.unlock()
+    }
+
+    nonisolated func cancel() {
+        lock.lock()
+        let task = task
+        self.task = nil
+        lock.unlock()
+        task?.cancel()
+    }
+}
+
 /// On-device transcription via Apple's Speech framework. We use this as a
 /// fallback when an episode has no published transcript URL — common for
 /// indie shows and most legacy back-catalogs.
@@ -29,7 +48,6 @@ final class SpeechTranscriptionService {
     /// process-lifetime cache is a real memory-pressure risk.
     private var cacheOrder: [UUID] = []
     private let maxCachedTranscripts = 5
-    private var inFlightTask: Task<String?, Error>?
 
     private init() {}
 
@@ -72,7 +90,14 @@ final class SpeechTranscriptionService {
         )
         descriptor.fetchLimit = 1
 
-        guard let entry = try? context.fetch(descriptor).first else { return nil }
+        let entry: EpisodeTranscriptCache?
+        do {
+            entry = try context.fetch(descriptor).first
+        } catch {
+            speechLogger.error("Failed to fetch cached transcript for episode \(episodeID.uuidString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+        guard let entry else { return nil }
         // Hydrate via LRU-aware path so the cap stays honoured.
         storeTranscript(entry.text, for: episodeID)
         return entry.text
@@ -104,6 +129,7 @@ final class SpeechTranscriptionService {
         if let context, let stored = persistedTranscript(for: episode.id, in: context) {
             return stored
         }
+        try Task.checkCancellation()
 
         // If the feed publishes an authoritative transcript, prefer that
         // over running Speech recognition. Publisher transcripts are faster
@@ -147,7 +173,9 @@ final class SpeechTranscriptionService {
         request.shouldReportPartialResults = false
         request.taskHint = .dictation
 
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+        let cancellation = SpeechRecognitionCancellation()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
             var didResume = false
             let resume: (Result<String, Error>) -> Void = { result in
                 guard !didResume else { return }
@@ -155,7 +183,7 @@ final class SpeechTranscriptionService {
                 continuation.resume(with: result)
             }
 
-            recognizer.recognitionTask(with: request) { [weak self] result, error in
+            let task = recognizer.recognitionTask(with: request) { [weak self] result, error in
                 if let error {
                     speechLogger.error("Recognition failed: \(error.localizedDescription, privacy: .public)")
                     resume(.failure(TranscriptionError.recognitionFailed(error.localizedDescription)))
@@ -187,6 +215,10 @@ final class SpeechTranscriptionService {
                 }
                 resume(.success(text))
             }
+            cancellation.set(task)
+        }
+        } onCancel: {
+            cancellation.cancel()
         }
     }
 }

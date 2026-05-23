@@ -21,7 +21,9 @@ private let playerLogger = Logger(subsystem: "com.offscript", category: "Player"
 struct PlayerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var player = PlaybackController.shared
+    @ObservedObject private var downloadService = DownloadService.shared
     @Query private var queueItems: [QueueItem]
     @State private var isSpeedPickerExpanded = false
     @State private var isSleepPickerExpanded = false
@@ -64,6 +66,7 @@ struct PlayerView: View {
                         chaptersSection(episode: episode)
                         upNext
                         whatsNextSection(episode: episode)
+                        localEpisodeToolsSection(episode: episode)
                         controlsSection(episode: episode)
                     }
                     .padding(.horizontal, OffScriptTheme.pagePadding)
@@ -591,7 +594,7 @@ struct PlayerView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.16)) {
+                        animateControlState {
                             isSpeedPickerExpanded.toggle()
                             if isSpeedPickerExpanded { isSleepPickerExpanded = false }
                         }
@@ -648,7 +651,7 @@ struct PlayerView: View {
                         : "Mark \(episode.title) as played")
 
                     Button {
-                        withAnimation(.easeInOut(duration: 0.16)) {
+                        animateControlState {
                             isSleepPickerExpanded.toggle()
                             if isSleepPickerExpanded { isSpeedPickerExpanded = false }
                         }
@@ -674,7 +677,7 @@ struct PlayerView: View {
                         accessibilityActionPrefix: "Set playback speed to"
                     ) { rate in
                         player.setPlaybackRate(rate)
-                        withAnimation(.easeInOut(duration: 0.16)) {
+                        animateControlState {
                             isSpeedPickerExpanded = false
                         }
                     }
@@ -693,6 +696,75 @@ struct PlayerView: View {
         )
     }
 
+    private func localEpisodeToolsSection(episode: Episode) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                TunerLabel(text: "LOCAL · DEVICE", color: .offscriptSignalYellow)
+                Spacer()
+                TunerLabel(text: offlineReadout(for: episode), color: offlineReadoutColor(for: episode))
+            }
+
+            HStack(alignment: .center, spacing: 10) {
+                DownloadButton(episode: episode)
+                if let status = downloadService.statusText(for: episode) {
+                    TunerLabel(text: status.uppercased(), color: offlineReadoutColor(for: episode), size: 9)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    TunerLabel(text: "AVAILABLE FOR OFFLINE", color: .offscriptSoftPaper, size: 9)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
+            }
+
+            SpeechTranscriptionPanel(episode: episode)
+        }
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(
+            Rectangle().fill(Color.offscriptHairline).frame(height: 1),
+            alignment: .top
+        )
+    }
+
+    private func offlineReadout(for episode: Episode) -> String {
+        switch episode.downloadState {
+        case .notDownloaded:
+            return "○ ONLINE"
+        case .queued:
+            return "● QUEUED"
+        case .downloading:
+            return "● \(Int((episode.downloadProgress * 100).rounded()))%"
+        case .downloaded:
+            return "● OFFLINE"
+        case .failed:
+            return "● ERROR"
+        }
+    }
+
+    private func offlineReadoutColor(for episode: Episode) -> Color {
+        switch episode.downloadState {
+        case .notDownloaded:
+            return .offscriptSoftPaper
+        case .queued, .downloading:
+            return .offscriptSignalYellow
+        case .downloaded:
+            return .offscriptFnMode
+        case .failed:
+            return .offscriptFnRecord
+        }
+    }
+
+    private func animateControlState(_ updates: () -> Void) {
+        if reduceMotion {
+            updates()
+        } else {
+            withAnimation(.easeInOut(duration: 0.16)) {
+                updates()
+            }
+        }
+    }
+
     @ViewBuilder
     private func tunerControlLabel(text: String, color: Color) -> some View {
         TunerLabel(text: text, color: color, size: 10)
@@ -708,7 +780,7 @@ struct PlayerView: View {
             if player.sleepTimerEndDate != nil || player.isEndOfEpisodeSleepArmed {
                 Button {
                     player.cancelSleepTimer()
-                    withAnimation(.easeInOut(duration: 0.16)) {
+                    animateControlState {
                         isSleepPickerExpanded = false
                     }
                 } label: {
@@ -722,7 +794,7 @@ struct PlayerView: View {
             ForEach([5, 15, 30, 45, 60], id: \.self) { minutes in
                 Button {
                     player.setSleepTimer(minutes: minutes)
-                    withAnimation(.easeInOut(duration: 0.16)) {
+                    animateControlState {
                         isSleepPickerExpanded = false
                     }
                 } label: {
@@ -739,7 +811,7 @@ struct PlayerView: View {
             // episode without committing to a guess at remaining time.
             Button {
                 player.armEndOfEpisodeSleep()
-                withAnimation(.easeInOut(duration: 0.16)) {
+                animateControlState {
                     isSleepPickerExpanded = false
                 }
             } label: {
@@ -807,6 +879,8 @@ struct PlayerView: View {
 }
 
 private struct TunerScrubber: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let value: Double
     let duration: Double
     let onSeek: (Double) -> Void
@@ -882,13 +956,17 @@ private struct TunerScrubber: View {
                     }
                     .onEnded { gesture in
                         let newValue = seekValue(for: gesture.location.x, width: width)
-                        withAnimation(.easeOut(duration: 0.18)) {
+                        if reduceMotion {
                             dragValue = nil
+                        } else {
+                            withAnimation(.easeOut(duration: 0.18)) {
+                                dragValue = nil
+                            }
                         }
                         onSeek(newValue)
                     }
             )
-            .animation(.easeOut(duration: 0.12), value: isDragging)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isDragging)
         }
         .frame(height: 44)
         .accessibilityElement(children: .ignore)
@@ -967,6 +1045,7 @@ private struct ScrubberBubbleWidthPreferenceKey: PreferenceKey {
 
 private struct PlayerWhatsNextSection: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let currentEpisode: Episode
     @State private var suggestions: [ScoredEpisode] = []
 
@@ -1007,8 +1086,12 @@ private struct PlayerWhatsNextSection: View {
                 context: modelContext,
                 limit: 3
             )
-            withAnimation(.easeInOut(duration: 0.2)) {
+            if reduceMotion {
                 suggestions = results
+            } else {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    suggestions = results
+                }
             }
         } catch {
             playerLogger.error("Failed to load player suggestions: \(error.localizedDescription, privacy: .public)")

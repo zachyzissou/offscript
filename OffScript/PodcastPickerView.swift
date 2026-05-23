@@ -125,12 +125,16 @@ struct PodcastPickerView: View {
                             lineWidth: 1
                         )
                     )
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.tunerPress)
                 .disabled(!canContinue)
 
                 Button(action: onBack) {
                     TunerLabel(text: "← BACK")
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.tunerPress)
             }
@@ -180,6 +184,8 @@ struct PodcastPickerView: View {
 }
 
 private struct PodcastGenreRail: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let genre: Genre
     let podcasts: [PodcastSearchResult]
     @Binding var selectedFeeds: Set<URL>
@@ -208,18 +214,30 @@ private struct PodcastGenreRail: View {
                             podcast: podcast,
                             isSelected: selectedFeeds.contains(podcast.feedURL),
                             onTap: {
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
-                                    if selectedFeeds.contains(podcast.feedURL) {
-                                        selectedFeeds.remove(podcast.feedURL)
-                                    } else {
-                                        selectedFeeds.insert(podcast.feedURL)
-                                    }
-                                }
+                                toggleSelection(podcast.feedURL)
                             }
                         )
                     }
                 }
                 .padding(.horizontal, 20)
+            }
+        }
+    }
+
+    private func toggleSelection(_ feedURL: URL) {
+        let updates = {
+            if selectedFeeds.contains(feedURL) {
+                selectedFeeds.remove(feedURL)
+            } else {
+                selectedFeeds.insert(feedURL)
+            }
+        }
+
+        if reduceMotion {
+            updates()
+        } else {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                updates()
             }
         }
     }
@@ -407,6 +425,7 @@ private struct EditorialCollectionDetailView: View {
     let entries: [CuratedEntry]
     @Binding var selectedFeeds: Set<URL>
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollView {
@@ -472,6 +491,8 @@ private struct EditorialCollectionDetailView: View {
                 }
                 .padding(.vertical, 16)
                 .background(Color.offscriptSignalYellow)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.tunerPress)
             .padding(.horizontal, 20)
@@ -484,11 +505,19 @@ private struct EditorialCollectionDetailView: View {
     }
 
     private func toggleSelection(_ feedURL: URL) {
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+        let updates = {
             if selectedFeeds.contains(feedURL) {
                 selectedFeeds.remove(feedURL)
             } else {
                 selectedFeeds.insert(feedURL)
+            }
+        }
+
+        if reduceMotion {
+            updates()
+        } else {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                updates()
             }
         }
     }

@@ -29,6 +29,7 @@ struct SearchView: View {
     /// fold ask for a preview when they appear; everything below the cap
     /// renders the no-preview shape so layout doesn't shift on scroll.
     @State private var previewLoader = SearchPreviewLoader()
+    @State private var searchGeneration = 0
     @FocusState private var searchFieldFocused: Bool
 
     private let searchService = PodcastSearchService()
@@ -255,6 +256,8 @@ struct SearchView: View {
     @MainActor
     private func search() async {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        searchGeneration += 1
+        let generation = searchGeneration
         // Any query change should cancel in-flight preview fetches that
         // were scheduled for the previous result set. The loader's cache
         // is preserved, so flipping back to a previous query stays
@@ -271,15 +274,29 @@ struct SearchView: View {
         } catch {
             return
         }
+        guard generation == searchGeneration,
+              trimmed == query.trimmingCharacters(in: .whitespacesAndNewlines),
+              !Task.isCancelled else { return }
 
         isSearching = true
-        defer { isSearching = false }
+        defer {
+            if generation == searchGeneration {
+                isSearching = false
+            }
+        }
 
         do {
-            results = try await searchService.search(query: trimmed)
+            let searchResults = try await searchService.search(query: trimmed)
+            guard generation == searchGeneration,
+                  trimmed == query.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !Task.isCancelled else { return }
+            results = searchResults
             errorMessage = nil
             storeRecentSearch(trimmed)
         } catch {
+            guard generation == searchGeneration,
+                  trimmed == query.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !Task.isCancelled else { return }
             searchLogger.error("Search failed for query '\(trimmed, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             errorMessage = "Apple Podcasts Search failed: \(error.localizedDescription)"
         }

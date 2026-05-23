@@ -239,6 +239,7 @@ final class RecommendationService {
         let results = await discoveryService.discoverPodcasts(
             tasteProfile: tasteProfile,
             subscribedFeedURLs: subscribedFeedURLs,
+            includePrivateTasteSignals: AppSettings.remoteDiscoveryUsesTasteSignals,
             limit: limit
         )
 

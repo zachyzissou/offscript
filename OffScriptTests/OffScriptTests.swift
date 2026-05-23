@@ -2,6 +2,7 @@ import AppIntents
 import AVFoundation
 import Foundation
 import MediaPlayer
+import Sentry
 import SwiftData
 import Testing
 @testable import OffScript
@@ -1498,6 +1499,45 @@ struct OffScriptTests {
 
     @Test
     @MainActor
+    func discoveryCatalogQueriesDefaultToCoarseGenresOnly() throws {
+        let tasteProfile = UserTasteProfile()
+        tasteProfile.topTags = ["audio craft", "field interviews"]
+        tasteProfile.preferredGenres = ["Technology"]
+        tasteProfile.showAffinity = ["Private Favorite Show"]
+
+        let queries = DiscoveryService.catalogQueries(
+            for: tasteProfile,
+            includePrivateTasteSignals: false
+        )
+
+        #expect(queries == ["Technology podcast"])
+        #expect(!queries.contains { $0.localizedCaseInsensitiveContains("audio craft") })
+        #expect(!queries.contains { $0.localizedCaseInsensitiveContains("field interviews") })
+        #expect(!queries.contains { $0.localizedCaseInsensitiveContains("Private Favorite Show") })
+        #expect(!queries.contains { $0.localizedCaseInsensitiveContains("podcasts like") })
+    }
+
+    @Test
+    @MainActor
+    func discoveryCatalogQueriesCanUseTasteSignalsAfterExplicitOptIn() throws {
+        let tasteProfile = UserTasteProfile()
+        tasteProfile.topTags = ["audio craft", "field interviews"]
+        tasteProfile.preferredGenres = ["Technology"]
+        tasteProfile.showAffinity = ["Private Favorite Show"]
+
+        let queries = DiscoveryService.catalogQueries(
+            for: tasteProfile,
+            includePrivateTasteSignals: true
+        )
+
+        #expect(queries.contains("audio craft field interviews"))
+        #expect(queries.contains("Technology podcast"))
+        #expect(queries.contains("audio craft Technology"))
+        #expect(queries.contains("podcasts like Private Favorite Show"))
+    }
+
+    @Test
+    @MainActor
     func playerSuggestionsExposeNowPlayingSignalTrace() throws {
         let container = try makeContainer()
         let context = container.mainContext
@@ -1870,6 +1910,84 @@ struct OffScriptTests {
         #expect(SentryEnvironmentResolver.sentryEnvironment(storeKitEnvironmentRawValue: "Sandbox") == "testflight")
         #expect(SentryEnvironmentResolver.sentryEnvironment(storeKitEnvironmentRawValue: "Xcode") == "debug")
         #expect(SentryEnvironmentResolver.sentryEnvironment(storeKitEnvironmentRawValue: "Unexpected") == "production")
+    }
+
+    @Test
+    @MainActor
+    func sentryBeforeSendScrubsURLsQueriesAndListeningIdentifiers() throws {
+        let event = Event(level: .error)
+        event.transaction = "offscript://episode/123e4567-e89b-12d3-a456-426614174000/play?query=decoder"
+        let request = SentryRequest()
+        request.url = "https://feeds.example.com/private/show.xml?token=secret#episode"
+        request.queryString = "token=secret"
+        request.fragment = "episode"
+        request.headers = ["Authorization": "Bearer secret"]
+        event.request = request
+        event.tags = [
+            "feedURL": "https://feeds.example.com/private/show.xml?token=secret",
+            "route": "episode/123e4567-e89b-12d3-a456-426614174000/play",
+            "environment": "production"
+        ]
+        event.extra = [
+            "search_query": "private podcast",
+            "nested": [
+                "transcriptID": "123e4567-e89b-12d3-a456-426614174000",
+                "audio_url": "https://cdn.example.com/member/episode.mp3?sig=secret",
+                "count": 4
+            ]
+        ]
+
+        let scrubbed = try #require(CrashReporter.filterAndScrub(event: event))
+
+        #expect(scrubbed.transaction == "offscript://episode/[redacted]")
+        #expect(scrubbed.request?.url == "https://feeds.example.com/[redacted]")
+        #expect(scrubbed.request?.queryString == nil)
+        #expect(scrubbed.request?.fragment == nil)
+        #expect(scrubbed.request?.headers == nil)
+        #expect(scrubbed.tags?["feedURL"] == "https://feeds.example.com/[redacted]")
+        #expect(scrubbed.tags?["route"] == "episode/[redacted]/play")
+        #expect(scrubbed.tags?["environment"] == "production")
+
+        let nested = try #require(scrubbed.extra?["nested"] as? [String: Any])
+        #expect(scrubbed.extra?["search_query"] as? String == "[redacted]")
+        #expect(nested["transcriptID"] as? String == "[redacted]")
+        #expect(nested["audio_url"] as? String == "https://cdn.example.com/[redacted]")
+        #expect(nested["count"] as? Int == 4)
+    }
+
+    @Test
+    @MainActor
+    func sentryBeforeBreadcrumbScrubsURLDataAndSearchContext() throws {
+        let breadcrumb = Breadcrumb(level: .info, category: "http")
+        breadcrumb.message = "GET https://feeds.example.com/private/show.xml?token=secret"
+        breadcrumb.data = [
+            "url": "https://feeds.example.com/private/show.xml?token=secret",
+            "search": "private show",
+            "status_code": 200
+        ]
+
+        let scrubbed = try #require(CrashReporter.scrub(breadcrumb: breadcrumb))
+
+        #expect(scrubbed.message == "GET https://feeds.example.com/[redacted]")
+        #expect(scrubbed.data?["url"] as? String == "https://feeds.example.com/[redacted]")
+        #expect(scrubbed.data?["search"] as? String == "[redacted]")
+        #expect(scrubbed.data?["status_code"] as? Int == 200)
+    }
+
+    @Test
+    func metricKitCrashExtrasDoNotIncludeFullDiagnosticPayloadsOrPaths() {
+        let extras = MetricKitReporter.trimmedCrashExtras(
+            terminationReason: "Namespace SPRINGBOARD, Code 0x8badf00d\n/private/var/mobile/Containers/Data/Application/app.db",
+            exceptionType: "1",
+            exceptionCode: "https://example.com/private?token=secret",
+            signal: "9"
+        )
+
+        #expect(extras["metrickit_payload"] == nil)
+        #expect(extras["metrickit_source"] as? String == "MXCrashDiagnostic")
+        #expect(extras["termination_reason"] as? String == "Namespace SPRINGBOARD, Code 0x8badf00d")
+        #expect(extras["exception_code"] as? String == "[redacted]")
+        #expect(extras["signal"] as? String == "9")
     }
 
     @Test
@@ -5310,6 +5428,7 @@ struct PlaybackEventEmissionTests {
         let incoming = makeEpisode(title: "Incoming", in: context)
 
         DebugTeardown.resetAllSingletons()
+        defer { DebugTeardown.resetAllSingletons() }
         let controller = PlaybackController.shared
         controller.configure(context: context)
         controller.debugPrimePlayback(
@@ -5317,7 +5436,8 @@ struct PlaybackEventEmissionTests {
             duration: 1800,
             currentTime: 900, // 50% through — abandonment territory
             isPlaying: true,
-            presentPlayer: true
+            presentPlayer: true,
+            suppressExternalSideEffects: true
         )
 
         controller.play(incoming, in: context)
@@ -5338,6 +5458,7 @@ struct PlaybackEventEmissionTests {
         let incoming = makeEpisode(title: "Incoming", in: context)
 
         DebugTeardown.resetAllSingletons()
+        defer { DebugTeardown.resetAllSingletons() }
         let controller = PlaybackController.shared
         controller.configure(context: context)
         controller.debugPrimePlayback(
@@ -5345,7 +5466,8 @@ struct PlaybackEventEmissionTests {
             duration: 1800,
             currentTime: 5, // 5 seconds — quick skip
             isPlaying: true,
-            presentPlayer: true
+            presentPlayer: true,
+            suppressExternalSideEffects: true
         )
 
         controller.play(incoming, in: context)
@@ -5368,6 +5490,7 @@ struct PlaybackEventEmissionTests {
         let incoming = makeEpisode(title: "Incoming", in: context)
 
         DebugTeardown.resetAllSingletons()
+        defer { DebugTeardown.resetAllSingletons() }
         let controller = PlaybackController.shared
         controller.configure(context: context)
         controller.debugPrimePlayback(
@@ -5375,7 +5498,8 @@ struct PlaybackEventEmissionTests {
             duration: 1800,
             currentTime: 1620, // 90%
             isPlaying: true,
-            presentPlayer: true
+            presentPlayer: true,
+            suppressExternalSideEffects: true
         )
 
         controller.play(incoming, in: context)
@@ -5396,6 +5520,7 @@ struct PlaybackEventEmissionTests {
         let ep = makeEpisode(in: context)
 
         DebugTeardown.resetAllSingletons()
+        defer { DebugTeardown.resetAllSingletons() }
         let controller = PlaybackController.shared
         controller.configure(context: context)
         controller.debugPrimePlayback(
@@ -5403,7 +5528,8 @@ struct PlaybackEventEmissionTests {
             duration: 1800,
             currentTime: 600,
             isPlaying: true,
-            presentPlayer: true
+            presentPlayer: true,
+            suppressExternalSideEffects: true
         )
 
         controller.play(ep, in: context)
@@ -5424,6 +5550,7 @@ struct PlaybackEventEmissionTests {
         let ep = makeEpisode(in: context)
 
         DebugTeardown.resetAllSingletons()
+        defer { DebugTeardown.resetAllSingletons() }
         let controller = PlaybackController.shared
         controller.configure(context: context)
         controller.debugPrimePlayback(
@@ -5431,7 +5558,8 @@ struct PlaybackEventEmissionTests {
             duration: 1800,
             currentTime: 600, // 10 minutes in — well past 60s gate
             isPlaying: false, // paused — togglePlayPause will resume
-            presentPlayer: true
+            presentPlayer: true,
+            suppressExternalSideEffects: true
         )
 
         controller.togglePlayPause()
@@ -5457,6 +5585,7 @@ struct PlaybackEventEmissionTests {
         let ep = makeEpisode(in: context)
 
         DebugTeardown.resetAllSingletons()
+        defer { DebugTeardown.resetAllSingletons() }
         let controller = PlaybackController.shared
         controller.configure(context: context)
         controller.debugPrimePlayback(
@@ -5464,7 +5593,8 @@ struct PlaybackEventEmissionTests {
             duration: 1800,
             currentTime: 10, // below 60s gate
             isPlaying: false,
-            presentPlayer: true
+            presentPlayer: true,
+            suppressExternalSideEffects: true
         )
 
         controller.togglePlayPause()
@@ -5476,9 +5606,9 @@ struct PlaybackEventEmissionTests {
 
     @Test
     @MainActor
-    func playbackCompletionWithAutoplayEmitsAdvancedFromQueue() async throws {
-        // Drive the real completion observer by posting
-        // `.AVPlayerItemDidPlayToEndTime`. The observer should:
+    func playbackCompletionWithAutoplayEmitsAdvancedFromQueue() throws {
+        // Drive the real completion handler through the debug-only synchronous
+        // entry point. The handler should:
         //   1. Emit `.completed` for the finishing episode
         //   2. Call `skipToNextInQueue` → prepareItem on nextUp
         //   3. Emit `.advancedFromQueue` for nextUp (the new episode)
@@ -5501,6 +5631,7 @@ struct PlaybackEventEmissionTests {
         UserDefaults.standard.set(true, forKey: "offscript.autoPlayNext")
 
         DebugTeardown.resetAllSingletons()
+        defer { DebugTeardown.resetAllSingletons() }
         let controller = PlaybackController.shared
         controller.configure(context: context)
         controller.debugPrimePlayback(
@@ -5508,19 +5639,11 @@ struct PlaybackEventEmissionTests {
             duration: 1800,
             currentTime: 1800,
             isPlaying: true,
-            presentPlayer: true
+            presentPlayer: true,
+            suppressExternalSideEffects: true
         )
 
-        // Post the end-time notification — picked up by
-        // `observePlaybackCompletion` which routes the completion through
-        // a `Task { @MainActor }` (not synchronous), so we have to spin
-        // the run loop a beat to let it land.
-        NotificationCenter.default.post(name: .AVPlayerItemDidPlayToEndTime, object: nil)
-        for _ in 0..<10 {
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: 20_000_000) // 20ms
-            if controller.currentEpisode?.id == nextUp.id { break }
-        }
+        controller.debugCompleteCurrentEpisodeForTesting()
 
         let events = try context.fetch(FetchDescriptor<PlaybackEvent>())
         let advanced = events.filter { $0.kind == .advancedFromQueue }
@@ -5556,6 +5679,7 @@ struct PlaybackEventEmissionTests {
         context.insert(nextUp)
 
         DebugTeardown.resetAllSingletons()
+        defer { DebugTeardown.resetAllSingletons() }
         let controller = PlaybackController.shared
         controller.configure(context: context)
         controller.debugPrimePlayback(
@@ -5563,7 +5687,8 @@ struct PlaybackEventEmissionTests {
             duration: 1800,
             currentTime: 1800,
             isPlaying: true,
-            presentPlayer: true
+            presentPlayer: true,
+            suppressExternalSideEffects: true
         )
         // Mirror the completion observer: episode is now played.
         finishing.isPlayed = true
@@ -5597,6 +5722,7 @@ struct PlaybackEventEmissionTests {
         let ep = makeEpisode(in: context)
 
         DebugTeardown.resetAllSingletons()
+        defer { DebugTeardown.resetAllSingletons() }
         let controller = PlaybackController.shared
         controller.configure(context: context)
         controller.debugPrimePlayback(
@@ -5604,7 +5730,8 @@ struct PlaybackEventEmissionTests {
             duration: 1800,
             currentTime: 600,
             isPlaying: true,
-            presentPlayer: true
+            presentPlayer: true,
+            suppressExternalSideEffects: true
         )
 
         controller.togglePlayPause() // pause
@@ -6328,6 +6455,7 @@ struct DebugInspectorTests {
 
         // Reset the singleton so test isolation holds.
         DebugTeardown.resetAllSingletons()
+        defer { DebugTeardown.resetAllSingletons() }
         DownloadService.shared.configure(context: context)
 
         let failed = makeEpisode(title: "F", state: .failed, in: context)
@@ -6344,7 +6472,6 @@ struct DebugInspectorTests {
         #expect(failed.downloadState != .failed)
         #expect(failed.downloadErrorMessage == nil)
 
-        DebugTeardown.resetAllSingletons()
     }
 
     // MARK: SyncHistoryService
@@ -6794,6 +6921,7 @@ struct LiveActivityLifecycleTests {
         let episodeB = makeEpisode(title: "Episode B", in: context)
 
         DebugTeardown.resetAllSingletons()
+        defer { DebugTeardown.resetAllSingletons() }
         let controller = PlaybackController.shared
         controller.configure(context: context)
 

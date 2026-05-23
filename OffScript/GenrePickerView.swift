@@ -6,6 +6,8 @@ import SwiftUI
 // Each genre is a hairline rectangle with a mono channel index, the genre
 // glyph in signal yellow when active, and a tracked-out caption.
 struct GenrePickerView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @Binding var selectedGenres: Set<Genre>
     let onContinue: () -> Void
     let onBack: () -> Void
@@ -82,12 +84,16 @@ struct GenrePickerView: View {
                             lineWidth: 1
                         )
                     )
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.tunerPress)
                 .disabled(selectedGenres.isEmpty)
 
                 Button(action: onBack) {
                     TunerLabel(text: "← BACK")
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.tunerPress)
             }
@@ -105,11 +111,19 @@ struct GenrePickerView: View {
     }
 
     private func toggleGenre(_ genre: Genre) {
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+        let updates = {
             if selectedGenres.contains(genre) {
                 selectedGenres.remove(genre)
             } else {
                 selectedGenres.insert(genre)
+            }
+        }
+
+        if reduceMotion {
+            updates()
+        } else {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                updates()
             }
         }
     }

@@ -29,6 +29,7 @@ actor DiscoveryService {
     func discoverPodcasts(
         tasteProfile: UserTasteProfile,
         subscribedFeedURLs: Set<String>,
+        includePrivateTasteSignals: Bool,
         limit: Int = 10
     ) async -> [ScoredDiscoveryResult] {
         let normalizedSubscribedFeedURLs = Set(subscribedFeedURLs.map(Self.normalizedFeedKey))
@@ -45,7 +46,10 @@ actor DiscoveryService {
             }
         }
 
-        let queries = buildQueries(from: tasteProfile)
+        let queries = Self.catalogQueries(
+            for: tasteProfile,
+            includePrivateTasteSignals: includePrivateTasteSignals
+        )
         guard !queries.isEmpty else { return [] }
 
         let searchService = PodcastSearchService()
@@ -98,34 +102,34 @@ actor DiscoveryService {
 
     // MARK: - Query Generation
 
-    private func buildQueries(from profile: UserTasteProfile) -> [String] {
+    nonisolated static func catalogQueries(
+        for profile: UserTasteProfile,
+        includePrivateTasteSignals: Bool
+    ) -> [String] {
         var queries: [String] = []
 
-        // Query from top tags (most specific signal)
-        let topTags = profile.topTags
-        if topTags.count >= 2 {
-            queries.append(topTags.prefix(2).joined(separator: " "))
-        } else if let first = topTags.first {
-            queries.append(first)
-        }
-
-        // Query from preferred genres
         let genres = profile.preferredGenres
         if let genre = genres.first {
             queries.append("\(genre) podcast")
         }
 
-        // Cross-signal: combine a tag with a genre for more targeted results
-        if let tag = topTags.first, let genre = genres.first {
-            queries.append("\(tag) \(genre)")
+        if includePrivateTasteSignals {
+            let topTags = profile.topTags
+            if topTags.count >= 2 {
+                queries.insert(topTags.prefix(2).joined(separator: " "), at: 0)
+            } else if let first = topTags.first {
+                queries.insert(first, at: 0)
+            }
+
+            if let tag = topTags.first, let genre = genres.first {
+                queries.append("\(tag) \(genre)")
+            }
+
+            if let favoriteShow = profile.showAffinity.first {
+                queries.append("podcasts like \(favoriteShow)")
+            }
         }
 
-        // Show affinity: find shows similar to favorites
-        if let favoriteShow = profile.showAffinity.first {
-            queries.append("podcasts like \(favoriteShow)")
-        }
-
-        // Cap at 4 queries
         return Array(queries.prefix(4))
     }
 
