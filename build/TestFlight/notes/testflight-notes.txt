@@ -1,11 +1,14 @@
-OffScript beta 2.5.2 (2026052005)
+OffScript beta 2.5.3 (2026052401)
 
 What changed:
-- Search and onboarding subscription staging now treat http/https/feed, case, and trailing-slash RSS variants as the same feed, so subscribing from Search should not create duplicate Library rows.
-- Lock screen / Control Center now receive Tuner fallback artwork immediately when an episode has no feed artwork or remote artwork is still loading.
-- Shared artwork fallback, empty states, and Tuner button press feedback are aligned across the main app surfaces.
+- Harden discovery privacy and tuner UX
 
 What to test:
-- Search for a show already in your Library using a different feed URL spelling, then subscribe. The existing show should flip to IN LIBRARY immediately and no duplicate Library row should appear.
-- Play an episode with missing feed artwork and check the Lock Screen / Control Center artwork.
-- Smoke Home, Library, Queue, Search, mini-player, and full Player for sharp Tuner styling, readable copy, and usable controls.
+- Queue several episodes, use Play Next/Add to End, and confirm playback advances in the expected order.
+- Complete onboarding/import, then confirm Home recommendations explain why each episode is surfaced.
+- Open Settings diagnostics and confirm sync/feed-build events are visible after import or playback activity.
+- Check the main tabs on a small iPhone simulator for clipping, overlap, readable text, and usable tap targets.
+- Run a smoke pass through Home, Library, Queue, Search, mini-player, and full player.
+
+Release-specific focus:
+Focus on remote discovery privacy and the visible local-device story: confirm Settings shows remote catalog taste-profile opt-in off by default, Home still recommends locally from listening signals, onboarding import completion requires the explicit ENTER APP action, Player shows LOCAL · DEVICE with download/transcript status, and widgets/Live Activity preserve the Tuner OLED visual language.

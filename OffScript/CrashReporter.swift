@@ -199,9 +199,9 @@ enum CrashReporter {
 }
 
 private enum SentryPrivacyScrubber {
-    private static let redacted = "[redacted]"
+    nonisolated private static let redacted = "[redacted]"
 
-    private static let urlRegex: NSRegularExpression = {
+    nonisolated private static let urlRegex: NSRegularExpression = {
         do {
             return try NSRegularExpression(pattern: #"(?:https?|feed|offscript)://[^\s<>"'`]+(?<![.,;:!?)\]\}])"#)
         } catch {
@@ -209,7 +209,7 @@ private enum SentryPrivacyScrubber {
         }
     }()
 
-    private static let uuidRegex: NSRegularExpression = {
+    nonisolated private static let uuidRegex: NSRegularExpression = {
         do {
             return try NSRegularExpression(
                 pattern: #"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"#
@@ -219,23 +219,23 @@ private enum SentryPrivacyScrubber {
         }
     }()
 
-    static func scrubStringDictionary(_ dictionary: [String: String]) -> [String: String] {
+    nonisolated static func scrubStringDictionary(_ dictionary: [String: String]) -> [String: String] {
         Dictionary(uniqueKeysWithValues: dictionary.map { key, value in
             (key, scrubURLOrString(value, key: key))
         })
     }
 
-    static func scrubDictionary(_ dictionary: [String: Any]) -> [String: Any] {
+    nonisolated static func scrubDictionary(_ dictionary: [String: Any]) -> [String: Any] {
         Dictionary(uniqueKeysWithValues: dictionary.map { key, value in
             (key, scrubValue(value, key: key))
         })
     }
 
-    static func scrubRoute(_ value: String) -> String {
+    nonisolated static func scrubRoute(_ value: String) -> String {
         scrubURLOrString(value, key: "route")
     }
 
-    static func scrubURLOrString(_ value: String, key: String) -> String {
+    nonisolated static func scrubURLOrString(_ value: String, key: String) -> String {
         var scrubbed = replaceURLs(in: value)
         scrubbed = replaceMatches(in: scrubbed, regex: uuidRegex, with: redacted)
 
@@ -253,7 +253,7 @@ private enum SentryPrivacyScrubber {
         return scrubbed
     }
 
-    private static func scrubValue(_ value: Any, key: String) -> Any {
+    nonisolated private static func scrubValue(_ value: Any, key: String) -> Any {
         switch value {
         case let string as String:
             return scrubURLOrString(string, key: key)
@@ -278,13 +278,13 @@ private enum SentryPrivacyScrubber {
         }
     }
 
-    private static func replaceURLs(in value: String) -> String {
+    nonisolated private static func replaceURLs(in value: String) -> String {
         replaceMatches(in: value, regex: urlRegex) { match in
             scrubURL(match)
         }
     }
 
-    private static func scrubURL(_ value: String) -> String {
+    nonisolated private static func scrubURL(_ value: String) -> String {
         guard var components = URLComponents(string: value), let scheme = components.scheme else {
             return redacted
         }
@@ -307,7 +307,7 @@ private enum SentryPrivacyScrubber {
             .replacingOccurrences(of: "%5Bredacted%5D", with: redacted)
     }
 
-    private static func redactRouteSegments(_ value: String) -> String {
+    nonisolated private static func redactRouteSegments(_ value: String) -> String {
         let separators = CharacterSet(charactersIn: "/?#&")
         return value
             .components(separatedBy: separators)
@@ -317,14 +317,14 @@ private enum SentryPrivacyScrubber {
             .joined(separator: "/")
     }
 
-    private static func shouldRedactRouteSegment(_ segment: String) -> Bool {
+    nonisolated private static func shouldRedactRouteSegment(_ segment: String) -> Bool {
         guard !segment.isEmpty else { return false }
         if segment == redacted { return false }
         if segment.range(of: uuidRegex.pattern, options: .regularExpression) != nil { return true }
         return segment.count >= 16 && segment.rangeOfCharacter(from: CharacterSet.alphanumerics.inverted) == nil
     }
 
-    private static func isSensitiveKey(_ key: String) -> Bool {
+    nonisolated private static func isSensitiveKey(_ key: String) -> Bool {
         let lowercased = key.lowercased()
         return [
             "url",
@@ -344,12 +344,12 @@ private enum SentryPrivacyScrubber {
         ].contains { lowercased.contains($0) }
     }
 
-    private static func isRouteKey(_ key: String) -> Bool {
+    nonisolated private static func isRouteKey(_ key: String) -> Bool {
         let lowercased = key.lowercased()
         return lowercased.contains("route") || lowercased.contains("context") || lowercased.contains("transaction")
     }
 
-    private static func replaceMatches(
+    nonisolated private static func replaceMatches(
         in value: String,
         regex: NSRegularExpression,
         with replacement: String
@@ -357,7 +357,7 @@ private enum SentryPrivacyScrubber {
         replaceMatches(in: value, regex: regex) { _ in replacement }
     }
 
-    private static func replaceMatches(
+    nonisolated private static func replaceMatches(
         in value: String,
         regex: NSRegularExpression,
         transform: (String) -> String

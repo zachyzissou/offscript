@@ -4,6 +4,21 @@ All notable changes to OffScript. Format: [Keep a Changelog](https://keepachange
 
 ## [Unreleased]
 
+## [2.5.3] — 2026-05-24
+
+### Added
+- Remote Apple Podcasts catalog discovery now defaults to coarse genre queries while preserving the app's local taste-driven recommendation engine. Users can explicitly opt into taste-profile catalog search from Settings when they want remote discovery to use top tags, show affinity, or "podcasts like this" signals.
+- Player now exposes a `LOCAL · DEVICE` section for offline/download state and on-device transcript access, making the no-cloud playback/transcript story visible in the primary listening surface.
+
+### Changed
+- Onboarding import completion now keeps users on the import progress screen until they deliberately enter the app, with copy that distinguishes staged subscriptions from background episode hydration.
+- Now Playing widgets and Live Activity surfaces use the Tuner OLED visual system more consistently: black field, signal-yellow rails, sharp artwork, mono labels, and function-coded state.
+
+### Fixed
+- Sentry and MetricKit export paths now scrub URLs, query strings, headers, breadcrumbs, tags/extras/contexts, listening/search identifiers, and raw crash diagnostic payloads before data leaves the device.
+- Search, speech transcription, background transcription, and playback completion paths now handle cancellation/test isolation more deterministically.
+- SwiftData relationship annotations now explicitly document the preference-signal delete behavior used by the V3 schema.
+
 ## [2.5.2] — 2026-05-20
 
 ### Fixed
