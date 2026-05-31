@@ -22,6 +22,19 @@ The app is currently shipping the **Tuner OLED** design direction — pure black
 
 ---
 
+## Current Truth
+
+- Last refreshed: 2026-05-31T06:43Z.
+- Canonical GitHub Project: [#7 OffScript](https://github.com/users/zachyzissou/projects/7).
+- Current release/live state: TestFlight beta, marketing version `2.3.11`; Xcode Cloud remains the release path.
+- Current roadmap: [docs/NEXT_IMPLEMENTATION_BACKLOG.md](docs/NEXT_IMPLEMENTATION_BACKLOG.md).
+- Open issues: #196, #125, #124, #121, #120, #119, #117, #114, #113, #112, #111, #110, #108, #107, #106, #105, #104.
+- Open PRs: #271 tap-to-copy About build version, #38 CloudKit signing preflight.
+- Active gate: release/build visibility and Xcode Cloud/App Store Connect state are senior/owner-led; do not hand those to constrained agents without current ASC proof.
+- Next action: land narrow UX/testability PRs first, then resolve the release visibility lane before treating a build as shipped.
+
+---
+
 ## What's different
 
 **No algorithm, no paid placements.** Recommendations are computed on-device from your listening history, podcasts you've liked, and topics you've spent the most hours on. Nothing about your taste leaves your phone.

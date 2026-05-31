@@ -3,7 +3,16 @@
 This roadmap mirrors the open GitHub issue backlog so the repo has a durable
 source of truth even when the GitHub Project roadmap view is not accessible
 from automation. Priorities reflect the current release state as of
-2026-04-30.
+2026-05-31.
+
+## Current Truth
+
+- Last refreshed: 2026-05-31T06:43Z.
+- Canonical GitHub Project: [#7 OffScript](https://github.com/users/zachyzissou/projects/7).
+- Open issues: #196, #125, #124, #121, #120, #119, #117, #114, #113, #112, #111, #110, #108, #107, #106, #105, #104.
+- Open PRs: #271, #38.
+- Active gate: Xcode Cloud/App Store Connect release visibility remains separate from local repo health.
+- Next action: review #271 as a narrow shipped-surface polish PR, keep #38 release-signing preflight separate, and refresh any issue routing labels before assigning constrained implementation agents.
 
 ## Agent Readiness
 
